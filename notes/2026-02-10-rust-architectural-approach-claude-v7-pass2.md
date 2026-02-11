@@ -1,7 +1,11 @@
-# TermForge v6 Definitive Architecture Specification
+# TermForge v7 Architecture Specification (Pass 2 Synthesis)
 
-Date: 2026-02-11
-Lineage: v4 (6-model synthesis, 2519 lines) + v5 (3-model refinement, 1573 lines) merged into v6; refined across 3 passes (Claude Pass 2 base, GPT Pass 2 cross-pollination, Claude Pass 3 final audit)
+> **Status:** v7 Pass 2 -- Cross-model synthesis of Claude v7 Pass 1 and GPT v7 Pass 1, with all citations verified against actual source.
+>
+> **Lineage:** v4 (6-model, 2519 lines) -> v5 (3-model, 1573 lines) -> v6 (3-pass synthesis, 5239 lines) -> v7 Pass 1 (Claude + GPT + Gemini independent refinements) -> **v7 Pass 2** (this document).
+>
+> **New in v7 Pass 2:** (1) Cross-model verification resolved all divergences between Claude/GPT/Gemini Pass 1 outputs. (2) All PyO3 API calls verified as `Python::detach` (PyO3 0.26+, confirmed at `pyo3/src/marker.rs:558` and `guide/src/migration.md:311`). (3) Neon API verified: `FunctionContext`, `Channel` (`event/channel.rs:92`), `#[neon::main]` (`lib.rs:42-52`). (4) OTEL SDK types verified: `SdkTracerProvider` (`provider.rs:158`), `BatchSpanProcessor` (`span_processor.rs:284`, queue 2048, delay 5000ms), `SamplingDecision` (`sampler.rs:24`), `SpanExporter` (`export.rs:17`). (5) All 25+ tmux citations re-verified against actual source. (6) Sections 16, 19, 20, 22, 26 expanded with best-of-breed content from both Pass 1 outputs.
+
 License: MIT OR Apache-2.0
 Rust edition: 2024 (MSRV 1.85)
 Protocol target: tmux protocol v8
@@ -18,26 +22,29 @@ This document is the single authoritative architectural reference for TermForge,
 - Python libtmux: `~/work/python/libtmux/` (API design reference)
 - ratatui: `~/study/rust/ratatui/` (TUI framework)
 - zellij: `~/study/rust/zellij/` (multiplexer reference)
+- PyO3: `~/study/rust-python/pyo3/` (Python binding framework)
+- Neon: `~/study/rust-node/neon/` (Node.js binding framework)
+- OTEL Rust SDK: `~/study/otel/opentelemetry-rust/` (telemetry SDK)
 
 **Settled decisions (not re-argued):**
-1. Vec-inside-entity for parent-child relationships (not SecondaryMap)
-2. WASM compilability as CI purity gate (not production target)
-3. `mux-types` as separate leaf crate
-4. `mux-orm` as separate crate from `mux-api`
-5. FakePty ScenarioRecorder with JSON format
-6. Defer `im-rs`; use `Arc<Grid>` with `Arc::make_mut` for COW
-7. Custom VT100 parser matching tmux `input.c` (17 states)
-8. Format string engine as pure function
-9. Key binding system with table-based dispatch
-10. Copy mode as per-pane `CopyModeState`
 
-**Key v5 corrections applied in this document:**
-- Protocol codec: `ProtocolViolation` kills the connection (not drop frame)
-- Lock file: `flock(LOCK_EX|LOCK_NB)` (not PID-based)
-- Layout resize: round-robin one-cell-at-a-time (not proportional)
-- Config timing: load after first client identifies
-- `mux-types`: must be created as leaf crate (does not yet exist in vibe-tmux)
-- `ControlNotification`: currently generic name/raw struct, migration to typed enum needed
+| # | Decision | Rationale |
+|---|---|---|
+| S1 | New multiplexer, tmux-compatible | Architectural freedom with wire compatibility. Not a C-to-Rust port. |
+| S2 | Protocol version 8 | Wire-compatible with tmux protocol v8 (`tmux-protocol.h:23`). |
+| S3 | SlotMap entity IDs | `slotmap::new_key_type!` for all entity IDs (Session, Window, Pane, Client, Job, Buffer). |
+| S4 | Flat arena LayoutTree | `Vec<LayoutCell>` with index-based parent/children. Not recursive nesting. |
+| S5 | Round-robin resize | One cell at a time, matching `layout.c:448-462`. Not proportional. |
+| S6 | flock locking | `flock(LOCK_EX|LOCK_NB)` per `client.c:77-101`. Not PID-based. |
+| S7 | Config after identify | Load config only after first client completes identify burst (`server-client.c:3725-3734`). |
+| S8 | Protocol violation kills connection | Matching `server-client.c:3472-3475`. Never drop and continue. |
+| S9 | Custom VT100 parser | Match tmux's `input.c` state table exactly. Do not use the `vte` crate. |
+| S10 | Option FALLTHROUGH | WindowPane falls through to Window scope, matching `options.c:891-903`. |
+| S11 | Vec-inside-entity for parent-child | Not SecondaryMap. Reverse lookups computed during snapshot construction. |
+| S12 | WASM compilability as CI purity gate | Not production target. `cargo check --target wasm32-unknown-unknown`. |
+| S13 | `mux-types` as separate leaf crate | Must be created first (does not yet exist in vibe-tmux). |
+| S14 | FakePty ScenarioRecorder with JSON | Deterministic replay without real PTYs. |
+| S15 | Defer `im-rs` | Use `Arc<Grid>` with `Arc::make_mut` for COW until profiling shows bottleneck. |
 
 ---
 
@@ -74,29 +81,38 @@ This document is the single authoritative architectural reference for TermForge,
 29. [Reference Anchors](#29-reference-anchors)
 30. [Appendix: Canonical Type Quick Reference](#30-appendix-canonical-type-quick-reference)
 31. [Supplemental Test Matrix](#31-supplemental-test-matrix)
+
 ---
 
 ## 1. Vision and Philosophy
 
-### Core Thesis
+### 1.1 Core Thesis
 
-TermForge is not a tmux port. It is a **new terminal multiplexer** that speaks tmux's binary protocol (`imsg` over Unix domain sockets). The internal architecture is Rust-native: algebraic types, ownership-tracked state, pure-functional kernel, and async runtime -- while maintaining bit-for-bit compatibility with the tmux wire format.
+TermForge is a **new terminal multiplexer** written in Rust that is **wire-compatible** with tmux protocol v8. It is not a port of tmux's C code. It uses tmux as a behavioral reference while building a clean, layered Rust architecture from scratch.
 
-### Architectural Principles
+The internal architecture is Rust-native: algebraic types, ownership-tracked state, pure-functional kernel, and async runtime -- while maintaining bit-for-bit compatibility with the tmux wire format.
 
-1. **Pure/Impure Separation (Sans-IO):** The kernel (`mux-core`) is a pure `fn(graph, event) -> (graph, effects)` reducer. It never touches file descriptors, system calls, timers, or network. All IO happens in the runtime layer that interprets `Effect` variants.
+### 1.2 Design Principles
 
-2. **tmux is a Compatibility Profile, Not the Architecture:** tmux's `struct session`, `struct window`, `struct window_pane` inform our entity model but do not dictate it. Protocol adaptation lives in `mux-proto`; the kernel uses domain-native names.
+1. **Pure/Impure Separation (Sans-IO).** The kernel (`mux-core`) is a pure `fn(graph, event) -> (graph, effects)` reducer. It never touches file descriptors, system calls, timers, or network. All IO happens in the runtime layer that interprets `Effect` variants.
 
-3. **Snapshots are the Read Path:** The authoritative state lives in the `ServerGraph`. Readers (UI, bindings, query API) see immutable snapshots published via `ArcSwap`. Writers go through the event/effect engine. This eliminates read contention.
+2. **tmux is a Compatibility Profile, Not the Architecture.** tmux's `struct session`, `struct window`, `struct window_pane` inform our entity model but do not dictate it. Protocol adaptation lives in `mux-proto`; the kernel uses domain-native names.
 
-4. **ORM is a Facade, Not the Engine:** `mux-orm` translates user intent into commands/events. It never implements multiplexer logic. It must not become a second business-logic engine.
+3. **Snapshots are the Read Path.** The authoritative state lives in the `ServerGraph`. Readers (UI, bindings, query API) see immutable snapshots published via `ArcSwap`. Writers go through the event/effect engine. This eliminates read contention.
 
-5. **Layered Testing:** Every layer has its own test strategy. Pure core uses property testing and snapshot testing. Protocol uses fixture-driven roundtrip tests. Runtime uses hermetic servers with fake PTYs.
+4. **ORM is a Facade, Not the Engine.** `mux-orm` translates user intent into commands/events. It never implements multiplexer logic. It must not become a second business-logic engine.
 
-6. **WASM as Purity Proof:** Layer 0 crates compile to `wasm32-unknown-unknown` as a CI gate, not a production deployment target. This catches accidental OS dependencies.
+5. **Layered Testing.** Every layer has its own test strategy. Pure core uses property testing and snapshot testing. Protocol uses fixture-driven roundtrip tests. Runtime uses hermetic servers with fake PTYs.
 
-### Why Not a Direct Port
+6. **WASM as Purity Proof.** Layer 0 crates compile to `wasm32-unknown-unknown` as a CI gate, not a production deployment target. This catches accidental OS dependencies.
+
+7. **Language Bindings as First-Class Citizens.** Python (PyO3), Node (Neon), and C++ (cxx) bindings expose the same ORM API, with snapshot testing support in pytest and vitest.
+
+8. **Observability Built In.** OpenTelemetry tracing from server to client to language bindings, using the `tracing` crate in pure code and OTEL SDK exporters at the runtime boundary.
+
+9. **CRDT-Ready State Model.** The entity graph supports conflict-free replication for distributed/federated scenarios.
+
+### 1.3 Why Not a Direct Port
 
 | Direct Port | TermForge |
 |---|---|
@@ -106,24 +122,30 @@ TermForge is not a tmux port. It is a **new terminal multiplexer** that speaks t
 | CRDTs require invasive surgery | CRDTs compose on top of pure events |
 | Testing requires real PTY | Fake PTY backend for deterministic tests |
 
+### 1.4 What TermForge Is Not
+
+- Not a port of tmux C code to Rust.
+- Not a wrapper around tmux (like libtmux). It is a standalone server.
+- Not limited to tmux's feature set. The architecture supports extensions (CRDT sync, rich TUI, programmatic control) that tmux cannot.
+
 ---
 
 ## 2. North Star Acceptance Criteria
 
-### 2.1 Compatibility
+### 2.1 Compatibility (C)
 
 | ID | Criterion | Verification |
 |---|---|---|
-| C1 | Real tmux 3.6+ client attaches to `muxd` | Integration test: `tmux attach -S <sock>` |
-| C2 | `mux` client attaches to real tmux 3.6+ server | Integration test via `mux-client` |
+| C1 | A stock tmux 3.6+ client attaches to a TermForge server | Integration test: `tmux -S /path attach` |
+| C2 | A TermForge client attaches to a stock tmux 3.6+ server | Integration test: `termforge attach -S /path` |
 | C3 | Protocol v8 imsg framing roundtrips all 35+ `MsgType` variants | `proptest` with arbitrary payloads |
-| C4 | Identify burst (13 message types, 100-112) roundtrips correctly | Fixture captures from real tmux |
+| C4 | Identify burst (types 100-112) roundtrips byte-exact | Fixture captures from real tmux |
 | C5 | SCM_RIGHTS fd passing preserved through sniff proxy | `tmux-sniff` passthrough test |
-| C6 | Command semantics match tmux's 144+ `cmd_table` entries | `tmux-command-audit` parity checks |
+| C6 | All 200+ tmux commands parse and execute | `tmux-command-audit` tool with coverage report |
 | C7 | Format string expansion matches tmux for 200+ variables | `format-audit` parity corpus |
-| C8 | Default key bindings match tmux across all 4 key tables | Key table parity tests |
+| C8 | Default key bindings match tmux across all 4 key tables | Key table parity tests generated from `key-bindings.c` |
 
-### 2.2 Architectural
+### 2.2 Architectural (A)
 
 | ID | Criterion | Enforcement |
 |---|---|---|
@@ -135,7 +157,7 @@ TermForge is not a tmux port. It is a **new terminal multiplexer** that speaks t
 | A6 | Bindings depend only on `mux-api`/`mux-orm` | Cargo dependency check in CI |
 | A7 | No `Arc<Mutex<_>>` in the read path | `ArcSwap`-based `StateHandle` |
 
-### 2.3 Product
+### 2.3 Product (P)
 
 | ID | Criterion |
 |---|---|
@@ -146,24 +168,37 @@ TermForge is not a tmux port. It is a **new terminal multiplexer** that speaks t
 | P5 | TUI client attaches to real tmux server and renders correctly |
 | P6 | FakePty scenario replay produces identical grid state to real tmux |
 
-### 2.4 Performance
+### 2.4 Performance (B)
 
 | ID | Target | Basis |
 |---|---|---|
 | B1 | VT100 parser, plain ASCII > 300 MB/s | alacritty vte achieves ~500 MB/s |
-| B2 | Protocol frame decode > 500 MB/s | 16-byte header + memcpy |
-| B3 | Layout resize (20 panes) < 50 us | Tree walk ~60 nodes, no alloc |
-| B4 | Graph snapshot < 1 ms | Arc clone + BTreeMap for 50 panes |
-| B5 | Option resolve (4-level chain) < 100 ns | 4 BTreeMap lookups |
-| B6 | Control notification parse < 200 ns | String split + parse |
+| B2 | VT100 parser, CSI heavy > 100 MB/s | Parameter parsing overhead |
+| B3 | Protocol frame decode > 500 MB/s | 16-byte header + memcpy |
+| B4 | Layout resize (20 panes) < 50 us | Tree walk ~60 nodes, no alloc |
+| B5 | Graph snapshot < 1 ms | Arc clone + BTreeMap for 50 panes |
+| B6 | Option resolve (4-level chain) < 100 ns | 4 BTreeMap lookups |
+| B7 | Control notification parse < 200 ns | String split + parse |
+| B8 | Format expand (status line) < 50 us | ~10 variable lookups |
+| B9 | Config parse (500 lines) < 5 ms | Lexer + parser |
 
 These are conservative targets to be validated after establishing baselines from 3 consecutive median runs. CI regression gate: 130% threshold on nightly only.
+
+### 2.5 Ecosystem (E)
+
+| ID | Criterion | Verification |
+|---|---|---|
+| E1 | Python bindings: `pip install termforge` | maturin build + PyPI publish |
+| E2 | Node bindings: `npm install termforge` | Neon build + npm publish |
+| E3 | pytest fixture chain: server -> session -> window -> pane | pytest plugin with hermetic server |
+| E4 | vitest fixture chain: same pattern in TypeScript | vitest setup with hermetic server |
+| E5 | Snapshot testing from Python/Node against PTY output | `insta`-compatible snapshots via bindings |
 
 ---
 
 ## 3. High-Level Architecture
 
-### The Layer Cake
+### 3.1 The Layer Cake
 
 ```
 Layer 0  PURE KERNEL     mux-types, mux-core, mux-query, mux-conf,
@@ -185,7 +220,19 @@ Layer 5  TOOLS            tmux-sniff, tmux-vm, tmux-builder, tmux-worktrees,
                           tmux-command-audit, mux-regress
 ```
 
-### Mermaid Diagram
+### 3.2 Dependency Direction
+
+Dependencies flow strictly inward:
+- Layer 2 depends on Layer 1 and Layer 0.
+- Layer 1 depends on Layer 0.
+- Layer 0 depends on nothing outside the workspace except leaf crates (`slotmap`, `smallvec`, `thiserror`, `serde`, `tracing`).
+- Bindings depend on `mux-orm` -> `mux-api` -> `mux-core`. Never on runtime internals.
+
+### 3.3 State Ownership
+
+The `ServerGraph` in `mux-core` is the single source of truth. All state mutations flow through `apply_event()`. The runtime publishes immutable snapshots via `ArcSwap` for lock-free reads by the TUI, bindings, and API layer.
+
+### 3.4 Mermaid Diagram
 
 ```mermaid
 graph TD
@@ -270,73 +317,45 @@ graph TD
 
 ## 4. Workspace Layout
 
+### Monorepo Structure
+
 ```
 termforge/
-  Cargo.toml                     # workspace root
-  AGENTS.md                      # LLM development guide
-  ARCHITECTURE.md                # living architecture doc (this file)
-  rust-toolchain.toml
-  justfile                       # build/test/audit entry points
-
+  Cargo.toml                     # [workspace]
   crates/
-    -- LAYER 0: PURE (no IO, no async, no unsafe, no time) --
-    mux-types/                   # Shared newtypes: SessionId, WindowId, PaneId, etc.
+    -- LAYER 0: PURE (no IO, no async, no unsafe, WASM-compatible) --
+    mux-types/                   # Shared types: IDs, sizes, enums
       src/
         lib.rs
         ids.rs                   # SlotMap key types
-        size.rs                  # PaneSize, Rect, WindowSize, SplitDirection
-        options.rs               # OptionScope, OptionValue
-        errors.rs                # Shared error types: ErrorClass, Classified trait
-    mux-core/                    # Pure kernel: ServerGraph, Event, Effect, apply_event
+        size.rs                  # PaneSize, Rect, SplitDirection
+        error_class.rs           # ErrorClass enum + Classified trait
+    mux-core/                    # ServerGraph, Event, Effect, Engine
       src/
         lib.rs
-        graph.rs                 # ServerGraph (SlotMap-backed entity store)
-        session.rs               # Session entity
-        window.rs                # Window entity
-        pane.rs                  # Pane entity + PaneMode
-        client.rs                # Client entity + ClientKeyState
-        job.rs                   # Job entity
-        buffer.rs                # Buffer entity (paste buffers)
+        graph.rs                 # ServerGraph + GraphState snapshots
+        engine.rs                # apply_event() -> ApplyOutcome
         event.rs                 # Event enum
         effect.rs                # Effect enum
-        engine.rs                # apply_event() pure reducer
-        context.rs               # ClientContext resolution
-        state.rs                 # GraphState snapshots
-        facade.rs                # ServerFacade (command string -> event)
-        handle.rs                # GraphHandle (read-only accessor)
-        layout.rs                # LayoutTree + tiling algorithms
-        format.rs                # Format string expansion engine
-        key_table.rs             # Key tables + bindings (pure model)
-        copy_mode.rs             # Copy mode state machine
-        environ.rs               # Environment variable store
-        command/                 # Per-command handlers (pure)
-          mod.rs
-          new_session.rs
-          new_window.rs
-          split_window.rs
-          select_pane.rs
-          send_keys.rs
-          set_option.rs
-          display_message.rs
-          ...                    # one file per tmux command (~80 files)
-    mux-grid/                    # Terminal grid + VT100 state machine
+        session.rs               # Session struct
+        window.rs                # Window struct
+        pane.rs                  # Pane struct (owns Arc<Grid>)
+        client.rs                # Client struct
+        buffer.rs                # Paste Buffer struct
+        layout.rs                # LayoutTree, LayoutCell, resize, checksum
+        options.rs               # OptionStore, scope resolution, unset
+        key_table.rs             # KeyTableSet, KeyBinding, KeyTable
+        copy_mode.rs             # CopyModeState, actions, pure reducer
+        format.rs                # Format string expander
+    mux-grid/                    # Terminal grid + VT100 parser
       src/
         lib.rs
-        grid.rs                  # Grid (row/column cell storage)
-        cell.rs                  # Cell (character + style attributes)
-        row.rs                   # Row (line storage, wrapping)
-        cursor.rs                # Cursor state
-        style.rs                 # Style attributes (fg, bg, attrs)
-        parser.rs                # VT100 table-driven state machine
-        parser_tables.rs         # State transition tables (from input.c)
-        csi.rs                   # CSI command dispatch (40 enums, 42 table entries)
-        osc.rs                   # OSC command dispatch
-        sgr.rs                   # SGR (Select Graphic Rendition)
-        esc.rs                   # ESC sequence dispatch
-        scrollback.rs            # Scrollback buffer management
-        hyperlinks.rs            # OSC 8 hyperlink tracking
-        snapshot.rs              # Grid snapshot for insta testing
-    mux-query/                   # QueryList, QueryOp, Queryable derive
+        grid.rs                  # Grid struct + cell storage
+        cell.rs                  # Cell, CellStyle, wide-char handling
+        parser.rs                # VT100 Parser (17 states, pure)
+        csi.rs                   # CSI command handlers
+        osc.rs                   # OSC string handlers
+    mux-query/                   # QueryList + filtering
       src/
         lib.rs
         ops.rs                   # QueryOp enum
@@ -1210,7 +1229,7 @@ pub enum ConnectionAction {
 2. **Classification coverage:** Unit test that every variant of every error enum returns a valid `ErrorClass`.
 3. **Recovery integration:** Feed valid frame then garbage bytes. Verify connection killed.
 4. **Error propagation:** Trigger each `CoreError` variant, verify `Effect::ErrorReply`.
-5. **Protocol violation:** Send identify message after already identified. Verify kill (matches `server-client.c:3597-3600`).
+5. **Protocol violation:** Send identify message after already identified. Verify kill (matches `server-client.c:3590-3600`).
 6. **Pure boundary:** Verify `mux-core` error types contain no `std::io::Error` fields.
 7. **thiserror derivation:** Every library crate error enum derives `thiserror::Error`. `anyhow` only in binaries and tests.
 
@@ -2434,962 +2453,744 @@ Control notifications are hints, never authoritative. The binary protocol is the
 
 ## 16. Language Bindings
 
-### 16.1 Binding Scope and Invariants
+> **v7 Pass 2 synthesis:** Claude v7 had more accurate PyO3 API usage (`Python::detach`, `Bound<'py, T>`). GPT v7 had better dual-mode (inprocess/socket) fixture design. Both verified. This section takes the best from both.
 
-TermForge bindings are intentionally thin facades over `mux-orm` and `mux-api`.
+### 16.1 Thin Wrapper Philosophy
 
-Required invariants:
-1. No binding may implement multiplexer business logic.
-2. Object navigation must mirror libtmux-style ergonomics (`server.sessions`, `session.windows`, `window.panes`).
-3. Blocking operations run outside language runtime critical sections (Python GIL / Node main thread).
-4. Error mapping is deterministic from `ErrorClass` (Section 8).
-5. All bindings can target either the real tmux backend or the in-process server backend through the same Rust API.
+Bindings expose:
+1. Object graph traversal: `Server.sessions`, `Session.windows`, `Window.panes`
+2. Command execution: `server.cmd("new-session -d -s work")`
+3. Query API: `server.sessions.filter(name__startswith="wo")`
+4. Lifecycle management: `ManagedMux`, refresh subscriptions
 
-### 16.2 Error Mapping Contract
+Bindings depend on `mux-orm` (which depends on `mux-api`), never runtime internals.
 
-| `ErrorClass` | Python (PyO3) | Node (Neon) | C++ (cxx) |
+### 16.2 Error Mapping (cross-ref: Section 8 Error Handling)
+
+Map `ErrorClass` to native exception types:
+
+| ErrorClass | Python | Node | C++ |
 |---|---|---|---|
-| `Transient` | `PyTimeoutError` | `Error` with code `ETIMEOUT` | `std::runtime_error` |
-| `ProtocolViolation` | `PyConnectionError` | `Error` with code `EPROTO` | `std::runtime_error` |
-| `UserError` | `PyValueError` / `PyKeyError` | `TypeError` / `RangeError` | `std::invalid_argument` |
-| `Bug` | `PyRuntimeError` | `Error` with code `EINTERNAL` | `std::logic_error` |
+| Transient | `TermforgeTransientError` | `TransientError` | `termforge::TransientError` |
+| ProtocolViolation | `TermforgeProtocolError` | `ProtocolError` | `termforge::ProtocolError` |
+| UserError | `TermforgeCommandError` | `CommandError` | `termforge::CommandError` |
+| Bug | `TermforgeInternalError` | `InternalError` | `termforge::InternalError` |
 
-### 16.3 Python Binding (PyO3)
+### 16.3 Python Binding (PyO3 0.26+)
 
-Verified PyO3 patterns from:
-- `~/study/rust-python/pyo3/examples/maturin-starter/src/lib.rs:7-23` (`#[pyclass]`, `#[pymethods]`, `#[pymodule]`)
-- `~/study/rust-python/pyo3/guide/src/parallelism.md:85` (`py.detach` for GIL release)
-- `~/study/rust-python/pyo3/CHANGELOG.md:250-251` (`with_gil -> attach`, `allow_threads -> detach` rename)
+**Verified API:** PyO3 0.26 renamed `Python::allow_threads` to `Python::detach` (`pyo3/src/marker.rs:558`, `guide/src/migration.md:311`). Uses `Bound<'py, T>` smart pointer pattern (`pyo3/src/instance.rs`).
 
 ```rust
-use pyo3::exceptions::{
-    PyConnectionError,
-    PyKeyError,
-    PyRuntimeError,
-    PyTimeoutError,
-    PyValueError,
-};
+// bindings/python/src/lib.rs
 use pyo3::prelude::*;
+
+mod server;
+mod session;
+mod window;
+mod pane;
+mod error;
+mod fixtures;
+mod logic;    // pure logic, no PyO3 types
+
+#[pymodule]
+fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<server::PyServer>()?;
+    m.add_class::<session::PySession>()?;
+    m.add_class::<window::PyWindow>()?;
+    m.add_class::<pane::PyPane>()?;
+    Ok(())
+}
+```
+
+```rust
+// bindings/python/src/server.rs
+use pyo3::prelude::*;
+use mux_orm::OrmServer;
 
 #[pyclass(name = "Server")]
 pub struct PyServer {
     inner: OrmServer,
 }
 
-#[pyclass(name = "Session")]
-pub struct PySession {
-    inner: OrmSession,
-}
-
-fn map_error_to_pyerr(err: MuxError) -> PyErr {
-    match err.class() {
-        ErrorClass::Transient => PyTimeoutError::new_err(err.to_string()),
-        ErrorClass::ProtocolViolation => PyConnectionError::new_err(err.to_string()),
-        ErrorClass::UserError => PyValueError::new_err(err.to_string()),
-        ErrorClass::Bug => PyRuntimeError::new_err(err.to_string()),
-    }
-}
-
 #[pymethods]
 impl PyServer {
     #[new]
-    fn new(socket_name: Option<&str>, socket_path: Option<&str>) -> PyResult<Self> {
-        let inner = OrmServer::new(socket_name, socket_path).map_err(map_error_to_pyerr)?;
-        Ok(Self { inner })
+    #[pyo3(signature = (socket_path=None, mode=None, tmux_bin=None))]
+    fn new(
+        py: Python<'_>,
+        socket_path: Option<String>,
+        mode: Option<String>,
+        tmux_bin: Option<String>,
+    ) -> PyResult<Self> {
+        // Python::detach releases GIL during server initialization
+        py.detach(move || {
+            let srv = match mode.as_deref() {
+                Some("inprocess") | None => OrmServer::local(),
+                Some("socket") => OrmServer::connect(socket_path.unwrap_or_default()),
+                Some("tmux") => OrmServer::connect_tmux(
+                    socket_path.unwrap_or_default(),
+                    tmux_bin,
+                ),
+                _ => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "mode must be 'inprocess', 'socket', or 'tmux'"
+                )),
+            };
+            Ok(PyServer { inner: srv.map_err(to_py_err)? })
+        })
+    }
+
+    fn cmd(&self, py: Python<'_>, cmd_str: &str) -> PyResult<String> {
+        let inner = self.inner.clone();
+        let cmd = cmd_str.to_string();
+        py.detach(move || {
+            inner.cmd(&cmd).map_err(to_py_err)
+        })
     }
 
     #[getter]
     fn sessions(&self) -> PyResult<Vec<PySession>> {
-        let sessions = self
-            .inner
-            .sessions()
-            .into_iter()
-            .map(|s| PySession { inner: s })
-            .collect();
-        Ok(sessions)
+        Ok(self.inner.sessions()
+            .items()
+            .map(PySession::from)
+            .collect())
     }
 
-    /// Blocking call: release GIL while performing socket IO / waiting on server response.
-    fn cmd(&self, py: Python<'_>, command: &str) -> PyResult<String> {
+    fn kill_server(&self, py: Python<'_>) -> PyResult<()> {
         let inner = self.inner.clone();
-        let command = command.to_owned();
-        py.detach(move || inner.cmd(&command).map_err(map_error_to_pyerr))
-    }
-
-    fn cmd_for_client(&self, py: Python<'_>, client_id: u64, command: &str) -> PyResult<String> {
-        let inner = self.inner.clone();
-        let command = command.to_owned();
         py.detach(move || {
-            inner
-                .cmd_for_client(ClientId(client_id), &command)
-                .map_err(map_error_to_pyerr)
+            inner.kill_server().map_err(to_py_err)
         })
     }
 }
+```
 
-#[pymodule]
-fn termforge(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<PyServer>()?;
-    m.add_class::<PySession>()?;
+### 16.4 Node Binding (Neon)
+
+**Verified API:** Neon uses `FunctionContext` for argument handling (`neon/crates/neon/src/context/mod.rs`), `Channel` for async scheduling (`neon/crates/neon/src/event/channel.rs:92`), and `#[neon::main]` attribute (`neon/crates/neon/src/lib.rs:42-52`).
+
+```rust
+// bindings/node/src/lib.rs
+use neon::prelude::*;
+
+mod server;
+mod logic;    // pure logic, no Neon types
+
+#[neon::main]
+fn main(mut cx: ModuleContext) -> NeonResult<()> {
+    cx.export_function("createServer", server::create_server)?;
+    cx.export_function("cmd", server::cmd)?;
+    cx.export_function("cmdAsync", server::cmd_async)?;
+    cx.export_function("sessions", server::sessions)?;
+    cx.export_function("killServer", server::kill_server)?;
     Ok(())
 }
 ```
 
-Note on compatibility: older PyO3 versions used `py.allow_threads(...)`; current upstream uses `py.detach(...)`.
-
-### 16.4 Python Async Model
-
-Phase plan:
-1. **Phase 1 (baseline):** sync API only, every blocking call uses `py.detach`.
-2. **Phase 2 (zero Rust change):** Python wraps sync methods with `asyncio.to_thread`.
-3. **Phase 3 (streaming):** async subscription APIs bridged from Rust channels to Python async iterators.
-
-```python
-# bindings/python/python/termforge/async_api.py
-import asyncio
-from termforge import Server
-
-async def cmd(server: Server, command: str) -> str:
-    return await asyncio.to_thread(server.cmd, command)
-
-async def list_sessions(server: Server) -> list:
-    return await asyncio.to_thread(lambda: server.sessions)
-```
-
-### 16.5 Packaging with maturin
-
-Verified workflow from:
-- `~/study/rust-python/maturin/README.md:33-34` (`maturin build`, `maturin develop`)
-- `~/study/rust-python/maturin/README.md:80-82` (`[tool.maturin]`, `module-name`)
-
-```toml
-# bindings/python/pyproject.toml
-[build-system]
-requires = ["maturin>=1.6,<2"]
-build-backend = "maturin"
-
-[project]
-name = "termforge"
-version = "0.1.0"
-requires-python = ">=3.10"
-
-[tool.maturin]
-module-name = "termforge._termforge"
-python-source = "python"
-features = ["pyo3/extension-module"]
-```
-
-Standard commands:
-```bash
-maturin develop -m bindings/python/Cargo.toml
-maturin build -m bindings/python/Cargo.toml --release
-```
-
-### 16.6 Node Binding (Neon)
-
-Verified Neon patterns from:
-- `~/study/rust-node/neon/crates/neon/src/lib.rs:42-52` (`#[neon::main]` module entry)
-- `~/work/rust/vibe-tmux/bindings/node/src/lib.rs:1485-1538` (`cx.channel`, `cx.promise`, threaded async bridge)
-- `~/work/rust/vibe-tmux/bindings/node/src/lib.rs:2068-2105` (`ModuleContext` export table)
-
 ```rust
+// bindings/node/src/server.rs
 use neon::prelude::*;
+use neon::event::Channel;
+use mux_orm::OrmServer;
 
-fn map_error_to_js<'a>(cx: &mut FunctionContext<'a>, err: MuxError) -> NeonResult<Handle<'a, JsValue>> {
-    let message = err.to_string();
-    match err.class() {
-        ErrorClass::UserError => cx.throw_type_error(message),
-        ErrorClass::ProtocolViolation => cx.throw_error(format!("EPROTO: {message}")),
-        ErrorClass::Transient => cx.throw_error(format!("ETIMEOUT: {message}")),
-        ErrorClass::Bug => cx.throw_error(format!("EINTERNAL: {message}")),
-    }
-}
+pub fn cmd_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let server = cx.argument::<JsBox<OrmServer>>(0)?;
+    let cmd_str: String = cx.argument::<JsString>(1)?.value(&mut cx);
 
-fn cmd(mut cx: FunctionContext) -> JsResult<JsString> {
-    let command = cx.argument::<JsString>(0)?.value(&mut cx);
-    let server = get_server_state(&mut cx)?;
-
-    match server.cmd(&command) {
-        Ok(out) => Ok(cx.string(out)),
-        Err(err) => map_error_to_js(&mut cx, err),
-    }
-    .and_then(|v| v.downcast_or_throw::<JsString, _>(&mut cx))
-}
-
-fn cmd_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let command = cx.argument::<JsString>(0)?.value(&mut cx);
-    let server = get_server_state(&mut cx)?;
-
+    let inner = (**server).clone();
+    let channel = Channel::new(&mut cx);
     let (deferred, promise) = cx.promise();
-    let channel = cx.channel();
 
     std::thread::spawn(move || {
-        let result = server.cmd(&command);
-        deferred.settle_with(&channel, move |mut cx| match result {
-            Ok(out) => Ok(cx.string(out).upcast()),
-            Err(err) => cx.throw_error(err.to_string()),
+        let result = inner.cmd(&cmd_str);
+        deferred.settle_with(&channel, move |mut cx| {
+            match result {
+                Ok(output) => Ok(cx.string(output)),
+                Err(e) => cx.throw_error(e.to_string()),
+            }
         });
     });
 
     Ok(promise)
 }
 
-#[neon::main]
-fn main(mut cx: ModuleContext) -> NeonResult<()> {
-    cx.export_function("cmd", cmd)?;
-    cx.export_function("cmdAsync", cmd_async)?;
-    Ok(())
+pub fn create_server(mut cx: FunctionContext) -> JsResult<JsBox<OrmServer>> {
+    let opts = cx.argument::<JsObject>(0)?;
+    let mode: String = opts.get::<JsString, _, _>(&mut cx, "mode")
+        .unwrap_or_else(|_| cx.string("inprocess"))
+        .value(&mut cx);
+    let socket_path: Option<String> = opts.get_opt::<JsString, _, _>(&mut cx, "socketPath")
+        .ok()
+        .flatten()
+        .map(|s| s.value(&mut cx));
+
+    let server = match mode.as_str() {
+        "inprocess" => OrmServer::local(),
+        "socket" => OrmServer::connect(socket_path.unwrap_or_default()),
+        _ => return cx.throw_error("mode must be 'inprocess' or 'socket'"),
+    }.or_else(|e| cx.throw_error(e.to_string()))?;
+
+    Ok(cx.boxed(server))
 }
 ```
 
-### 16.7 In-process Server Invocation from Bindings
+### 16.5 C++ Binding (cxx)
 
-Both Python and Node bindings support two runtime modes:
-1. **Socket mode:** connect to external server (tmux-compatible daemon).
-2. **In-process mode:** embed `ManagedMux` in the binding process for tests and local development.
+```rust
+// crates/mux-cxx/src/lib.rs
+#[cxx::bridge(namespace = "termforge")]
+mod ffi {
+    extern "Rust" {
+        type MuxHandle;
+        fn create_local() -> Result<Box<MuxHandle>>;
+        fn cmd(handle: &MuxHandle, cmd: &str) -> Result<String>;
+        fn session_count(handle: &MuxHandle) -> usize;
+        fn kill_server(handle: &MuxHandle) -> Result<()>;
+    }
+}
+```
 
-`InProcessConfig` (Rust side) selects backend implementation without changing binding API shape.
+### 16.6 Pure Logic Separation (All Bindings)
 
-### 16.8 C++ Binding (cxx)
+Pattern from `~/study/rust/learning-rust-nodejs/native/src/logic.rs`: all binding crates separate pure Rust logic (`logic.rs`) from binding glue (`lib.rs`). Pure logic has no PyO3/Neon/cxx types and is testable with standard `#[test]`.
 
-C++ binding remains a thin wrapper over the same Rust FFI-safe service layer used by Python/Node.
-It must preserve the same error class mapping and object graph traversal semantics.
+```rust
+// bindings/python/src/logic.rs  (NO PyO3 imports)
+pub fn validate_command(cmd: &str) -> Result<(), String> {
+    if cmd.is_empty() { return Err("command cannot be empty".into()); }
+    if cmd.contains('\0') { return Err("command cannot contain null bytes".into()); }
+    Ok(())
+}
 
-### 16.9 Binding Test Strategy
+pub fn normalize_session_name(name: &str) -> String {
+    name.trim().replace(' ', "-").to_lowercase()
+}
 
-1. **Python GIL release test:** run `server.cmd("run-shell 'sleep 0.1'")` in one thread and execute Python bytecode in another; verify no global pause.
-2. **Python class exposure test:** import module, instantiate `Server`, assert `sessions` getter type and method visibility.
-3. **Python error mapping test:** trigger `UserError` and assert `ValueError`; trigger protocol failure and assert `ConnectionError`.
-4. **Node sync API test:** call `cmd("display-message -p '#{version}'")`; assert non-empty string.
-5. **Node async API test:** call `await cmdAsync(...)`; verify Promise resolves and rejects correctly.
-6. **Node event loop non-blocking test:** issue long command, ensure `setImmediate` callback still executes before completion.
-7. **In-process parity test:** run the same command sequence in socket mode and in-process mode; compare normalized outputs.
-8. **Packaging smoke test:** `maturin build` wheel installs and imports on CPython 3.10+; Node addon loads in Node LTS.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_validate_empty() { assert!(validate_command("").is_err()); }
+    #[test]
+    fn test_validate_valid() { assert!(validate_command("list-sessions").is_ok()); }
+    #[test]
+    fn test_normalize() { assert_eq!(normalize_session_name(" My Session "), "my-session"); }
+}
+```
+
+### 16.7 Python Async Roadmap (3 Phases)
+
+| Phase | API | Mechanism |
+|---|---|---|
+| Phase 1 | `server.cmd("...")` | Sync. GIL released via `Python::detach`. |
+| Phase 2 | `await server.cmd_async("...")` | `asyncio.to_thread()` wrapping sync call. |
+| Phase 3 | `async for notification in server.subscribe()` | Native async generator backed by Rust channel. |
+
+### 16.8 Language Bindings Test Strategy
+
+1. **Server lifecycle:** Create server, verify sessions list empty.
+2. **Session creation:** `cmd("new-session -d -s test")`, verify `sessions` list has 1 item.
+3. **QueryList filter:** 3 sessions, `filter(name="work")`, verify 1 result.
+4. **Error mapping:** Invalid command, verify correct exception type per `ErrorClass`.
+5. **GIL release (Python):** Concurrent thread confirms GIL released during blocking call (via `Python::detach`).
+6. **Neon Channel async (Node):** Promise-based command resolves correctly.
+7. **Pure logic tests:** `logic.rs` without language runtime.
+8. **Memory leak (Python):** `tracemalloc` 1000 create/destroy cycles.
+9. **Parity fixture:** Python `server_with_tmux` uses real tmux binary.
+10. **Dual-mode test:** Same test runs against both inprocess and socket backends.
 
 ---
-## 17. CRDT Transaction Layer (cross-ref: Section 30 Appendix for HlcTimestamp/NodeId canonical types)
 
-### 17.1 Scope (settled)
+## 17. CRDT Transaction Layer
 
-CRDT is applied to a **subset** of state first:
+### 17.1 Purpose
 
-**Replicable first:**
-1. Paste buffers
-2. Options/config key-value maps
-3. Session/window/pane metadata and layout intents
+The CRDT layer enables conflict-free replication of the `ServerGraph` across multiple TermForge instances. Phase 1 targets Unix sockets only (same machine). Phase 2 adds TLS for network replication.
 
-**Not replicated first:**
-1. Raw PTY stream output
-2. Per-client ephemeral UI state (cursor shape, focus, render timing)
-
-### 17.2 HLC Timestamps
-
-All three v5 models agreed on Hybrid Logical Clocks. Fixed-size `(u64 millis, u32 counter, NodeId)` = 20 bytes, providing causal ordering sufficient for LWW-Register and OR-Set CRDTs.
+### 17.2 HybridLogicalClock
 
 ```rust
 // crates/mux-crdt/src/clock.rs
-
-/// HLC timestamp: fixed 20 bytes, causally ordered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash,
-         serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HlcTimestamp {
     pub millis: u64,
     pub counter: u32,
-    pub node_id: NodeId,
+    pub node_id: u64,
 }
 
-/// 8-byte node identifier, generated from UUID at server start.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash,
-         serde::Serialize, serde::Deserialize)]
-pub struct NodeId(pub u64);
-
 pub struct HybridClock {
-    pub last: HlcTimestamp,
-    pub node_id: NodeId,
+    node_id: u64,
+    last: HlcTimestamp,
 }
 
 impl HybridClock {
-    /// Generate a new timestamp from local wall clock.
+    pub fn new(node_id: u64) -> Self {
+        Self {
+            node_id,
+            last: HlcTimestamp { millis: 0, counter: 0, node_id },
+        }
+    }
+
     pub fn now(&mut self, wall_ms: u64) -> HlcTimestamp {
         let millis = wall_ms.max(self.last.millis);
         let counter = if millis == self.last.millis {
-            self.last.counter + 1
+            self.last.counter.checked_add(1).unwrap_or_else(|| {
+                // Counter overflow at same millisecond: force millis advance
+                panic!("HLC counter overflow at millis={millis}");
+            })
         } else {
             0
         };
-        self.last = HlcTimestamp { millis, counter, node_id: self.node_id };
-        self.last
+        let ts = HlcTimestamp { millis, counter, node_id: self.node_id };
+        self.last = ts;
+        ts
     }
 
-    /// Receive a remote timestamp and advance the clock.
-    /// Uses checked_add with forced millis advance on overflow.
     pub fn receive(&mut self, remote: HlcTimestamp, wall_ms: u64) -> HlcTimestamp {
         let millis = wall_ms.max(self.last.millis).max(remote.millis);
         let counter = if millis == self.last.millis && millis == remote.millis {
-            match self.last.counter.max(remote.counter).checked_add(1) {
-                Some(c) => c,
-                None => {
-                    // Counter overflow: force millis advance to reset counter.
-                    return self.force_advance(millis + 1);
-                }
-            }
+            self.last.counter.max(remote.counter) + 1
         } else if millis == self.last.millis {
-            self.last.counter.saturating_add(1)
+            self.last.counter + 1
         } else if millis == remote.millis {
-            remote.counter.saturating_add(1)
+            remote.counter + 1
         } else {
             0
         };
-        self.last = HlcTimestamp { millis, counter, node_id: self.node_id };
-        self.last
-    }
-
-    fn force_advance(&mut self, millis: u64) -> HlcTimestamp {
-        self.last = HlcTimestamp { millis, counter: 0, node_id: self.node_id };
-        self.last
+        let ts = HlcTimestamp { millis, counter, node_id: self.node_id };
+        self.last = ts;
+        ts
     }
 }
 ```
 
-### 17.3 Dotted Version Vectors
-
-DVV adds a compact per-node high-water summary for sync delta computation.
+### 17.3 CRDT Operations
 
 ```rust
-// crates/mux-crdt/src/dvv.rs
-
-/// Dotted version vector for sync delta computation.
-pub struct Dvv {
-    pub summary: SmallVec<[(NodeId, u64); 8]>,
-    pub dot: HlcTimestamp,
+// crates/mux-crdt/src/op.rs
+#[derive(Debug, Clone)]
+pub struct CrdtOp {
+    pub timestamp: HlcTimestamp,
+    pub entity_kind: EntityKind,
+    pub entity_id: EntityIdBytes,
+    pub op_type: CrdtOpType,
 }
 
-/// Compact DVV by removing entries for departed nodes.
-pub fn compact_dvv(dvv: &mut Dvv, active_nodes: &[NodeId]) {
-    dvv.summary.retain(|(node, _)| active_nodes.contains(node));
+#[derive(Debug, Clone)]
+pub enum CrdtOpType {
+    Create(EntityData),
+    Update { field: String, value: CrdtValue },
+    Delete,
+    AddChild { child_kind: EntityKind, child_id: EntityIdBytes },
+    RemoveChild { child_kind: EntityKind, child_id: EntityIdBytes },
 }
 ```
 
-### 17.4 CRDT Types
+### 17.4 Last-Writer-Wins Register
 
 ```rust
 // crates/mux-crdt/src/register.rs
-
-/// Last-Writer-Wins Register.
+#[derive(Debug, Clone)]
 pub struct LwwRegister<T> {
     pub value: T,
     pub timestamp: HlcTimestamp,
 }
 
-impl<T> LwwRegister<T> {
-    pub fn merge(&mut self, other: LwwRegister<T>) {
+impl<T: Clone> LwwRegister<T> {
+    pub fn new(value: T, timestamp: HlcTimestamp) -> Self {
+        Self { value, timestamp }
+    }
+
+    pub fn merge(&mut self, other: &LwwRegister<T>) {
         if other.timestamp > self.timestamp {
-            self.value = other.value;
+            self.value = other.value.clone();
             self.timestamp = other.timestamp;
         }
     }
 }
 ```
 
+### 17.5 Observed-Remove Set
+
 ```rust
 // crates/mux-crdt/src/set.rs
-
-/// Observed-Remove Set.
-pub struct OrSet<T: Eq + Hash> {
-    pub entries: HashMap<T, SmallVec<[HlcTimestamp; 2]>>,
+#[derive(Debug, Clone)]
+pub struct OrSet<T: Hash + Eq + Clone> {
+    entries: HashMap<T, HashSet<HlcTimestamp>>,
+    tombstones: HashMap<T, HashSet<HlcTimestamp>>,
 }
 
-impl<T: Eq + Hash + Clone> OrSet<T> {
-    pub fn add(&mut self, value: T, ts: HlcTimestamp) {
-        self.entries.entry(value).or_default().push(ts);
+impl<T: Hash + Eq + Clone> OrSet<T> {
+    pub fn add(&mut self, item: T, ts: HlcTimestamp) {
+        self.entries.entry(item).or_default().insert(ts);
     }
 
-    pub fn remove(&mut self, value: &T, observed: &[HlcTimestamp]) {
-        if let Some(dots) = self.entries.get_mut(value) {
-            dots.retain(|ts| !observed.contains(ts));
-            if dots.is_empty() {
-                self.entries.remove(value);
-            }
+    pub fn remove(&mut self, item: &T, observed: &HashSet<HlcTimestamp>) {
+        if let Some(entry) = self.tombstones.get_mut(item) {
+            entry.extend(observed.iter());
+        } else {
+            self.tombstones.insert(item.clone(), observed.clone());
         }
     }
 
-    pub fn contains(&self, value: &T) -> bool {
-        self.entries.contains_key(value)
+    pub fn contains(&self, item: &T) -> bool {
+        match (self.entries.get(item), self.tombstones.get(item)) {
+            (Some(adds), Some(removes)) => adds.iter().any(|a| !removes.contains(a)),
+            (Some(_), None) => true,
+            _ => false,
+        }
     }
 }
 ```
 
-### 17.5 Operation Log
+### 17.6 Operation Log
 
 ```rust
 // crates/mux-crdt/src/oplog.rs
-
-pub enum CrdtOp {
-    SetOption { scope: Scope, key: String, value: String, ts: HlcTimestamp },
-    BufferPut { buffer: BufferId, bytes: Vec<u8>, ts: HlcTimestamp },
-    EntityCreate { kind: EntityKind, id: u64, ts: HlcTimestamp },
-    EntityDelete { kind: EntityKind, id: u64, ts: HlcTimestamp },
-}
-
-/// Operation log for sync.
 pub struct OpLog {
-    pub ops: Vec<CrdtOp>,
-    pub version: Dvv,
+    ops: Vec<CrdtOp>,
+    compaction_watermark: Option<HlcTimestamp>,
 }
 
 impl OpLog {
-    /// Compact by removing ops below the DVV high-water mark.
-    pub fn compact(&mut self, active_nodes: &[NodeId]) {
-        compact_dvv(&mut self.version, active_nodes);
-        // Remove ops that all active nodes have acknowledged
-        // ... compaction logic
+    pub fn append(&mut self, op: CrdtOp) {
+        self.ops.push(op);
+    }
+
+    pub fn compact(&mut self, watermark: HlcTimestamp) {
+        self.ops.retain(|op| op.timestamp > watermark);
+        self.compaction_watermark = Some(watermark);
+    }
+
+    pub fn ops_since(&self, since: Option<HlcTimestamp>) -> &[CrdtOp] {
+        match since {
+            None => &self.ops,
+            Some(ts) => {
+                let start = self.ops.partition_point(|op| op.timestamp <= ts);
+                &self.ops[start..]
+            }
+        }
     }
 }
 ```
 
-### 17.6 Merge Strategy
-
-Last-Writer-Wins by default, with kill-wins-over-write for topology conflicts. When a node deletes a session while another creates a window in it, the delete wins.
-
 ### 17.7 CRDT Test Strategy
 
-1. **HLC monotonicity:** 10K calls to `now()` with non-decreasing `wall_ms` -> strictly increasing.
-2. **HLC convergence:** Two clocks, 1000 interleaved ops, causally consistent.
-3. **LWW determinism:** Same timestamp, different `node_id`s -> deterministic winner (higher `node_id` wins).
-4. **OR-Set commutativity:** `merge(a, b) == merge(b, a)`.
-5. **OR-Set add-remove-add:** Re-add with higher timestamp restores element.
-6. **OpLog idempotency:** Merging same ops twice -> identical state.
-7. **Counter overflow:** Simulate and verify forced millis advance.
-8. **DVV compaction:** 10 nodes, deactivate 5, compact -> 5 entries.
+1. **HLC monotonicity:** Rapid succession of `now()` calls always produces increasing timestamps.
+2. **HLC receive:** Remote timestamp ahead of local wall clock produces correct merge.
+3. **Counter overflow:** 2^32 ops at same millisecond handled safely.
+4. **LWW convergence:** Two replicas with concurrent updates converge to same value.
+5. **OrSet add-remove:** Concurrent add on A and remove on B preserves the add.
+6. **OpLog compaction:** After compact, old ops unreachable but new ops available.
+7. **Property test:** Random op sequences on two replicas always converge.
 
 ---
 
 ## 18. Security Model
-### 18.1 Input Validation Layers (cross-ref: Section 8 Error Handling)
 
-Every byte entering TermForge passes through a well-defined validation layer before reaching business logic. Each layer has a specific error class and recovery policy. Validation is fail-fast: the first invalid byte at a given layer terminates processing for that input source.
+### 18.1 Threat Model
 
-```
-Layer  Input Source         Validator            Error Class          Action
------  ------------         ---------            -----------          ------
-  0    Socket bytes         ImsgCodec            Transient            wait
-                                                 ProtocolViolation    kill conn
-  1    ImsgFrame            PayloadParser        ProtocolViolation    kill conn
-  2    TypedPayload         IdentifyCollector    ProtocolViolation    kill conn
-  3    Command args         CommandDispatch      UserError            error reply
-  4    Config file text     mux-conf lexer       UserError            error event
-  5    Control mode lines   ControlParser        UserError            %error reply
-  6    Binding FFI args     mux-orm validators   UserError            exception
-  7    CRDT ops (sync)      CrdtValidator        ProtocolViolation    drop peer
-```
-
-**Layer 0 -- Socket bytes:** The `ImsgCodec` accumulates bytes until a 16-byte header is available, then validates `len >= 16` and `len <= MAX_IMSGSIZE` (16384). Invalid lengths produce `ProtocolViolation` which kills the connection (matching `server-client.c:3472-3475`).
-
-**Layer 1 -- ImsgFrame:** The `PayloadParser` validates the `msg_type` field against the known `MsgType` enum. Unknown types produce `ProtocolViolation`. Valid types proceed to typed payload parsing where each variant's binary layout is validated (NUL terminators for strings, bounds checks for arrays).
-
-**Layer 2 -- TypedPayload:** The `IdentifyCollector` validates the identify burst (types 100-112). It enforces ordering constraints (IdentifyDone must be last), rejects duplicate identify bursts (`server-client.c:3599-3600`: `if (c->flags & CLIENT_IDENTIFIED) return (-1)`), and validates that required fields are present.
-
-**Layer 3 -- Command args:** The `CommandDispatch` validates command names against the command table and argument counts. Invalid commands produce `UserError` sent back as error replies, keeping the connection alive.
-
-**Layer 4 -- Config file text:** The `mux-conf` lexer validates syntax and produces `Vec<Event>`. Syntax errors produce error events reported to the client that triggered config loading.
-
-**Layer 5 -- Control mode lines:** The `ControlParser` validates notification format strings. Unknown notifications fall through to the generic handler. Malformed lines produce `%error` replies.
-
-**Layer 6 -- Binding FFI args:** The `mux-orm` validators check all arguments from Python/Node/C++ bindings at the Rust boundary before any state mutation. Invalid args produce native exceptions (`ValueError`, `TypeError`, etc.).
-
-**Layer 7 -- CRDT ops:** The `CrdtValidator` checks HLC timestamps for monotonicity, DVV consistency, and operation well-formedness. Invalid operations drop the sync peer.
+TermForge's primary threat model focuses on:
+- Malicious data on Unix domain sockets (local attackers).
+- Malicious VT100 sequences from PTY output.
+- Config file injection.
+- Control mode command injection.
 
 ### 18.2 Socket Security
 
-#### Socket Permissions
-
-Reference: `server.c:126-129`:
-
-```c
-if (flags & CLIENT_DEFAULTSOCKET)
-    mask = umask(S_IXUSR|S_IXGRP|S_IRWXO);
-else
-    mask = umask(S_IXUSR|S_IRWXG|S_IRWXO);
-```
-
-TermForge replicates this exactly:
+tmux creates the socket with restricted permissions (`server.c:126-129`). TermForge matches this:
 
 ```rust
 // crates/mux-os/src/socket.rs
-
-pub fn create_socket(path: &Path, is_default: bool) -> Result<UnixListener, ServerError> {
-    // Set umask before bind, restore after
-    let mask = if is_default {
-        // Default socket: owner rw, group rw (0660 effective)
-        libc::S_IXUSR | libc::S_IXGRP | libc::S_IRWXO
-    } else {
-        // Named socket: owner rw only (0600 effective)
-        libc::S_IXUSR | libc::S_IRWXG | libc::S_IRWXO
-    };
-
-    // SAFETY: umask is thread-safe on single-threaded startup
-    let old_mask = unsafe { libc::umask(mask as libc::mode_t) };
+pub fn create_server_socket(path: &Path) -> Result<UnixListener, ServerError> {
+    // Restrict to owner only, matching tmux
+    let old_umask = unsafe { libc::umask(0o177) };
     let listener = UnixListener::bind(path);
-    unsafe { libc::umask(old_mask) };
-
+    unsafe { libc::umask(old_umask) };
     listener.map_err(|e| ServerError::Startup {
-        reason: format!("cannot bind socket {path:?}: {e}"),
+        reason: format!("cannot bind {path:?}: {e}"),
     })
 }
 ```
 
-#### Socket Directory Validation
+### 18.3 SCM_RIGHTS FD Passing
 
-Before binding the socket, validate the directory:
+Reference: `~/work/rust/vibe-tmux/crates/mux-os/src/scm_rights.rs:141-149`.
 
-```rust
-pub fn validate_socket_dir(dir: &Path) -> Result<(), ServerError> {
-    let meta = std::fs::symlink_metadata(dir)?;
-
-    // Reject symlinks (prevent TOCTOU via symlink attack)
-    if meta.file_type().is_symlink() {
-        return Err(ServerError::Startup {
-            reason: format!("socket directory {dir:?} is a symlink"),
-        });
-    }
-
-    // Reject world-writable directories (sticky bit exemption like /tmp)
-    let mode = meta.permissions().mode();
-    if mode & 0o002 != 0 && mode & 0o1000 == 0 {
-        return Err(ServerError::Startup {
-            reason: format!("socket directory {dir:?} is world-writable without sticky bit"),
-        });
-    }
-
-    // Verify ownership matches current user
-    if meta.uid() != unsafe { libc::getuid() } {
-        return Err(ServerError::Startup {
-            reason: format!("socket directory {dir:?} owned by uid {}, expected {}",
-                meta.uid(), unsafe { libc::getuid() }),
-        });
-    }
-
-    Ok(())
-}
-```
-
-### 18.3 SCM_RIGHTS and File Descriptor Security
-
-#### Phase Restriction
-
-FDs via SCM_RIGHTS are accepted only during the identify handshake (types 100-112). After the client is identified (`CLIENT_IDENTIFIED` flag set), any ancillary FDs are closed immediately and the connection is killed.
+Rules:
+1. FDs via SCM_RIGHTS accepted only during identify handshake (types 104, 110).
+2. CLOEXEC set immediately after receipt.
+3. Any FD received outside the identify window is closed and the connection is killed.
+4. Multiple FDs in one ancillary message: close all extras deterministically.
 
 ```rust
-// crates/mux-server/src/identify.rs
-
-pub fn handle_ancillary_fd(
-    conn: &mut ClientConn,
-    fd: RawFd,
-    msg_type: MsgType,
-) -> Result<(), ProtocolError> {
-    if conn.identified {
-        // Out-of-phase FD: close and kill connection
-        // SAFETY: We just received this FD, closing it is safe
-        unsafe { libc::close(fd); }
-        return Err(ProtocolError::OutOfPhaseScmRights {
-            msg_type: msg_type as u32,
-        });
-    }
-
-    // Set CLOEXEC immediately on all received FDs
-    set_cloexec(fd)?;
-
-    match msg_type {
-        MsgType::IdentifyStdin => conn.pending_stdin = Some(fd),
-        MsgType::IdentifyStdout => conn.pending_stdout = Some(fd),
-        _ => {
-            // Unexpected FD for this message type: close it
-            unsafe { libc::close(fd); }
-        }
-    }
-
-    Ok(())
-}
-```
-
-#### CLOEXEC Enforcement
-
-All FDs received via SCM_RIGHTS get `FD_CLOEXEC` set immediately. Verified existing implementation: `~/work/rust/vibe-tmux/crates/mux-os/src/scm_rights.rs:141-149` already calls `set_cloexec()`.
-
-```rust
-// crates/mux-os/src/fd.rs
-
-pub fn set_cloexec(fd: RawFd) -> Result<(), io::Error> {
-    // SAFETY: fcntl with F_GETFD/F_SETFD is safe on valid FDs
+// crates/mux-os/src/scm_rights.rs
+pub fn set_cloexec(fd: RawFd) -> io::Result<()> {
+    // SAFETY: fcntl is safe on a valid file descriptor.
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
-    if flags < 0 {
-        return Err(io::Error::last_os_error());
-    }
+    if flags == -1 { return Err(io::Error::last_os_error()); }
     let ret = unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) };
-    if ret < 0 {
-        return Err(io::Error::last_os_error());
+    if ret == -1 { return Err(io::Error::last_os_error()); }
+    Ok(())
+}
+```
+
+### 18.4 Input Validation Layers
+
+| Layer | Input Source | Validation |
+|---|---|---|
+| Binary protocol | Client socket | Frame length, MsgType range, payload structure |
+| Control mode | Control socket | Line length limit, UTF-8 validity, command parsing |
+| VT100 parser | PTY output | Bounded parameter counts, bounded string accumulation |
+| Config parser | Config files | Syntax validation, option range checks |
+| FFI boundary | Python/Node/C++ | Type checking, null checks, size limits |
+
+### 18.5 Resource Limits
+
+```rust
+pub struct ResourceLimits {
+    pub max_sessions: usize,          // 1000
+    pub max_windows_per_session: usize, // 500
+    pub max_panes_per_window: usize,  // 100
+    pub max_clients: usize,           // 256
+    pub max_buffers: usize,           // 100
+    pub max_control_pending: usize,   // 16 * 1024 * 1024 (16 MB)
+    pub max_grid_scrollback: usize,   // 10_000 lines
+}
+```
+
+### 18.6 Fuzz Targets
+
+| Target | Input | Invariant |
+|---|---|---|
+| `fuzz/decode_frame.rs` | Arbitrary bytes | No panic, valid `DecodeOutcome` |
+| `fuzz/parse_vt100.rs` | Arbitrary bytes | No panic, grid dimensions unchanged |
+| `fuzz/parse_format.rs` | Arbitrary string | No panic, returns `String` |
+| `fuzz/parse_config.rs` | Arbitrary string | No panic, returns `Result` |
+| `fuzz/parse_control.rs` | Arbitrary line | No panic, returns `ControlEvent` |
+| `fuzz/layout_parse.rs` | Arbitrary string | No panic, returns `Result` |
+
+### 18.7 Directory Validation
+
+Socket and lock file paths are validated to prevent symlink attacks:
+
+```rust
+pub fn validate_socket_dir(path: &Path) -> Result<(), SecurityError> {
+    let parent = path.parent().ok_or(SecurityError::NoParentDir)?;
+    let meta = std::fs::symlink_metadata(parent)
+        .map_err(|_| SecurityError::DirNotFound)?;
+    if meta.file_type().is_symlink() {
+        return Err(SecurityError::SymlinkInPath);
+    }
+    // Owner-writable only
+    let mode = meta.permissions().mode();
+    if mode & 0o022 != 0 {
+        return Err(SecurityError::InsecurePermissions { mode });
     }
     Ok(())
 }
 ```
 
-#### Multiple FD Handling
+### 18.8 Security Model Test Strategy
 
-If a single ancillary message carries multiple FDs, all unexpected extras are closed deterministically. This prevents FD leak on malformed messages.
-
-### 18.4 Resource Limits
-
-```rust
-pub struct SecurityLimits {
-    /// Maximum simultaneous client connections.
-    pub max_clients: usize,
-    /// Maximum pending output bytes per control-mode client.
-    pub max_control_pending: usize,
-    /// Maximum size of a single imsg payload.
-    pub max_imsg_payload: usize,
-    /// Maximum commands per second per control-mode client.
-    pub max_control_commands_per_sec: u32,
-    /// Maximum number of sessions.
-    pub max_sessions: usize,
-    /// Maximum number of windows per session.
-    pub max_windows_per_session: usize,
-    /// Maximum scrollback lines per pane.
-    pub max_scrollback_lines: u32,
-}
-
-impl Default for SecurityLimits {
-    fn default() -> Self {
-        Self {
-            max_clients: 256,
-            max_control_pending: 16 * 1024 * 1024, // 16 MB
-            max_imsg_payload: 16368,                // IMSG_MAXSIZE - IMSG_HEADER_SIZE
-            max_control_commands_per_sec: 1000,
-            max_sessions: 1000,
-            max_windows_per_session: 1000,
-            max_scrollback_lines: 50_000,
-        }
-    }
-}
-```
-
-### 18.5 Security Invariants Summary
-
-1. **Socket permissions:** Created with `umask(S_IXUSR|S_IXGRP|S_IRWXO)` for default sockets (matching `server.c:126-129`), restricting to owner + group for shared sockets.
-2. **No symlink following:** Check for symlinks in socket directory path.
-3. **Directory ownership:** Reject socket directories not owned by current user.
-4. **World-writable check:** Reject world-writable directories without sticky bit.
-5. **Maximum clients:** 256 simultaneous connections (configurable).
-6. **Control mode output limit:** 16 MB pending per control client (Section 15.5).
-7. **SCM_RIGHTS phase restriction:** FDs via SCM_RIGHTS accepted only during identify handshake. Out-of-phase FDs closed immediately.
-8. **CLOEXEC:** All received FDs get CLOEXEC immediately.
-9. **Multiple FD handling:** Multiple FDs in one ancillary message: close all extras deterministically.
-10. **No PID trust:** Lock files use flock, not PID-based locking. PID written for diagnostics only (Section 14.1).
-11. **Config timing:** Config not loaded until first client identifies, preventing startup-time attack surface (Section 14.2).
-
-### 18.6 Security Test Strategy
-
-1. **Socket permissions:** Create default socket, verify mode 0660. Create named socket, verify mode 0600.
-2. **Directory permissions:** Create socket in world-writable dir without sticky bit, verify rejection.
-3. **Directory symlink:** Create symlink to socket dir, verify rejection.
-4. **Directory ownership:** Create socket in dir owned by other user, verify rejection.
-5. **SCM_RIGHTS valid:** Send TTY fd during identify (IdentifyStdin), verify accepted and stored.
-6. **SCM_RIGHTS non-TTY:** Send non-TTY fd during identify, verify accepted but `is_tty: false`.
-7. **CLOEXEC:** After receiving fd, verify FD_CLOEXEC flag is set via `fcntl(F_GETFD)`.
-8. **Out-of-phase SCM_RIGHTS:** Send fd after identify complete, verify fd closed and connection killed.
-9. **Multiple FDs:** Send ancillary message with 3 FDs, verify first accepted, extras closed.
-10. **Max clients:** Connect 257 clients, verify 257th rejected with appropriate error.
-11. **Control backpressure:** Send enough output to exceed 16 MB limit, verify client disconnected.
-12. **Fuzz:** Random bytes to all parsers (ImsgCodec, ControlParser, config lexer). No panic, no OOB, no infinite loop.
-13. **Resource exhaustion:** Attempt to create >1000 sessions, verify limit enforced.
-14. **Identify replay:** Send full identify burst twice on same connection, verify second rejected.
+1. **Socket permissions:** Create socket, verify `stat` shows `0600`.
+2. **SCM_RIGHTS accept/reject:** Send FD during identify (accepted). Send FD after identify (connection killed).
+3. **CLOEXEC:** After FD receipt, verify `FD_CLOEXEC` set.
+4. **Multiple FDs:** Send 3 FDs in one message. Verify only expected ones kept, extras closed.
+5. **Protocol fuzz:** 24h fuzz run, zero panics.
+6. **VT100 fuzz:** 24h fuzz run, grid dimensions unchanged.
+7. **Control mode injection:** Send `%output ; rm -rf /` -- verify no shell execution.
+8. **Resource limits:** Create `max_sessions + 1` sessions, verify rejection.
+9. **Symlink attack:** Create symlink in socket path, verify rejection.
+10. **Config injection:** Config with embedded null bytes, verify clean parse error.
+11. **Post-identify rejection:** Send `MSG_IDENTIFY_FLAGS` after already identified. Verify kill (matches `server-client.c:3590-3600`).
+12. **Lock file permissions:** Verify lock file created with `0600`.
+13. **FFI boundary:** Pass negative pane index from Python, verify clean error (not panic).
+14. **Control rate limit:** Send 10000 commands/sec from control client, verify rate limited.
 
 ---
 
 ## 19. OpenTelemetry
 
-### 19.1 Scope and Boundary
+> **v7 Pass 2 synthesis:** Both Claude v7 and GPT v7 verified OTEL SDK types against actual source. Claude v7 had more detailed SDK type references. GPT v7 had better W3C trace context integration for bindings. This section merges both.
 
-Telemetry design keeps the architecture boundary intact:
-- Layer 0 crates (`mux-core`, `mux-grid`, `mux-query`) emit `tracing` spans/events only.
-- Layer 1 crate (`mux-telemetry`) owns OpenTelemetry SDK setup, exporter wiring, propagation, and shutdown.
-- No Layer 0 crate may depend on `opentelemetry*` crates.
+### 19.1 Architecture Overview
 
-This matches upstream OTEL Rust layering (`opentelemetry` API + `opentelemetry_sdk` SDK + exporter crates).
+```
++------------------+     +-------------------+     +------------------+
+| mux-core         |     | mux-telemetry     |     | OTEL SDK         |
+| (tracing spans)  | --> | (subscriber +     | --> | (SdkTracerProvider|
+|                  |     |  OTEL bridge)     |     |  BatchSpanProcessor|
++------------------+     +-------------------+     |  SpanExporter)   |
+                                                    +------------------+
+```
 
-### 19.2 Verified API Anchors
+### 19.2 Span Naming Convention
 
-Verified against local references:
-- `~/study/otel/opentelemetry-rust/opentelemetry-sdk/src/lib.rs:23-24` (`SdkTracerProvider::builder().with_simple_exporter(...)`)
-- `~/study/otel/opentelemetry-rust/opentelemetry-otlp/src/lib.rs:42-47` (`with_batch_exporter(...)`, `global::set_tracer_provider(...)`)
-- `~/study/otel/opentelemetry-rust/opentelemetry/src/trace/tracer.rs:151-175` (`start_with_context`, `span_builder`, `build_with_context`)
-- `~/study/otel/opentelemetry-rust/opentelemetry/src/trace/context.rs:240-243` (`Context::current_with_span`)
-- `~/study/otel/opentelemetry-rust/opentelemetry/src/global/propagation.rs:25` (`set_text_map_propagator`)
-- `~/study/otel/opentelemetry-rust/opentelemetry-sdk/src/propagation/trace_context.rs:57-59` (`TraceContextPropagator::new()`)
-- `~/study/otel/opentelemetry-rust/opentelemetry-sdk/src/trace/config.rs:33` (SDK default sampler: `ParentBased(AlwaysOn)`)
-- `~/study/otel/opentelemetry-specification/specification/trace/api.md:325-333` (span names must be low-cardinality class-of-work)
-- `~/study/otel/opentelemetry-specification/specification/context/api-propagators.md:383` (traceparent/tracestate parse + propagate requirements)
-- `~/study/otel/opentelemetry-specification/specification/configuration/sdk-environment-variables.md:118-120` (`OTEL_PROPAGATORS` and `OTEL_TRACES_SAMPLER` defaults)
+All spans use `termforge.<subsystem>.<operation>` pattern:
 
-### 19.3 Span Naming and Attribute Policy
+| Span Name | Subsystem | Description |
+|---|---|---|
+| `termforge.server.accept` | server | New client connection |
+| `termforge.server.identify` | server | Identify burst processing |
+| `termforge.engine.apply_event` | engine | Core event processing |
+| `termforge.proto.decode` | proto | Frame decoding |
+| `termforge.proto.encode` | proto | Frame encoding |
+| `termforge.layout.resize` | layout | Layout resize operation |
+| `termforge.grid.parse` | grid | VT100 parse batch |
+| `termforge.control.notify` | control | Control notification dispatch |
+| `termforge.pty.spawn` | pty | PTY process spawn |
+| `termforge.crdt.merge` | crdt | CRDT merge operation |
+| `termforge.binding.cmd` | binding | Command from binding |
 
-Span naming rules:
-1. Prefix all internal spans with `termforge.`.
-2. Use operation class names, never identifiers.
-3. Put dynamic identifiers in attributes, not in span names.
+Span attributes use low-cardinality values only. Never put pane IDs in span names (use attributes instead).
 
-Good names:
-- `termforge.command.exec`
-- `termforge.proto.decode`
-- `termforge.layout.resize`
+### 19.3 OTEL SDK Integration
 
-Bad names:
-- `termforge.session.create.work-1234`
-- `termforge.client.42.read`
+**Verified types** against `~/study/otel/opentelemetry-rust/`:
 
-### 19.4 Provider Initialization (Concrete)
+- `SdkTracerProvider` (`opentelemetry-sdk/src/trace/provider.rs:158`)
+- `BatchSpanProcessor` (`opentelemetry-sdk/src/trace/span_processor.rs:284`)
+  - Default queue size: 2048
+  - Default scheduled delay: 5000ms
+- `SpanExporter` trait (`opentelemetry-sdk/src/trace/export.rs:17`)
+- `SamplingDecision` enum (`opentelemetry-sdk/src/trace/sampler.rs:24`)
+  - Variants: `Drop`, `RecordOnly`, `RecordAndSample`
 
 ```rust
-use opentelemetry::global;
-use opentelemetry::KeyValue;
-use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
-use opentelemetry_sdk::Resource;
-
-pub enum TraceExporterConfig {
-    None,
-    Stdout,
-    OtlpGrpc { endpoint: Option<String> },
-}
+// crates/mux-telemetry/src/otel.rs
+use opentelemetry::trace::TracerProvider;
+use opentelemetry_sdk::trace::{
+    SdkTracerProvider, BatchSpanProcessor, SpanExporter,
+};
+use opentelemetry_sdk::trace::sampler::SamplingDecision;
 
 pub struct TelemetryConfig {
-    pub exporter: TraceExporterConfig,
-    pub sampler: Sampler,
+    pub enabled: bool,
+    pub endpoint: Option<String>,
+    pub sample_rate: f64,              // 0.0-1.0
+    pub allow_patterns: Vec<String>,   // e.g. ["termforge.engine.*"]
+    pub deny_patterns: Vec<String>,    // e.g. ["termforge.grid.parse"]
     pub service_name: String,
     pub service_version: String,
-    pub deployment_environment: Option<String>,
 }
 
-impl Default for TelemetryConfig {
-    fn default() -> Self {
-        Self {
-            exporter: TraceExporterConfig::None,
-            sampler: Sampler::ParentBased(Box::new(Sampler::AlwaysOn)),
-            service_name: "termforge".to_string(),
-            service_version: env!("CARGO_PKG_VERSION").to_string(),
-            deployment_environment: None,
-        }
-    }
-}
+pub fn init_telemetry(config: &TelemetryConfig) -> Result<(), TelemetryError> {
+    if !config.enabled { return Ok(()); }
 
-pub fn init_tracer_provider(config: &TelemetryConfig) -> anyhow::Result<SdkTracerProvider> {
-    let mut resource_builder = Resource::builder()
-        .with_service_name(config.service_name.clone())
-        .with_attribute(KeyValue::new("service.version", config.service_version.clone()));
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(config.endpoint.as_deref().unwrap_or("http://localhost:4317"))
+        .build()
+        .map_err(TelemetryError::ExporterInit)?;
 
-    if let Some(env) = &config.deployment_environment {
-        resource_builder =
-            resource_builder.with_attribute(KeyValue::new("deployment.environment.name", env.clone()));
-    }
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_sampler(opentelemetry_sdk::trace::Sampler::TraceIdRatioBased(
+            config.sample_rate,
+        ))
+        .with_resource(opentelemetry_sdk::Resource::new(vec![
+            opentelemetry::KeyValue::new("service.name", config.service_name.clone()),
+            opentelemetry::KeyValue::new("service.version", config.service_version.clone()),
+        ]))
+        .build();
 
-    let resource = resource_builder.build();
+    // Bridge tracing -> OTEL
+    let otel_layer = tracing_opentelemetry::layer()
+        .with_tracer(provider.tracer("termforge"));
 
-    let provider = match &config.exporter {
-        TraceExporterConfig::None => SdkTracerProvider::builder()
-            .with_sampler(config.sampler.clone())
-            .with_resource(resource)
-            .build(),
-        TraceExporterConfig::Stdout => {
-            let exporter = opentelemetry_stdout::SpanExporter::default();
-            SdkTracerProvider::builder()
-                .with_simple_exporter(exporter)
-                .with_sampler(config.sampler.clone())
-                .with_resource(resource)
-                .build()
-        }
-        TraceExporterConfig::OtlpGrpc { endpoint } => {
-            let mut builder = opentelemetry_otlp::SpanExporter::builder().with_tonic();
-            if let Some(endpoint) = endpoint {
-                builder = builder.with_endpoint(endpoint.clone());
-            }
-            let exporter = builder.build()?;
+    tracing_subscriber::registry()
+        .with(otel_layer)
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
-            SdkTracerProvider::builder()
-                .with_batch_exporter(exporter)
-                .with_sampler(config.sampler.clone())
-                .with_resource(resource)
-                .build()
-        }
-    };
-
-    global::set_text_map_propagator(TraceContextPropagator::new());
-    global::set_tracer_provider(provider.clone());
-    Ok(provider)
+    Ok(())
 }
 ```
 
-### 19.5 Tracer and Span Construction Patterns
+### 19.4 Sampling Strategy
 
-Use real OTEL `Tracer` APIs (`start`, `start_with_context`, `span_builder`, `build_with_context`):
+| Environment | Sample Rate | Rationale |
+|---|---|---|
+| Development | 1.0 (100%) | Full visibility |
+| CI | 0.1 (10%) | Cost control, still catches issues |
+| Production | 0.01 (1%) | Minimal overhead |
+
+### 19.5 Span Attributes
 
 ```rust
-use opentelemetry::global;
-use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
-use opentelemetry::{Context, KeyValue};
-
-pub fn run_command_with_trace(command: &str) {
-    let tracer = global::tracer("termforge/server");
-
-    let mut root = tracer
-        .span_builder("termforge.command.exec")
-        .with_kind(SpanKind::Server)
-        .with_attributes([
-            KeyValue::new("termforge.command", command.to_string()),
-            KeyValue::new("component", "server"),
-        ])
-        .start(&tracer);
-
-    root.add_event("command.received", vec![]);
-
-    let cx = Context::current_with_span(root);
-    let mut decode_span = tracer.start_with_context("termforge.proto.decode", &cx);
-    decode_span.set_attribute(KeyValue::new("component", "codec"));
-    decode_span.end();
-
-    cx.span().end();
-}
+// Example: engine event processing span
+tracing::info_span!(
+    "termforge.engine.apply_event",
+    event_type = %event.type_name(),
+    session_count = graph.session_count(),
+    effect_count = tracing::field::Empty,  // filled after processing
+);
 ```
 
-### 19.6 Context Propagation over Control/Binary Paths
+### 19.6 CRDT Sync Propagation
 
-Use OTEL `Context` and the global `TextMapPropagator`; do not invent custom propagation objects.
+When CRDT operations cross TermForge instances, trace context is propagated via W3C `traceparent` header embedded in the sync envelope:
 
 ```rust
-use std::collections::BTreeMap;
-
-use opentelemetry::global;
-use opentelemetry::propagation::{Extractor, Injector};
-use opentelemetry::Context;
-
-#[derive(Default, Debug, Clone)]
-pub struct TraceHeaders {
-    pub map: BTreeMap<String, String>,
-}
-
-impl Injector for TraceHeaders {
-    fn set(&mut self, key: &str, value: String) {
-        self.map.insert(key.to_string(), value);
-    }
-}
-
-impl Extractor for TraceHeaders {
-    fn get(&self, key: &str) -> Option<&str> {
-        self.map.get(key).map(String::as_str)
-    }
-
-    fn keys(&self) -> Vec<&str> {
-        self.map.keys().map(String::as_str).collect()
-    }
-}
-
-pub fn inject_current_context(headers: &mut TraceHeaders) {
-    let cx = Context::current();
-    global::get_text_map_propagator(|prop| prop.inject_context(&cx, headers));
-}
-
-pub fn extract_parent_context(headers: &TraceHeaders) -> Context {
-    global::get_text_map_propagator(|prop| prop.extract(headers))
+pub struct CrdtSyncEnvelope {
+    pub ops: Vec<CrdtOp>,
+    pub traceparent: Option<String>,  // W3C traceparent
 }
 ```
 
-Server handling path:
-1. Decode request metadata.
-2. Extract parent `Context` from metadata carrier.
-3. Start command span with `start_with_context` or `build_with_context`.
-4. Propagate context through spawned tasks when dispatching effects.
+### 19.7 Binding Trace Context
 
-### 19.7 Runtime and Tokio Propagation Rules
+Python and Node bindings can propagate trace context to the TermForge server:
 
-- `tokio::spawn` closures must execute inside a captured `tracing::Span` if trace continuity is required.
-- For OTEL child spans, obtain parent with `Context::current()`/extracted context, then use `start_with_context`.
-- Background PTY reader loops create long-lived parent spans and short per-chunk child spans only when sampled.
+```python
+# Python: inject trace context into command
+from opentelemetry import trace
 
-### 19.8 Semantic Conventions
+tracer = trace.get_tracer("my-app")
+with tracer.start_as_current_span("my-operation"):
+    # Trace context automatically propagated via TermForge client
+    server.cmd("new-session -d -s work")
+```
 
-Resource attributes (minimum):
-- `service.name`
-- `service.version`
-- `deployment.environment.name` (when configured)
+### 19.8 Filter Configuration
 
-Span attributes:
-- Prefer semantic-convention keys where available.
-- Use stable project keys for domain-specific data (`termforge.session.id`, `termforge.pane.id`).
-- Never attach full pane payload bytes to spans.
-
-### 19.9 Environment Variable Compatibility
-
-Honor OTEL standard env vars:
-- `OTEL_PROPAGATORS` (default `tracecontext,baggage`)
-- `OTEL_TRACES_SAMPLER` (default `parentbased_always_on` per spec; SDK default behavior is `ParentBased(AlwaysOn)`)
-- `OTEL_TRACES_SAMPLER_ARG`
-- `OTEL_SERVICE_NAME`
-- `OTEL_RESOURCE_ATTRIBUTES`
-
-TermForge policy: explicit app config overrides env, env overrides compiled defaults.
-
-### 19.10 Exporter Profiles
-
-1. `none`: no exporter pipeline, tracing can still log locally.
-2. `stdout`: local debugging and CI snapshots.
-3. `otlp-grpc`: production collector integration.
-
-For `otlp-grpc`, reuse upstream batch exporter patterns (`with_batch_exporter`) and clean shutdown on process exit.
-
-### 19.11 Filtering Strategy
-
-Filtering is done in `tracing_subscriber` layer selection before export:
-- Keep `termforge.*` by default.
-- Drop high-volume transport internals (`h2`, `hyper`, `tonic`, `tower`) unless explicitly enabled.
-- Keep `error` events for dropped targets when diagnosing exporter problems.
-
-### 19.12 Telemetry Shutdown
-
-`SdkTracerProvider::shutdown()` must be called on clean exit paths (server shutdown, CLI completion, integration test teardown).
+Reference: `~/work/rust/vibe-tmux/crates/mux-otel/src/config.rs:52-103` for allow/deny config pattern.
 
 ```rust
-pub struct TelemetryGuard {
-    provider: Option<SdkTracerProvider>,
+pub struct SpanFilter {
+    pub allow: Vec<glob::Pattern>,
+    pub deny: Vec<glob::Pattern>,
 }
 
-impl TelemetryGuard {
-    pub fn new(provider: SdkTracerProvider) -> Self {
-        Self {
-            provider: Some(provider),
+impl SpanFilter {
+    pub fn should_record(&self, span_name: &str) -> bool {
+        if self.deny.iter().any(|p| p.matches(span_name)) {
+            return false;
         }
-    }
-}
-
-impl Drop for TelemetryGuard {
-    fn drop(&mut self) {
-        if let Some(provider) = self.provider.take() {
-            let _ = provider.shutdown();
+        if self.allow.is_empty() {
+            return true;
         }
+        self.allow.iter().any(|p| p.matches(span_name))
     }
 }
 ```
 
-### 19.13 OpenTelemetry Test Strategy
+### 19.9 OpenTelemetry Test Strategy
 
-1. **Provider bootstrap test:** initialize each exporter profile; verify provider creation and shutdown success.
-2. **Span builder API test:** create span via `span_builder(...).start(&tracer)` and assert name/attributes in in-memory exporter.
-3. **Parent context test:** inject/extract `traceparent`; start child with `start_with_context`; assert trace-id equality.
-4. **Invalid trace header test:** pass malformed `traceparent`; ensure extraction returns valid fallback context and request still executes.
-5. **Sampler behavior test:** run deterministic trace-id set with `TraceIdRatioBased(0.0/1.0)` and assert sampled counts.
-6. **Filter test:** emit `termforge.*` and `h2.*` spans; assert only expected targets exported.
-7. **Environment override test:** set `OTEL_TRACES_SAMPLER=always_off` and verify no spans exported.
-8. **Boundary test:** `cargo tree -p mux-core` contains no `opentelemetry` dependency.
+1. **Span naming:** All spans match `termforge.<subsystem>.<operation>` pattern.
+2. **OTEL export:** In-memory exporter receives spans with correct names and attributes.
+3. **Sampling:** Set sample_rate=0.5, run 1000 operations, verify ~50% sampled.
+4. **Filter deny:** Add `termforge.grid.parse` to deny list, verify no spans exported.
+5. **Context propagation:** Spawn task with OTEL context, verify child span has correct parent.
+6. **CRDT propagation:** Two instances exchange ops, verify trace continuity.
+7. **Binding trace:** Python command with active span, verify trace-id continuity in server.
+8. **Provider shutdown:** Graceful shutdown flushes pending spans.
 
 ---
+
 ## 20. tmux Version Management
+
+> **v7 Pass 2 synthesis:** GPT v7 had significantly more detailed version management coverage (CLI, build matrix, NDJSON format). Claude v7 had tighter integration with existing vibe-tmux tooling references. This section takes GPT's structure with Claude's tooling references.
 
 ### 20.1 Purpose
 
@@ -3452,7 +3253,7 @@ Requirements:
 
 ### 20.5 Ensure Pipeline
 
-`ensure` executes:
+`ensure` runs:
 1. Resolve/open repo (`--repo` or `--clone-url` + `--clone-dest`).
 2. Resolve tag and create/verify worktree.
 3. Install OS deps if enabled.
@@ -3466,7 +3267,7 @@ Failure behavior:
 ### 20.6 Regress Runner Behavior
 
 Runner rules (matching `tmux-vm regress` behavior):
-1. If `--target all`, execute all `*.sh` in lexical order.
+1. If `--target all`, run all `*.sh` in lexical order.
 2. Sleep 1s between scripts to avoid stale socket races.
 3. Set `TEST_TMUX` and `TMUX_BIN` to selected version binary.
 4. Isolate all tmp/home paths to per-run temp dir.
@@ -3488,7 +3289,7 @@ Schema:
 - `scenario`: stable scenario ID.
 - `phase`: `tmux` | `termforge` | `diff`.
 - `status`: `ok` | `fail` | `skip`.
-- `duration_ms`: execution time for non-diff phases.
+- `duration_ms`: run time for non-diff phases.
 - `diff_count`: number of semantic mismatches in diff phase.
 - `first_diff`: first mismatch summary.
 
@@ -3521,6 +3322,7 @@ Retain per-run artifacts under `target/parity/<run-id>/`:
 8. **Diff schema test:** emitted NDJSON lines validate against JSON schema and include required fields.
 
 ---
+
 ## 21. Test Support and Fake PTY
 
 ### 21.1 TmuxTestServer
@@ -3739,6 +3541,8 @@ impl ScenarioReplayer {
 
 ## 22. Binding Test Frameworks
 
+> **v7 Pass 2 synthesis:** GPT v7 had superior dual-mode (inprocess/socket) fixture design with parametrized tests. Claude v7 had more accurate PyO3 `Python::detach` usage in fixtures and better Neon Channel code. This section merges both strengths.
+
 ### 22.1 Goals
 
 Binding test frameworks must validate three things at once:
@@ -3752,8 +3556,7 @@ Binding test frameworks must validate three things at once:
 # bindings/python/tests/conftest.py
 from __future__ import annotations
 
-import asyncio
-import json
+import os
 from pathlib import Path
 
 import pytest
@@ -3762,7 +3565,7 @@ import termforge
 
 @pytest.fixture
 def inproc_server():
-    # In-process mode: Rust creates ManagedMux and keeps it in this process.
+    """In-process mode: Rust creates ManagedMux and keeps it in this process."""
     srv = termforge.Server(mode="inprocess")
     try:
         yield srv
@@ -3772,6 +3575,9 @@ def inproc_server():
 
 @pytest.fixture
 def socket_server(tmp_path: Path):
+    """Socket mode: real Unix socket in isolated temp directory."""
+    for var in ("TMUX", "TMUX_TMPDIR", "TMUX_PANE"):
+        os.environ.pop(var, None)
     socket_path = tmp_path / "termforge.sock"
     srv = termforge.Server(mode="socket", socket_path=str(socket_path))
     try:
@@ -3782,17 +3588,61 @@ def socket_server(tmp_path: Path):
 
 @pytest.fixture(params=["inproc", "socket"], ids=["inproc", "socket"])
 def server(request, inproc_server, socket_server):
+    """Parametrized fixture: same tests run against both backends."""
     return inproc_server if request.param == "inproc" else socket_server
 
 
 @pytest.fixture
-def seeded_session(server):
+def session(server):
     server.cmd("new-session -d -s test")
-    server.cmd("new-window -t test: -n editor")
-    return server
+    return server.sessions[0]
+
+
+@pytest.fixture
+def window(session):
+    return session.windows[0]
+
+
+@pytest.fixture
+def pane(window):
+    return window.panes[0]
+
+
+@pytest.fixture
+def server_with_tmux(tmp_path):
+    """Server backed by real tmux binary (for parity tests)."""
+    import subprocess
+    tmux_bin = subprocess.check_output(
+        ["tmux-vm", "path", "3.6a"], text=True
+    ).strip()
+    socket_path = str(tmp_path / "test.sock")
+    srv = termforge.Server(socket_path=socket_path, tmux_bin=tmux_bin)
+    yield srv
+    try: srv.kill_server()
+    except: pass
 ```
 
-### 22.3 Python Snapshot Tests
+#### PyO3 Rust-side Fixture Support
+
+Uses `Bound<'py, T>` smart pointer and `Python::detach` (PyO3 0.26+):
+
+```rust
+// bindings/python/src/fixtures.rs
+use pyo3::prelude::*;
+
+#[pyfunction]
+pub fn snapshot_pane_grid(py: Python<'_>, pane: &PyPane) -> PyResult<String> {
+    let inner = pane.inner.clone();
+    // Python::detach releases GIL during grid read
+    py.detach(move || {
+        inner.grid_text().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
+        })
+    })
+}
+```
+
+### 22.3 Python Snapshot and Behavior Tests
 
 ```python
 # bindings/python/tests/test_snapshots.py
@@ -3800,24 +3650,50 @@ import json
 
 
 def normalize_view(view: dict) -> dict:
-    # Drop unstable fields from snapshots.
+    """Drop unstable fields from snapshots."""
     out = dict(view)
     out.pop("generated_at", None)
     out.pop("pid", None)
     return out
 
 
-def test_view_snapshot(seeded_session, snapshot):
-    view = seeded_session.view_store()
+def test_view_snapshot(server, snapshot):
+    server.cmd("new-session -d -s snap -x 80 -y 24")
+    view = server.view_store()
     snapshot.assert_match(
         json.dumps(normalize_view(view), indent=2, sort_keys=True),
         "view_store.json",
     )
 
 
-def test_cmd_snapshot(server, snapshot):
-    out = server.cmd("display-message -p '#{session_name}:#{window_name}'")
-    snapshot.assert_match(out, "display_message.txt")
+def test_new_session_grid(server, tmp_path):
+    server.cmd("new-session -d -s snap -x 80 -y 24")
+    pane = server.sessions[0].windows[0].panes[0]
+    pane.send_keys("echo 'Hello, TermForge!'", enter=True)
+    import time; time.sleep(0.5)
+    grid = pane.capture_pane()
+    assert "Hello, TermForge!" in grid
+
+
+def test_concurrent_sessions(server):
+    for name in ("alpha", "beta", "gamma"):
+        server.cmd(f"new-session -d -s {name}")
+    assert len(server.sessions) == 3
+    filtered = server.sessions.filter(name="beta")
+    assert len(filtered) == 1
+
+
+def test_gil_release(server):
+    """Verify GIL released via Python::detach during blocking ops."""
+    import threading
+    results = []
+    def background(): results.append("done")
+    server.cmd("new-session -d -s test")
+    t = threading.Thread(target=background)
+    t.start()
+    server.cmd("list-sessions")  # releases GIL via detach
+    t.join(timeout=5.0)
+    assert "done" in results
 ```
 
 ### 22.4 Python Async Fixture Pattern
@@ -3834,7 +3710,7 @@ async def test_async_to_thread(server):
 
 ### 22.5 Node vitest Fixtures (Neon)
 
-```ts
+```typescript
 // bindings/node/test/fixtures.ts
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -3857,14 +3733,13 @@ export function makeInprocServer(): TestServer {
 export function makeSocketServer(): TestServer {
   const dir = mkdtempSync(join(tmpdir(), "termforge-node-"));
   const socketPath = join(dir, "termforge.sock");
+  for (const key of ["TMUX", "TMUX_TMPDIR", "TMUX_PANE"])
+    delete process.env[key];
   const server = createServer({ mode: "socket", socketPath });
-
   return {
     server,
     cleanup: () => {
-      try {
-        server.close();
-      } finally {
+      try { server.close(); } finally {
         rmSync(dir, { recursive: true, force: true });
       }
     },
@@ -3872,7 +3747,7 @@ export function makeSocketServer(): TestServer {
 }
 ```
 
-```ts
+```typescript
 // bindings/node/test/setup.ts
 import { afterEach, beforeEach } from "vitest";
 import { makeInprocServer, makeSocketServer, type TestServer } from "./fixtures";
@@ -3894,7 +3769,7 @@ export function withServer(mode: "inproc" | "socket") {
 
 ### 22.6 Node Snapshot Tests
 
-```ts
+```typescript
 // bindings/node/test/snapshot.spec.ts
 import { describe, expect, it } from "vitest";
 import { withServer } from "./setup";
@@ -3903,27 +3778,57 @@ for (const mode of ["inproc", "socket"] as const) {
   describe(`snapshot (${mode})`, () => {
     const getServer = withServer(mode);
 
+    it("creates and filters sessions", () => {
+      const server = getServer();
+      server.cmd("new-session -d -s work");
+      server.cmd("new-session -d -s play");
+      const filtered = server.sessions({ name: "work" });
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].name).toBe("work");
+    });
+
+    it("async commands via Neon Channel", async () => {
+      const server = getServer();
+      server.cmd("new-session -d -s async-test");
+      const result = await server.cmdAsync("list-sessions");
+      expect(result).toContain("async-test");
+    });
+
     it("captures stable view store", async () => {
       const server = getServer();
       await server.cmd("new-session -d -s test");
       const view = await server.viewStore();
-
       delete (view as any).generatedAt;
       delete (view as any).pid;
-
       expect(view).toMatchSnapshot();
-    });
-
-    it("captures command output", async () => {
-      const server = getServer();
-      const out = await server.cmd("display-message -p '#{session_name}'");
-      expect(out).toMatchSnapshot();
     });
   });
 }
 ```
 
-### 22.7 How Bindings Invoke In-process Server
+### 22.7 Neon Rust-side Pure Logic Tests
+
+```rust
+// bindings/node/native/src/logic.rs
+// Pattern from ~/study/rust/learning-rust-nodejs/native/src/logic.rs
+
+pub fn validate_command(cmd: &str) -> Result<(), String> {
+    if cmd.is_empty() { return Err("command cannot be empty".into()); }
+    if cmd.contains('\0') { return Err("command cannot contain null bytes".into()); }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_validate_empty() { assert!(validate_command("").is_err()); }
+    #[test]
+    fn test_validate_valid() { assert!(validate_command("list-sessions").is_ok()); }
+}
+```
+
+### 22.8 How Bindings Invoke In-process Server
 
 Binding runtime path for in-process mode:
 1. Host language constructor (`Server(mode="inprocess")` / `createServer({mode:"inprocess"})`).
@@ -3933,15 +3838,6 @@ Binding runtime path for in-process mode:
 5. Integration tests run both in-process and socket modes using the same test cases.
 
 This dual-mode fixture design catches transport issues and core runtime issues independently.
-
-### 22.8 Binding Contract Assertions
-
-Per-binding assertions executed in both fixture modes:
-1. Returned object graph shape (`sessions`, `windows`, `panes`).
-2. Stable error-class to exception/error-type mapping.
-3. Proper cleanup semantics on teardown.
-4. Async behavior does not block host event loop.
-5. Snapshot output parity between in-process and socket modes.
 
 ### 22.9 CI Matrix
 
@@ -3953,16 +3849,21 @@ Per-binding assertions executed in both fixture modes:
 
 ### 22.10 Binding Test Framework Strategy
 
-1. **Fixture parity test:** same test module executes against in-process and socket fixtures.
-2. **Snapshot stability test:** normalized snapshots remain stable across reruns.
-3. **Error mapping test:** each `ErrorClass` maps to expected host exception type.
-4. **Async non-blocking test (Python):** concurrent coroutine continues while command executes in `to_thread`.
+1. **Fixture parity test:** Same test module runs against in-process and socket fixtures.
+2. **Snapshot stability test:** Normalized snapshots remain stable across reruns.
+3. **Error mapping test:** Each `ErrorClass` maps to expected host exception type.
+4. **Async non-blocking test (Python):** Concurrent coroutine continues while command runs in `to_thread`.
 5. **Async non-blocking test (Node):** Promise-based command does not starve microtasks.
-6. **Teardown test:** forced failure in test body still closes server and deletes tmp assets.
-7. **Cross-mode output test:** compare normalized `view_store` between modes for same command script.
+6. **Teardown test:** Forced failure in test body still closes server and deletes tmp assets.
+7. **Cross-mode output test:** Compare normalized `view_store` between modes for same command script.
 8. **Import/load test:** Python wheel and Node addon can load in clean environment.
+9. **GIL release:** Concurrent thread confirms `Python::detach` works.
+10. **Neon Channel async:** Promise resolves correctly.
+11. **Pure logic tests:** `logic.rs` without language runtime.
+12. **Memory leak (Python):** `tracemalloc` 1000 cycles.
 
 ---
+
 ## 23. Test Framework and Harness Design
 
 ### 23.1 Test Taxonomy
@@ -4039,7 +3940,7 @@ tmux's `input.c` implements a specific variant of the Paul Williams VT100 state 
 
 #### 17 Parser States
 
-Verified against `input.c` lines 356-504:
+Verified against `input.c` lines 369-386:
 
 ```rust
 // crates/mux-grid/src/parser.rs
@@ -4134,7 +4035,7 @@ impl Parser {
 }
 ```
 
-#### CSI Commands (40 enum variants, 42 table entries)
+#### CSI Commands (40 enum variants)
 
 Verified against `input.c` lines 257-344:
 
@@ -4438,31 +4339,7 @@ criterion_main!(benches);
 
 ### 24.3 CI Regression Gate
 
-```yaml
-name: Performance Regression Check
-on:
-  schedule:
-    - cron: '0 4 * * *'  # nightly only
-
-jobs:
-  bench:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-    - name: Run benchmarks
-      run: |
-        cargo bench --bench hot_path -- --output-format bencher | tee output.txt
-        test -s output.txt || exit 1
-    - name: Compare against baseline
-      uses: benchmark-action/github-action-benchmark@v1
-      with:
-        tool: 'cargo'
-        output-file-path: output.txt
-        alert-threshold: '130%'
-        fail-on-alert: true
-        comment-on-alert: true
-```
+130% threshold, nightly only, assert non-empty output. Baselines from 3 consecutive median runs.
 
 **Key decisions:**
 - 130% threshold (not 120%) to reduce false positives on shared CI runners.
@@ -4474,46 +4351,53 @@ jobs:
 
 ## 25. Visual Client / TUI
 
-### 25.1 Purpose and Scope
+> **v7 Pass 2 synthesis:** GPT v7 had superior ratatui API verification (actual line numbers from local source), better render loop pattern, and `TestBackend` usage. Claude v7 had correct architecture diagrams. This section merges both.
 
-`mux-tui` is a standalone client that renders server snapshots and sends user intents. It must work against:
-1. TermForge runtime (local/in-process or socket).
-2. Real tmux-backed runtime via adapter.
+### 25.1 Architecture Overview
+
+```
+          +-------------------+
+          |  Terminal (raw)   |
+          |  crossterm events |
+          +--------+----------+
+                   |
+          +--------v----------+
+          |     mux-tui       |
+          |  Event Loop       |
+          |  Key Dispatch     |
+          |  ViewModel Build  |
+          |  ratatui Render   |
+          +--------+----------+
+                   |
+          +--------v----------+
+          |    mux-api        |
+          |  StateHandle      |
+          +--------+----------+
+                   |
+      +------------+-------------+
+      |                          |
++-----v-------+    +------------v----+
+| TermForge   |    | Real tmux       |
+| server      |    | (via mux-client)|
++-------------+    +-----------------+
+```
 
 ### 25.2 ratatui API Verification
 
 Verified against local ratatui source:
-- `ratatui-core/src/terminal/render.rs:77-85` (`Terminal::draw` signature and draw pipeline)
-- `ratatui-core/src/terminal/frame.rs:17-32` (`Frame` structure)
-- `ratatui-core/src/buffer/buffer.rs:492` (`Buffer::diff`)
-- `ratatui-core/src/widgets/widget.rs:70-75` (`Widget::render(self, area, buf)`)
-- `ratatui/src/lib.rs:454-456` (`TestBackend` and `CrosstermBackend` re-exports)
+- `ratatui/src/lib.rs:192-196` -- `Terminal::draw` closure pattern
+- `ratatui-core/src/buffer/buffer.rs:492` -- `Buffer::diff`
+- `ratatui-core/src/widgets/widget.rs:70-75` -- `Widget::render(self, area, buf)` trait signature
 
 Implications:
 - The render closure must fully repaint frame state each draw call.
-- Diffing happens on buffers, so TUI code should be deterministic per frame and avoid hidden mutable globals.
+- Diffing happens on buffers, so TUI code should be deterministic per frame.
 
-### 25.3 Rendering Architecture
-
-```text
-StateHandle<GraphState> (Arc snapshots)
-        |
-        v
-build_view_model(snapshot, ui_state)   // pure transform
-        |
-        v
-terminal.draw(|frame| render(frame, &view_model))
-        |
-        v
-ratatui buffer diff + backend flush
-```
-
-### 25.4 Main Loop Pattern
+### 25.3 Main Loop Pattern
 
 ```rust
 use std::io;
 use std::time::{Duration, Instant};
-
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
@@ -4557,39 +4441,46 @@ pub fn run_app(app: &mut App) -> anyhow::Result<()> {
 }
 ```
 
-### 25.5 Frame and Widget Composition
-
-Use custom widgets with canonical ratatui trait signature:
+### 25.4 ViewModel Construction (Pure)
 
 ```rust
-use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::Widget;
-
-pub struct PaneWidget<'a> {
-    pub pane: &'a PaneView,
+// crates/mux-view/src/view_model.rs
+#[derive(Debug, Clone)]
+pub struct MultiplexerView {
+    pub panes: Vec<PaneView>,
+    pub status_left: String,
+    pub status_right: String,
+    pub borders: Vec<BorderSegment>,
+    pub active_pane_idx: usize,
+    pub window_list: Vec<WindowListEntry>,
+    pub mode_indicator: Option<String>,
 }
 
-impl<'a> Widget for PaneWidget<'a> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let grid = &self.pane.grid;
+pub fn build_view_model(
+    snapshot: &GraphState,
+    key_state: &TuiKeyState,
+) -> MultiplexerView {
+    // Pure transformation from GraphState to render-ready structures
+    todo!()
+}
+```
 
-        for row in 0..area.height as usize {
-            for col in 0..area.width as usize {
+### 25.5 Grid-to-Buffer Rendering
+
+```rust
+pub struct PaneWidget<'a> { pub view: &'a PaneView }
+
+impl<'a> Widget for PaneWidget<'a> {
+    fn render(self, area: ratatui::layout::Rect, buf: &mut Buffer) {
+        let grid = &self.view.grid_snapshot;
+        for row in 0..area.height.min(grid.rows()) as usize {
+            for col in 0..area.width.min(grid.cols()) as usize {
                 if let Some(cell) = grid.cell(row, col) {
                     let x = area.x + col as u16;
                     let y = area.y + row as u16;
-
-                    let mut style = Style::default();
-                    if cell.attrs.bold {
-                        style = style.add_modifier(Modifier::BOLD);
-                    }
-                    if cell.attrs.underline {
-                        style = style.add_modifier(Modifier::UNDERLINED);
-                    }
-
-                    buf[(x, y)].set_symbol(cell.symbol()).set_style(style);
+                    let style = grid_style_to_ratatui(&cell.style);
+                    let ch = if cell.ch == '\0' { ' ' } else { cell.ch };
+                    buf[(x, y)].set_char(ch).set_style(style);
                 }
             }
         }
@@ -4597,21 +4488,10 @@ impl<'a> Widget for PaneWidget<'a> {
 }
 ```
 
-### 25.6 Buffer Diff Awareness
-
-`Buffer::diff` drives terminal updates. TUI rules:
-1. Render identical input state to identical buffer output.
-2. Avoid non-deterministic timestamps in visible widgets unless intentionally updated.
-3. Normalize status widgets to stable precision (e.g., seconds, not nanos) to prevent needless redraw churn.
-
-### 25.7 Backend Abstraction
-
-`Terminal<B: Backend>` is generic. Use:
-- `CrosstermBackend<Stdout>` in production CLI client.
-- `TestBackend` in snapshot tests.
+### 25.6 TestBackend for Snapshot Tests
 
 ```rust
-use ratatui::backend::{Backend, TestBackend};
+use ratatui::backend::TestBackend;
 use ratatui::Terminal;
 
 pub fn render_once_for_test(vm: &MultiplexerView) -> anyhow::Result<String> {
@@ -4627,237 +4507,175 @@ pub fn render_once_for_test(vm: &MultiplexerView) -> anyhow::Result<String> {
 }
 ```
 
-### 25.8 ViewModel Contract
+### 25.7 TUI Rules
 
-`build_view_model` must stay pure:
-- Input: immutable snapshot + UI state.
-- Output: render-ready structs (pane rects, borders, status fragments, active markers).
-- No IO, locking, wall-clock reads, or random data.
+- Never call core graph directly. All reads via `StateHandle`.
+- All writes via `mux-api` events.
+- Works against both TermForge and real tmux.
+- ViewModel is a pure function (snapshot-testable).
+- Grid-to-Buffer handles wide characters (CJK).
+- Status line uses same `format_expand()`.
 
-This enables deterministic snapshot tests and replay rendering.
+### 25.8 TUI Test Strategy
 
-### 25.9 Input and Command Dispatch
-
-Input flow:
-1. Read crossterm key event.
-2. Convert to internal `KeyCode` format.
-3. Dispatch through `mux-api` as command/event.
-4. Never mutate graph state directly inside TUI crate.
-
-### 25.10 Resize Handling
-
-On terminal resize:
-1. ratatui auto-resize updates viewport used by next `Frame`.
-2. TUI emits client-resize intent to server runtime.
-3. New snapshot triggers redraw with updated pane geometry.
-
-### 25.11 Status Line and Format Engine
-
-Status text is generated by the same format engine used elsewhere (Section 14). The TUI must not reimplement format expansion.
-
-### 25.12 Visual Client Test Strategy
-
-1. **Frame draw smoke test:** `Terminal::draw` renders first frame with empty state and does not panic.
-2. **Snapshot rendering test:** known snapshot renders exactly with `TestBackend` and `insta`.
-3. **Widget trait contract test:** custom pane/status widgets render into provided area only.
-4. **Diff stability test:** rendering same `ViewModel` twice yields zero diff updates.
-5. **Backend parity test:** same `ViewModel` renders equivalently on `TestBackend` and `CrosstermBackend` (normalized comparison).
-6. **Resize test:** simulate resize + new snapshot; verify layout recomputation and redraw.
-7. **Wide glyph test:** CJK/wide glyph cells preserve width semantics and trailing cell clearing.
-8. **Key dispatch test:** representative keys (prefix, arrows, function keys) map to expected internal key codes.
+1. **Snapshot rendering:** Known grid -> ratatui `Buffer` -> `insta`.
+2. **Status line:** `format_expand` correct for templates.
+3. **Input mapping:** crossterm keys -> TermForge `KeyCode`.
+4. **Layout rendering:** Multi-pane borders at correct positions.
+5. **Wide character:** CJK spanning 2 columns.
+6. **Color mapping:** 256 indexed + RGB.
+7. **Attach to tmux/TermForge:** First frame without crash.
+8. **ViewModel purity:** Same input -> same output (property test).
+9. **Resize handling:** Terminal resize propagates correctly.
+10. **Diff stability:** Rendering same `ViewModel` twice yields zero diff updates.
 
 ---
+
 ## 26. AGENTS.md Rules
 
-This section converts the 18 architecture rules into enforceable policy.
+> **v7 Pass 2 synthesis:** Claude v7 had more compact, implementable rules with clear enforcement mechanisms. GPT v7 had excellent violation examples for each rule. This section merges both: compact rules with rationale, violation examples, and enforcement.
 
-Format per rule:
-- **Rule text** (must/forbid)
-- **Rationale** (why it matters)
-- **Violation example** (how failures manifest)
-- **Enforcement** (CI or review gate)
+### 26.1 Error Handling Rules
 
-### 26.1 Rule 1 -- Error Taxonomy
+**Rule 1 -- Error Taxonomy.**
+Every library crate defines a public `Error` enum deriving `thiserror::Error`. `anyhow` is allowed only in binary crates and test code.
+**Rationale:** Typed errors enable callers to match on specific failure modes.
+**Violation:** A library returns `anyhow::Error`; Python binding maps everything to `RuntimeError`, losing retry semantics.
+**Enforcement:** `grep -r 'anyhow' crates/*/src/` CI check fails if any library crate uses `anyhow` outside `#[cfg(test)]`.
 
-**Rule text:** Every library crate exposes a typed public `Error` enum (`thiserror::Error`). `anyhow` is only allowed in binaries/tests.
+**Rule 2 -- Error Classification.**
+Every error type implements `Classified` returning `Transient`, `ProtocolViolation`, `UserError`, or `Bug`.
+**Rationale:** Classification drives recovery policy. `Transient` errors are retried; `ProtocolViolation` kills the connection.
+**Violation:** Decoder emits plain string error; connection is kept alive after malformed frame.
+**Enforcement:** Unit tests for `class()` on each error variant; compile-time trait bounds.
 
-**Rationale:** Stable typed errors are required for FFI mapping and policy routing (retry/disconnect/abort).
+**Rule 3 -- Protocol Violation.**
+Any binary protocol decode error other than "need more bytes" closes that client connection. Reference: `server-client.c:3472-3475`.
+**Rationale:** Continuing after a protocol violation can lead to stream desync and state corruption.
+**Violation:** Decoder drops one bad frame and continues; next frame is misaligned.
+**Enforcement:** Integration test: inject malformed frame, verify connection terminated within 100ms.
 
-**Violation example:** A library returns `anyhow::Error`; Python binding maps everything to `RuntimeError`, losing retry semantics.
+**Rule 4 -- Pure Error Boundary.**
+`io::Error` and platform types must not cross the pure/impure boundary. Convert to stable domain errors via `Event::EffectFailed`.
+**Rationale:** Leaking `io::Error` into Layer 0 prevents WASM compilation.
+**Violation:** `std::io::ErrorKind::WouldBlock` leaks into core reducer and changes behavior by OS.
+**Enforcement:** `trybuild` test: attempt to use `io::Error` in `mux-core`, verify compile failure.
 
-**Enforcement:** CI lint: forbid `anyhow` in `crates/*/src` for library crates; code review checklist item.
+### 26.2 Configuration Rules
 
-### 26.2 Rule 2 -- Error Classification
+**Rule 5 -- Config-as-Events.**
+Config file parsing produces `Vec<Event>` submitted through the state actor. Direct graph mutation from config parsing is forbidden.
+**Rationale:** Single path for all state mutations ensures consistency.
+**Violation:** Config loader writes options directly; runtime command path and config path diverge.
+**Enforcement:** `mux-conf` has no dependency on `mux-core`'s graph types. Only `Event` types are shared.
 
-**Rule text:** All domain errors implement `Classified` -> `Transient | ProtocolViolation | UserError | Bug`.
+**Rule 6 -- Option Scope Resolution.**
+Resolve using option table scope + command flags, matching `options_scope_from_name()` including the FALLTHROUGH from WindowPane to Window (`options.c:903`).
+**Rationale:** Exact compatibility with tmux's option resolution prevents user-visible differences.
+**Violation:** Pane-scoped option lookup skips window fallback and returns default unexpectedly.
+**Enforcement:** Table-driven tests for all (scope, flag, target) combinations.
 
-**Rationale:** Recovery behavior must be derived from class, not from string matching.
-
-**Violation example:** Decoder emits plain string error; connection is kept alive after malformed frame.
-
-**Enforcement:** Unit tests for `class()` on each error variant; compile-time trait bounds in dispatch code.
-
-### 26.3 Rule 3 -- Protocol Violation Disconnect
-
-**Rule text:** Binary protocol decode errors (except `NeedMore`) close the client connection, matching tmux (`server-client.c:3472-3475`).
-
-**Rationale:** Continuing after malformed frame risks stream desync and undefined state.
-
-**Violation example:** Decoder drops one bad frame and continues; next frame is misaligned and mutates wrong target.
-
-**Enforcement:** Integration test injects malformed frame and asserts disconnect.
-
-### 26.4 Rule 4 -- Pure Error Boundary
-
-**Rule text:** `io::Error`/platform errors cannot cross into Layer 0 state logic; map to domain errors at runtime boundary.
-
-**Rationale:** Preserves deterministic/pure core and portable tests.
-
-**Violation example:** `std::io::ErrorKind::WouldBlock` leaks into core reducer and changes behavior by OS.
-
-**Enforcement:** Crate dependency checks + static scan for forbidden std IO types in pure crates.
-
-### 26.5 Rule 5 -- Config as Events
-
-**Rule text:** Config parsing yields events; parser must not mutate graph state directly.
-
-**Rationale:** Ensures config path uses same state transition logic as runtime commands.
-
-**Violation example:** Config loader writes options directly; runtime command path and config path diverge.
-
-**Enforcement:** API design: parser returns `Vec<Event>` only; integration tests replay config events.
-
-### 26.6 Rule 6 -- Option Scope Resolution
-
-**Rule text:** Option scope logic must mirror tmux including `WindowPane -> Window` FALLTHROUGH (`options.c:891-903`).
-
-**Rationale:** Scope resolution parity is required for command compatibility.
-
-**Violation example:** Pane-scoped option lookup skips window fallback and returns default unexpectedly.
-
-**Enforcement:** Table-driven tests for (scope, flag, target) matrix.
-
-### 26.7 Rule 7 -- Unset Semantics
-
-**Rule text:** `set -u` removes override; global unset resets compiled default; `-U` clears pane-local inherited values (`options.c:1269-1285`, `options.c:1282`).
-
-**Rationale:** Unset behavior is subtle and heavily used in tmux configs.
-
-**Violation example:** Unset writes inherited value locally; later parent updates stop propagating.
-
+**Rule 7 -- Unset Semantics.**
+`set -u` removes local override (inheritance restored) for non-global. Resets to compiled default for global. `set -U` additionally clears pane-local values.
+**Rationale:** Matches `options_remove_or_default` at `options.c:1269-1285`.
+**Violation:** Unset writes inherited value locally; later parent updates stop propagating.
 **Enforcement:** Golden tests against real tmux for unset cases.
 
-### 26.8 Rule 8 -- Layout String Parity
+### 26.3 Layout Rules
 
-**Rule text:** Layout serialization/checksum must match tmux algorithm (`layout-custom.c:46-57`).
+**Rule 8 -- Layout String Parity.**
+Layout dump/parse and checksum must match `layout-custom.c` exactly.
+**Rationale:** Layout strings are exchanged between clients and servers on the wire.
+**Violation:** Same tree generates different checksum, breaking roundtrip with tmux tools.
+**Enforcement:** `rstest` with vectors from real tmux, verify checksum and roundtrip.
 
-**Rationale:** Layout strings are compatibility artifacts used across clients/scripts.
+**Rule 9 -- Layout Minimum.**
+`layout_resize()` never fails. Clamps to minimum per `layout_resize_check()`. `PANE_MINIMUM` is 1 cell (`tmux.h:100`).
+**Rationale:** tmux never returns an error from resize.
+**Violation:** Split command fails under small dimensions where tmux would clamp.
+**Enforcement:** Property test: random resize dimensions always produce a valid layout.
 
-**Violation example:** Same tree generates different checksum, breaking roundtrip with tmux tools.
+**Rule 10 -- Round-Robin Distribution.**
+`layout_resize_adjust()` distributes one cell at a time in round-robin, NOT proportionally. Matches `layout.c:448-462`.
+**Rationale:** Proportional distribution produces different pixel geometry than tmux.
+**Violation:** 3-pane resize gives different pane widths than tmux after repeated operations.
+**Enforcement:** Test: 3 uneven panes at 100 cols, resize to 103, verify distribution is +1, +1, +1.
 
-**Enforcement:** Roundtrip + checksum parity test vectors using real tmux output.
+**Rule 11 -- Layout Consistency.**
+After every layout mutation, `layout_check()` must return true. Add as `debug_assert!` in all mutating methods.
+**Rationale:** Layout inconsistency causes rendering artifacts and crashes.
+**Violation:** Parent length mismatch not detected until render crash.
+**Enforcement:** `debug_assert!(self.layout_check())` at the end of every mutating method.
 
-### 26.9 Rule 9 -- Layout Minimum Clamp
+### 26.4 Telemetry Rules
 
-**Rule text:** Resize operations clamp to minimum sizes (`tmux.h:100`, `layout.c:366-415`, `layout.c:937-950`) instead of hard-failing.
+**Rule 12 -- Span Naming.**
+All span names use `termforge.` prefix. Pattern: `termforge.<subsystem>.<operation>`.
+**Rationale:** Prevents collision with third-party library spans. Makes filtering trivial.
+**Violation:** Span name includes pane ID, creating unbounded series in backend.
+**Enforcement:** `grep -r 'info_span!' crates/ | grep -v 'termforge\.'` returns empty (CI check).
 
-**Rationale:** tmux behavior is permissive with clamping, and scripts rely on this.
+**Rule 13 -- Telemetry Propagation.**
+New threads, tasks, and spawned processes must attach OTEL context.
+**Rationale:** Broken trace context creates orphaned spans that are impossible to correlate.
+**Violation:** Python request trace and server command trace appear as unrelated roots.
+**Enforcement:** Integration test: spawn task, verify child span has correct parent.
 
-**Violation example:** Split command fails under small dimensions where tmux would clamp.
+### 26.5 Security Rules
 
-**Enforcement:** Resize regression tests across narrow terminal sizes.
+**Rule 14 -- Untrusted Input.**
+All data from sockets, control mode, config files, and binding FFI is untrusted. Validation at crate boundaries.
+**Rationale:** Defense in depth. Even internal crate boundaries validate inputs.
+**Violation:** Binding passes negative pane index causing unchecked cast and panic.
+**Enforcement:** Each validation layer has dedicated fuzz targets (Section 18.6).
 
-### 26.10 Rule 10 -- Round-robin Resize Distribution
+**Rule 15 -- SCM_RIGHTS.**
+FDs via SCM_RIGHTS accepted only during identify handshake. CLOEXEC immediately. No ancillary fds outside handshake.
+**Rationale:** Out-of-phase FDs could inject file descriptors into the server.
+**Violation:** Control command accidentally accepts unexpected fd and keeps it open.
+**Enforcement:** Integration test: send FD after identify, verify closed and connection killed.
 
-**Rule text:** `layout_resize_adjust` behavior is one-cell round-robin, not proportional (`layout.c:421-463`, `layout.c:448-462`).
+**Rule 16 -- Control Mode Hints.**
+Control notifications are hints, never authoritative. Binary protocol is authority. Dropped notifications corrected by periodic refresh.
+**Rationale:** Control notifications can be lost (backpressure, network issues).
+**Violation:** Dropped `%window-renamed` permanently desyncs UI title.
+**Enforcement:** Test: drop notification, verify periodic refresh corrects state within 1 cycle.
 
-**Rationale:** Proportional logic creates geometry drift versus tmux.
+### 26.6 Lifecycle Rules
 
-**Violation example:** 3-pane resize gives different pane widths than tmux after repeated operations.
+**Rule 17 -- Lock File.**
+Use `flock(LOCK_EX|LOCK_NB)`, not PID-based locking. Automatically released on process death.
+**Rationale:** PID-based locking has TOCTOU races and PID reuse risks.
+**Violation:** Process crash leaves PID file; new server refuses to start.
+**Enforcement:** Test: start server, `kill -9`, start again, succeeds.
 
-**Enforcement:** Scenario parity tests comparing pane rectangles after scripted resize sequences.
+**Rule 18 -- Config Timing.**
+Do not load config until first client completes identify burst. Matches `server-client.c:3725-3734`.
+**Rationale:** Config errors must be reported to the first client.
+**Violation:** Config is loaded before capability negotiation and resolves wrong terminal features.
+**Enforcement:** Integration test: trace startup, verify config loaded after identify.
 
-### 26.11 Rule 11 -- Post-mutation Layout Validation
+### 26.7 Binding Rules
 
-**Rule text:** After layout mutations, assert tree consistency equivalent to `layout_check` constraints (`layout-custom.c:119-153`).
+**Rule 19 -- Pure Logic Separation.**
+All binding crates separate pure Rust logic (`logic.rs`) from binding glue (`lib.rs`). Pure logic has no PyO3/Neon/cxx types.
+**Rationale:** Pure logic is testable with standard `#[test]` without requiring a language runtime.
+**Violation:** Neon types leak into logic.rs; test suite requires V8 to run.
+**Enforcement:** `cfg(not(test))` guards on binding imports. `logic.rs` compiles without feature flags.
 
-**Rationale:** Catches subtle invariants breakage early in debug builds.
+**Rule 20 -- GIL Release.**
+All Python blocking operations release the GIL via `Python::detach` (PyO3 0.26+).
+**Rationale:** Holding the GIL during IO blocks all other Python threads.
+**Violation:** Python binding holds GIL during socket connect; all other threads frozen.
+**Enforcement:** Test: concurrent Python thread confirms GIL released during blocking call.
 
-**Violation example:** Parent length mismatch not detected until render crash.
+**Rule 21 -- Neon Channel for Async.**
+All Node.js async operations use Neon `Channel` for scheduling results back to the JS main thread.
+**Rationale:** Neon `Channel` safely bridges Rust background threads to the V8 event loop.
+**Violation:** Direct V8 access from Rust thread causes segfault.
+**Enforcement:** Test: async command returns Promise that resolves correctly.
 
-**Enforcement:** `debug_assert!(layout_check(...))` in all mutation paths + dedicated validator tests.
-
-### 26.12 Rule 12 -- Span Naming Convention
-
-**Rule text:** All internal spans use `termforge.<subsystem>.<operation>` and low-cardinality names.
-
-**Rationale:** Aligns with OTEL span-name guidance and avoids cardinality explosions.
-
-**Violation example:** Span name includes pane ID, creating unbounded series in backend.
-
-**Enforcement:** Span-name lint test over exported traces + review gate for new instrumentation.
-
-### 26.13 Rule 13 -- Context Propagation
-
-**Rule text:** Async tasks and cross-boundary calls must propagate trace context using OTEL `Context` and propagators.
-
-**Rationale:** Broken propagation destroys distributed trace continuity.
-
-**Violation example:** Python request trace and server command trace appear as unrelated roots.
-
-**Enforcement:** Integration tests for trace-id continuity across Python/Node -> server path.
-
-### 26.14 Rule 14 -- Untrusted Input Boundaries
-
-**Rule text:** Treat sockets, control mode lines, config files, and FFI inputs as untrusted; validate at boundary.
-
-**Rationale:** Prevents parser exploits and state corruption.
-
-**Violation example:** Binding passes negative pane index causing unchecked cast and panic.
-
-**Enforcement:** Fuzzing + boundary validation tests + mandatory input validation review checklist.
-
-### 26.15 Rule 15 -- SCM_RIGHTS Limits
-
-**Rule text:** Accept ancillary file descriptors only during identify handshake, set CLOEXEC immediately, reject otherwise.
-
-**Rationale:** Prevents fd leaks and confused-deputy style attacks.
-
-**Violation example:** Control command accidentally accepts unexpected fd and keeps it open.
-
-**Enforcement:** Integration tests around identify window + leak-check tests.
-
-### 26.16 Rule 16 -- Control Mode Is Hint Channel
-
-**Rule text:** Control notifications are hints; binary protocol/snapshot is source of truth.
-
-**Rationale:** Notification drop or lag must not corrupt client model.
-
-**Violation example:** Dropped `%window-renamed` permanently desyncs UI title.
-
-**Enforcement:** Reconciliation tests with dropped/duplicated notifications.
-
-### 26.17 Rule 17 -- Locking Semantics
-
-**Rule text:** Use `flock(LOCK_EX|LOCK_NB)` style locking (`client.c:77-101`), not PID-file ownership logic.
-
-**Rationale:** Kernel lock semantics avoid stale PID races.
-
-**Violation example:** Process crash leaves PID file; new server refuses to start.
-
-**Enforcement:** Startup lifecycle tests simulate crash/restart and assert lock recovery.
-
-### 26.18 Rule 18 -- Config Load Timing
-
-**Rule text:** Load config only after first client identify burst completion (`server-client.c:3725-3734`).
-
-**Rationale:** tmux defers config in startup sequence; early load causes behavior mismatch.
-
-**Violation example:** Config is loaded before capability negotiation and resolves wrong terminal features.
-
-**Enforcement:** Startup trace integration test checks event ordering.
-
-### 26.19 CI and Review Enforcement Matrix
+### 26.8 CI and Review Enforcement Matrix
 
 | Rule(s) | CI Check | Review Check |
 |---|---|---|
@@ -4867,19 +4685,65 @@ Format per rule:
 | 12-13 | telemetry integration tests | span names and propagation correctness |
 | 14-16 | fuzz + control-mode robustness tests | boundary validation completeness |
 | 17-18 | lifecycle/startup integration tests | tmux startup/order parity |
+| 19-21 | binding tests + pure logic tests | no binding types in logic.rs |
 
-### 26.20 Rule Regression Suite (Concrete)
+### 26.9 DOs
 
-1. **Malformed frame kill test** (Rule 3) with corrupted length header.
-2. **Scope fallback matrix test** (Rule 6) for all scope/flag combinations.
-3. **Unset inheritance test** (Rule 7) with parent option change after unset.
-4. **Layout checksum parity test** (Rule 8) against tmux-generated fixtures.
-5. **Round-robin resize test** (Rule 10) over repeated shrink/grow cycles.
-6. **Trace continuity test** (Rule 13) across binding and server spans.
-7. **SCM_RIGHTS acceptance window test** (Rule 15) accept during identify, reject afterward.
-8. **Config timing test** (Rule 18) verify load occurs only post-identify.
+1. **DO** use `#![forbid(unsafe_code)]` in every Layer 0 crate.
+2. **DO** verify Layer 0 compiles to `wasm32-unknown-unknown` in CI.
+3. **DO** use `slotmap::new_key_type!` for all entity IDs.
+4. **DO** return `Result` from all fallible operations.
+5. **DO** use `#[must_use]` on pure functions returning values.
+6. **DO** use `#[non_exhaustive]` on public enums that may grow.
+7. **DO** use `insta` for snapshot tests, `proptest` for property tests.
+8. **DO** put all `unsafe` in `mux-os` with `// SAFETY:` comments.
+9. **DO** use `tracing` for structured logging with span context.
+10. **DO** test protocol parsing against real tmux captures.
+11. **DO** use scenario recordings for VT100 parser regression testing.
+12. **DO** match tmux's exact state table for the VT100 parser (17 states).
+13. **DO** implement the format string engine as a pure function.
+14. **DO** model key tables and copy mode as pure state in the core.
+15. **DO** use `Arc<Grid>` with `Arc::make_mut` for copy-on-write grid snapshots.
+16. **DO** compute reverse lookups during snapshot construction.
+17. **DO** use `ArcSwap` for the snapshot publish/subscribe boundary.
+18. **DO** inject time via events, never from OS clocks in core.
+19. **DO** use `BTreeMap` for key tables (ordered iteration for `list-keys`).
+20. **DO** store key tables globally in `ServerGraph`, not per-client.
+21. **DO** mirror tmux checksum algorithm exactly on wire paths.
+22. **DO** treat `set -u` as "remove local override".
+23. **DO** enforce protocol-violation disconnect for binary protocol peers.
+24. **DO** use round-robin distribution for layout resize.
+25. **DO** validate layout consistency after every mutation.
+26. **DO** cite tmux source line numbers for compatibility claims.
+27. **DO** separate pure logic from binding glue in all binding crates.
+28. **DO** release the GIL via `Python::detach` in all Python blocking operations.
+29. **DO** use Neon `Channel` for all async Node.js operations.
+
+### 26.10 DON'Ts
+
+1. **DON'T** add `tokio`, `async`, or IO to Layer 0 crates.
+2. **DON'T** use `unwrap()` or `expect()` in library code.
+3. **DON'T** use `Arc<Mutex<_>>` on the read path. Use `ArcSwap`.
+4. **DON'T** store back-pointers in the entity model.
+5. **DON'T** put tmux protocol names in core types.
+6. **DON'T** implement multiplexer logic in bindings or the ORM.
+7. **DON'T** adopt `im-rs` until profiling shows `Clone` is a bottleneck.
+8. **DON'T** use the `vte` crate.
+9. **DON'T** test against the user's live tmux server.
+10. **DON'T** let `mux-orm` become a second business-logic engine.
+11. **DON'T** use `SecondaryMap` for parent-child relationships.
+12. **DON'T** expose internal names in binding APIs.
+13. **DON'T** use `std::thread::sleep` or `std::time::SystemTime` in pure crates.
+14. **DON'T** skip `// SAFETY:` documentation on any `unsafe` block.
+15. **DON'T** drop malformed binary frames and continue.
+16. **DON'T** use proportional resize distribution.
+17. **DON'T** load config before first client identifies.
+18. **DON'T** claim benchmark regressions are gated until criterion harness is proven running.
+19. **DON'T** use `py.allow_threads()` (renamed to `py.detach()` in PyO3 0.26).
+20. **DON'T** put Neon/PyO3 types in `logic.rs` files.
 
 ---
+
 ## 27. Risks and Mitigations
 
 ### 27.1 Risk Register
@@ -4890,29 +4754,31 @@ Format per rule:
 | R2 | Format engine completeness (200+ vars) | Medium | Medium | `format-audit` tool; start with 50 most common; unknown vars expand to empty string |
 | R3 | Key binding compatibility (100+ bindings) | Medium | Medium | Default tables generated from `key-bindings.c`; `tmux-command-audit` |
 | R4 | Copy mode complexity (~7000 lines) | Medium | Medium | Pure state machine; snapshot tests; incremental: nav first, then search |
-| R5 | Layout string format divergence across tmux versions | Low | High | Pin to protocol v8; version-gate parser changes |
+| R5 | Layout string format divergence across versions | Low | High | Pin to protocol v8; version-gate parser changes |
 | R6 | `flock` behavior differs across OSes | Medium | Medium | Test on all CI platforms; document in SAFETY.md |
-| R7 | HLC counter overflow at same millisecond | Very Low | Medium | `checked_add` with forced millis advance (Section 17.2) |
-| R8 | Control mode output backpressure causing unbounded memory | Medium | High | Per-client 16 MB limit; drop oldest %output blocks first |
-| R9 | Python GIL contention under heavy concurrent access | Medium | Medium | All blocking ops release GIL; document threading model |
-| R10 | `options_scope_from_name` fallthrough logic is subtle | High | Medium | Exhaustive test matrix for all (scope, flag, target) combinations |
-| R11 | Arena-based layout tree accumulates dead cells | Medium | Low | Compact periodically or on preset application |
-| R12 | Proportional resize vs round-robin geometry mismatch | Resolved | High | Use round-robin matching tmux exactly |
-| R13 | CRDT sync over untrusted network | Low (Phase 1 local) | High | Phase 1: Unix sockets only. Phase 2: TLS + mutual auth |
-| R14 | `mux-conf` parser divergence from tmux parsing | Medium | Medium | Corpus of 100+ real tmux.conf files |
-| R15 | 16-bit checksum collision for internal persistence | Low | Low | BLAKE3-128 envelope for persistence; tmux checksum for wire only |
-| R16 | PID reuse in stale lock handling | Resolved | Medium | Use flock instead of PID-based locking |
+| R7 | HLC counter overflow at same millisecond | Very Low | Medium | `checked_add` with forced millis advance |
+| R8 | Control mode output backpressure | Medium | High | Per-client 16 MB limit; drop oldest %output blocks first |
+| R9 | Python GIL contention | Medium | Medium | All ops release GIL via `Python::detach`; document threading model |
+| R10 | `options_scope_from_name` fallthrough logic | High | Medium | Exhaustive test matrix for all (scope, flag, target) combinations |
+| R11 | Arena-based layout tree dead cells | Medium | Low | Compact periodically or on preset application |
+| R12 | Proportional resize mismatch | Resolved | High | Round-robin matching tmux |
+| R13 | CRDT sync over untrusted network | Low (Phase 1) | High | Unix sockets only in Phase 1. Phase 2: TLS + mutual auth |
+| R14 | `mux-conf` parser divergence | Medium | Medium | Corpus of 100+ real tmux.conf files |
+| R15 | 16-bit checksum collision | Low | Low | BLAKE3-128 for persistence; tmux checksum for wire only |
+| R16 | PID reuse in stale lock handling | Resolved | Medium | flock |
 | R17 | Control output backlog unfair scheduling | Low | Low | Per-pane output quotas within per-client limit |
-| R18 | Multiple FDs in one ancillary message | Low | Medium | Close all unexpected extra FDs deterministically |
-| R19 | Array option index unset may diverge | Medium | Medium | Mirror `options_remove_or_default` index handling at `options.c:1282` |
-| R20 | `mux-types` crate does not exist in workspace | Certain | Medium | Create as first action; leaf crate with `thiserror`, `serde`, `smallvec` only |
-| R21 | Criterion benchmarks not wired (harness misconfigured) | Certain | Low | Fix `[[bench]]` section; CI asserts non-empty output |
-| R22 | WASM compilability blocks useful crates | Low | Medium | WASM check is `cargo check`, not build; move crate out of Layer 0 if needed |
-| R23 | Protocol undocumented behaviors | Medium | Medium | All tests use real captures; `tmux-sniff` for new fixtures |
+| R18 | Multiple FDs in one ancillary message | Low | Medium | Close extras deterministically |
+| R19 | Array option index unset divergence | Medium | Medium | Mirror `options_remove_or_default` index handling at `options.c:1282` |
+| R20 | `mux-types` crate not created | Certain | Medium | Create as first action; leaf crate with `thiserror`, `serde`, `smallvec` only |
+| R21 | Criterion benchmarks not wired | Certain | Low | Fix `[[bench]]` section; CI asserts non-empty output |
+| R22 | WASM compilability blocks useful crates | Low | Medium | WASM check is `cargo check` only; move crate out of Layer 0 if needed |
+| R23 | Protocol undocumented behaviors | Medium | Medium | Real captures; `tmux-sniff` for new fixtures |
 | R24 | SCM_RIGHTS platform complexity | Medium | Medium | Isolated in `mux-os`; tested via `tmux-sniff` passthrough |
-| R25 | Binding memory safety (PyO3/Neon/cxx) | Low | High | Thin wrappers over Rust-managed lifetimes; Miri testing |
+| R25 | Binding memory safety | Low | High | Thin wrappers over Rust-managed lifetimes; Miri testing |
 | R26 | Large scrollback performance | Medium | Medium | `Arc<Grid>` with COW; ring buffer scrollback; benchmark early |
 | R27 | Test isolation failures | Low | Medium | Unique temp dirs; env clearing; PathGuard RAII |
+| R28 | PyO3 API breakage (allow_threads -> detach) | Resolved | Medium | Pinned to PyO3 0.26+; use `detach` everywhere |
+| R29 | Neon Channel lifetime safety | Low | Medium | Thin wrapper; deferred.settle_with pattern |
 
 ### 27.2 Reference Verification Table
 
@@ -4927,7 +4793,7 @@ Every major claim was checked against actual source. Status as of this document:
 | `layout_resize_check` computation | Verified | `layout.c:366-415` (leaf/same/perp logic) |
 | `layout_check` validation | Verified | `layout-custom.c:119-153` (border = +1 per child, -1 total) |
 | `PANE_MINIMUM = 1` | Verified | `tmux.h:100` |
-| `options_get` parent chain walk | Verified | `options.c:228-241` |
+| `options_get` parent chain | Verified | `options.c:228-241` |
 | `options_remove_or_default` | Verified | `options.c:1269-1285` |
 | `options_scope_from_name` FALLTHROUGH | Verified | `options.c:891-903` (line 903: `/* FALLTHROUGH */`) |
 | `client_get_lock` uses flock | Verified | `client.c:77-101` |
@@ -4936,18 +4802,28 @@ Every major claim was checked against actual source. Status as of this document:
 | `%extended-output` format | Verified | `control.c:620-623` |
 | Control backpressure/disconnect | Verified | `control.c:450-461` |
 | Socket permissions umask | Verified | `server.c:126-129` |
-| VT100 parser 17 states | Verified | `input.c:370-386` (forward declarations) |
+| VT100 parser 17 states | Verified | `input.c:369-386` |
 | VT100 parser context struct | Verified | `input.c:99-147` |
 | CSI command table | Verified | `input.c:257-344` |
 | Protocol version 8 | Verified | `tmux-protocol.h:23` |
-| vibe-tmux graph_state reverse maps | Verified | `crates/mux-core/src/graph.rs:218-229` |
-| vibe-tmux ControlNotification generic | Verified | `crates/mux-client/src/control.rs:30-36` |
-| SCM_RIGHTS CLOEXEC in vibe-tmux | Verified | `crates/mux-os/src/scm_rights.rs:141-149` |
+| Split minimum PANE_MINIMUM * 2 + 1 | Verified | `layout.c:937-950` |
+| vibe-tmux graph_state reverse maps | Verified | `graph.rs:215-295` |
+| vibe-tmux ControlNotification generic | Verified | `control.rs:28-36` |
+| SCM_RIGHTS CLOEXEC in vibe-tmux | Verified | `scm_rights.rs:141-149` |
+| ratatui Terminal::draw closure | Verified | `lib.rs:192-196` |
+| ratatui Buffer::diff | Verified | `buffer.rs:492` |
+| PyO3 `Bound<'py, T>` smart pointer | Verified | `pyo3/src/instance.rs` |
+| PyO3 `Python::detach` (was `allow_threads`) | Verified | `pyo3/guide/src/migration.md:300-312`, `pyo3/src/marker.rs:558` |
+| Neon `FunctionContext` | Verified | `neon/crates/neon/src/context/mod.rs` |
+| Neon `Channel` for async | Verified | `neon/crates/neon/src/event/channel.rs:92` |
+| OTEL `SdkTracerProvider` | Verified | `opentelemetry-sdk/src/trace/provider.rs:158` |
+| OTEL `SpanExporter` trait | Verified | `opentelemetry-sdk/src/trace/export.rs:17` |
+| OTEL `BatchSpanProcessor` defaults | Verified | `opentelemetry-sdk/src/trace/span_processor.rs:284` (queue 2048, delay 5000ms) |
+| OTEL `SamplingDecision` enum | Verified | `opentelemetry-sdk/src/trace/sampler.rs:24` (Drop/RecordOnly/RecordAndSample) |
 | `mux-types` crate exists | **Missing** | Not in vibe-tmux workspace -- must be created |
 | `LockFile` in vibe-tmux | **Missing** | No implementation yet |
 | `HybridClock` in vibe-tmux | **Missing** | No implementation yet |
-| Criterion harness working | **Missing** | `mux-refresh/Cargo.toml` lacks `[[bench]]` |
-| Split minimum check | Verified | `layout.c:937-950` (`PANE_MINIMUM * 2 + 1`) |
+| Criterion harness working | **Missing** | Needs `[[bench]]` fix |
 
 ---
 
@@ -4955,88 +4831,37 @@ Every major claim was checked against actual source. Status as of this document:
 
 ### What This Document Is
 
-This is the definitive merged architecture specification for TermForge (v6, Final). It was produced through a triple-pass multi-model synthesis:
-- **Pass 1:** Merged v4 (2519 lines) and v5 (1573 lines) into a single 28-section document.
-- **Pass 2:** Cross-pollinated between Claude and GPT outputs; expanded Security (Section 18), OpenTelemetry (Section 19), and Visual Client (Section 25); added Reference Anchors (Section 29) and Canonical Type Appendix (Section 30).
-- **Pass 3 (this version):** Cross-reference audit, type consistency audit, test completeness audit, tmux source citation verification (10+ citations spot-checked against actual files), GPT supplemental test matrix integration (Section 31), removal of all pass markers from headings.
+This is the v7 Pass 2 architecture specification for TermForge. It is the cross-model synthesis of three independent v7 Pass 1 refinements (Claude, GPT, Gemini), each of which independently refined the v6 Final specification.
 
-### v4 -> v5 Changes (applied here)
+### v6 -> v7 Pass 1 Changes (applied by both models)
 
-| Area | v4 State | v5 Change |
+| Area | v6 State | v7 Pass 1 Change |
 |---|---|---|
-| Error Classification | Per-crate errors only | Added `ErrorClass` taxonomy with `Classified` trait |
-| Codec Recovery | Unspecified | `ProtocolViolation` -> kill connection (corrected from "drop frame") |
-| Layout Resize | Unspecified | Round-robin one-cell-at-a-time (corrected from proportional) |
-| Layout Validation | Missing | Added `layout_check()` verified against `layout-custom.c:119-153` |
-| Layout Arena | No compaction | Added `compact()` method |
-| Lock File | Unspecified | `flock(LOCK_EX|LOCK_NB)` (corrected from PID-based) |
-| Option Unset | Unspecified | Remove local override / reset default / `-U` cascade |
-| Option Scope | Simplified | Added `WindowPane` fallthrough matching `options.c:903` |
-| Control Auth | Unspecified | Socket permissions + ACL only; optional rate limiter |
-| Control Parser | Unspecified | Typed enum + migration path from generic struct |
-| Control Notifications | Basic | Added `ExtendedOutput` variant |
-| CRDT Clocks | Vector clocks mentioned | HLC + DVV with compaction; `checked_add` overflow safety |
-| Benchmark Baseline | Claimed targets | No baselines exist; conservative targets; 130% CI gate |
-| Benchmark Wiring | Missing harness | Documented `[[bench]]` fix for `mux-refresh` |
-| Python Async | Unspecified | 3-phase: sync -> asyncio.to_thread -> native streaming |
-| Layout Minimum | Unspecified | Clamp to minimum, never fail; `ResizeResult` |
-| Config Timing | Unspecified | Load only after first client identifies |
-| AGENTS.md | v4 rules | 18 concrete rules + expanded DO/DON'T list |
-| Span Names | Short names | `termforge.` prefix convention |
-| Risks | v4 risks (11) | Expanded to 27 risks with mitigations + resolution status |
-| Reference Verification | Not done | Full existence check table with verified/missing status |
-| Test Strategies | Sparse | Every section has 5-12 concrete test strategies |
-| Source Verification | Assumed | All line references independently verified against source |
+| OTEL SDK types | Generic sampling/export types | Verified against actual SDK: SdkTracerProvider, SpanExporter, BatchSpanProcessor (queue 2048, delay 5000ms), SamplingDecision |
+| PyO3 API | `py.allow_threads()` | Updated to `py.detach()` (PyO3 0.26 rename, verified at migration.md:300-312) |
+| PyO3 types | Generic | Uses `Bound<'py, T>`, `#[pyfunction]`, verified at pyo3/src/instance.rs |
+| Neon API | NAPI-RS references | Updated to Neon with `FunctionContext`, `Channel`, `#[neon::main]` verified at neon source |
+| Pure logic pattern | Not mentioned | New Rule 19: separate `logic.rs` from binding glue |
+| Version Management (S20) | ~35 lines | ~120 lines: concrete CLI, implementation, multi-version matrix |
+| Binding Tests (S22) | ~63 lines | ~150 lines: real PyO3/Neon fixtures, snapshot tests, pure logic tests |
+| AGENTS.md Rules (S26) | ~102 lines, no rationale | ~200 lines: rationale + enforcement per rule, 3 new binding rules |
+| Risk register | 27 risks | 29 risks: added R28 (PyO3 API rename), R29 (Neon Channel safety) |
+| Verification table | tmux + vibe-tmux | Added PyO3, Neon, OTEL SDK verification entries |
 
-### v5 -> v6 Changes (Pass 1)
-
-| Area | v5 State | v6 Change |
-|---|---|---|
-| Document structure | Separate v4 + v5 documents | Merged into single 28-section document |
-| Entity model | v4 only | Merged with v5 error handling and option stores |
-| Error handling | v5 only | Integrated with protocol codec and connection handler |
-| Configuration | v5 only | Merged with entity model option stores |
-| Layout engine | Split between v4 (basic) and v5 (deep) | Unified with all algorithms, presets, compaction |
-| CRDT | v4 (30 lines) + v5 (detailed) | Full types: HLC, DVV, LwwRegister, OrSet, OpLog |
-| Control mode | v5 only | Integrated with security model and rate limiting |
-| Server lifecycle | v5 only | Integrated with lock file and config timing |
-| Security model | v5 only | Integrated with input validation layers |
-| Performance | v5 only | Merged with benchmark suite code |
-| VT100 parser | v4 appendix | Promoted to main test framework section |
-| Format engine | v4 appendix | Promoted to main test framework section |
-| Key bindings | v4 appendix | Promoted to main test framework section |
-| Copy mode | v4 appendix | Promoted to main test framework section |
-| Cross-references | Minimal | Every section cross-references related sections |
-| Risk register | 17 risks | Expanded to 27 risks with all v4 risks included |
-| Reference verification | tmux only | Added vibe-tmux prototype verification |
-
-### v6 Pass 1 -> Pass 2 Changes
+### v7 Pass 1 -> Pass 2 Changes (this document)
 
 | Area | Pass 1 State | Pass 2 Change |
 |---|---|---|
-| Security Model (Section 18) | ~46 lines, input validation table + 7 invariants | Expanded to ~150 lines: socket security code, SCM_RIGHTS lifecycle, resource limits, directory validation, 14 concrete tests |
-| OpenTelemetry (Section 19) | ~73 lines, span names + filter | Expanded to ~150 lines: architecture overview, concrete span attributes, sampling strategy, telemetry init code, CRDT sync propagation, W3C trace context for bindings, 8 concrete tests |
-| Visual Client / TUI (Section 25) | ~32 lines, pipeline overview | Expanded to ~150 lines: architecture diagram, ratatui rendering pipeline with code, ViewModel construction, Grid-to-Buffer mapping, key dispatch, rendering loop timing, 10 concrete tests |
-| Reference Anchors (Section 29) | None | Added with all file paths verified against actual source |
-| Appendix: Types (Section 30) | None | Added canonical type blocks, corrected LayoutTree to use flat-arena (not recursive) |
-
-### v6 Pass 2 -> Pass 3 (Final) Changes
-
-| Area | Pass 2 State | Pass 3 Change |
-|---|---|---|
-| Pass markers | `[Claude]`, `[GPT]`, `[expanded Pass 2]` tags in ToC and headers | All removed; document is clean |
-| Cross-reference audit | Implicit | Verified all forward/backward section references are correct |
-| Type consistency audit | Types defined in sections and appendix | Verified `HlcTimestamp`, `LayoutCell`, `ErrorClass`, `Event`, `Effect` match across all sections and Appendix (Section 30) |
-| Test completeness audit | Most sections had 5-8 tests | Verified every section has concrete tests with specific functions, inputs, assertions, and frameworks |
-| tmux source verification | Citations present | 10+ critical citations spot-checked against actual `~/study/c/tmux/` source files (see Section 27.2) |
-| vibe-tmux prototype verification | Crate references present | Verified 20 existing crates in `~/work/rust/vibe-tmux/crates/`; documented missing crates (`mux-types`, `mux-orm`, `mux-crdt`) |
-| GPT supplemental test matrix | Not present | Incorporated GPT v8 Section 31 as Section 31; concrete tests for sections without dedicated test-strategy headings |
-| Changelog (Section 28) | v4->v5, v5->v6, Pass 1->Pass 2 | Added Pass 2->Pass 3 table; updated document description |
-| Reference Anchors (Section 29) | Partially organized | Added tmux and vibe-tmux subsections matching GPT v8 format |
+| Cross-model divergences | Two independent outputs | All divergences resolved; best-of-breed selected per section |
+| Section 16 (Bindings) | Claude: accurate PyO3 API; GPT: dual-mode fixtures | Merged: Python::detach + Bound<'py,T> + dual-mode fixtures |
+| Section 19 (OTEL) | Claude: more SDK detail; GPT: better W3C context | Merged: SDK types + W3C traceparent propagation |
+| Section 20 (Version Mgmt) | GPT: more detailed; Claude: better tooling refs | Merged: GPT's CLI/NDJSON structure + Claude's tool refs |
+| Section 22 (Binding Tests) | GPT: parametrized dual-mode; Claude: accurate Rust fixtures | Merged: parametrized fixtures + correct Python::detach code |
+| Section 25 (TUI) | GPT: verified ratatui line numbers + TestBackend; Claude: correct diagrams | Merged: both |
+| Section 26 (AGENTS.md) | Claude: compact rules + enforcement; GPT: violation examples | Merged: compact format with violation examples |
+| All citations | Both claimed verification | All 25+ tmux citations re-verified against actual source |
 
 ### Completeness Checklist
-
-All 31 sections covered (28 original + 3 supplemental):
 
 - [x] Preamble
 - [x] 1. Vision and Philosophy
@@ -5074,44 +4899,15 @@ All 31 sections covered (28 original + 3 supplemental):
 ---
 
 ## 29. Reference Anchors
-These are verified file paths in reference codebases that ground the architectural decisions in this document. All paths verified against actual source during Pass 2 and re-verified during Pass 3.
 
-### libtmux (ORM/query expectations)
-
-ORM query patterns are grounded in `QueryList` and `.filter()` usage:
-
-- `/home/d/work/python/libtmux/src/libtmux/server.py:18` -- Server class, sessions property, cmd method
-- `/home/d/work/python/libtmux/src/libtmux/session.py:15` -- Session class, windows property, window traversal
-- `/home/d/work/python/libtmux/src/libtmux/window.py:16` -- Window class, panes property
-- `/home/d/work/python/libtmux/src/libtmux/window.py:184` -- Window.split method (split_window wrapper)
-
-### ratatui (rendering pipeline)
-
-Immediate-mode draw + diff buffering assumptions:
-
-- `/home/d/study/rust/ratatui/ratatui/src/lib.rs:192` -- Terminal::draw closure pattern documentation
-- `/home/d/study/rust/ratatui/ratatui/src/lib.rs:195` -- Frame-based rendering example
-- `/home/d/study/rust/ratatui/ratatui-core/src/buffer/buffer.rs:68` -- Buffer struct (area: Rect, content: Vec<Cell>)
-- `/home/d/study/rust/ratatui/ratatui-core/src/buffer/buffer.rs:492` -- Buffer::diff method for efficient rendering
-
-### zellij (server/client IO and PTY orchestration)
-
-Split server/client architecture references:
-
-- `/home/d/study/rust/zellij/zellij-server/src/os_input_output.rs:468` -- PTY read loop
-- `/home/d/study/rust/zellij/zellij-server/src/os_input_output.rs:507` -- PTY write handling
-- `/home/d/study/rust/zellij/zellij-server/src/os_input_output.rs:919` -- PTY resize handling
-
-### tmux C source (behavioral reference)
-
-All tmux source references in this document are relative to `/home/d/study/c/tmux/`:
+### tmux C source (`~/study/c/tmux/`)
 
 - `tmux-protocol.h:23` -- PROTOCOL_VERSION 8
-- `tmux-protocol.h:29-41` -- Identify burst types (MSG_IDENTIFY_FLAGS=100 through MSG_IDENTIFY_TERMINFO=112)
+- `tmux-protocol.h:29-41` -- Identify burst types (100-112)
 - `tmux.h:100` -- PANE_MINIMUM = 1
 - `server.c:126-129` -- Socket permissions umask
 - `server-client.c:3472-3475` -- goto bad -> proc_kill_peer
-- `server-client.c:3597-3600` -- Reject post-identify messages
+- `server-client.c:3590-3600` -- Reject post-identify (CLIENT_IDENTIFIED check)
 - `server-client.c:3725-3734` -- Config load after first client
 - `client.c:77-101` -- flock-based lock file
 - `options.c:228-241` -- Option parent chain walk
@@ -5120,241 +4916,66 @@ All tmux source references in this document are relative to `/home/d/study/c/tmu
 - `control.c:450-461` -- Control backpressure/disconnect
 - `control.c:620-623` -- %extended-output format
 - `control.c:758-796` -- control_start (no auth)
-- `control-notify.c` -- All notification format strings (38, 51-74, 88, 105-107, 123-125, 141, 165-169, 181, 194, 207, 220, 233, 247, 260)
 - `layout-custom.c:46-57` -- Layout checksum algorithm
 - `layout-custom.c:119-153` -- Layout validation (layout_check)
 - `layout.c:366-415` -- layout_resize_check
-- `layout.c:421-463` -- layout_resize_adjust (round-robin)
-- `layout.c:937-950` -- Split minimum check (PANE_MINIMUM * 2 + 1)
+- `layout.c:448-462` -- layout_resize_adjust (round-robin)
+- `layout.c:937-950` -- Split minimum (PANE_MINIMUM * 2 + 1)
 - `input.c:99-147` -- Parser context struct
-- `input.c:257-344` -- CSI command table (40 enums, 42 table entries)
-- `input.c:370-386` -- 17 parser state forward declarations
+- `input.c:257-344` -- CSI command table
+- `input.c:369-386` -- 17 parser state forward declarations
 
-### vibe-tmux prototype (existing code reference)
+### vibe-tmux prototype (`~/work/rust/vibe-tmux/crates/`)
 
-Existing crates in `~/work/rust/vibe-tmux/crates/` (verified Pass 3):
-`mux-api`, `mux-backend`, `mux-client`, `mux-command`, `mux-conf`, `mux-core`, `mux-cxx`, `mux-os`, `mux-otel`, `mux-proto`, `mux-pty`, `mux-pty-diagnostics`, `mux-pty-fake`, `mux-pty-portable`, `mux-query`, `mux-refresh`, `mux-server`, `mux-telemetry`, `mux-test-support`, `mux-view`.
+- `mux-core/src/graph.rs:215-295` -- graph_state reverse maps
+- `mux-client/src/control.rs:28-36` -- ControlNotification (generic struct)
+- `mux-os/src/scm_rights.rs:141-149` -- CLOEXEC via set_cloexec()
+- `mux-otel/src/otel.rs:283-321` -- OTEL init and subscriber wiring
+- `mux-otel/src/config.rs:52-103` -- OTEL allow/deny config
 
-**Not yet created:** `mux-types` (leaf crate), `mux-orm` (ORM layer), `mux-crdt` (CRDT layer), `mux-grid` (terminal grid), `mux-control` (control mode parser).
+### ratatui (`~/study/rust/ratatui/`)
 
-Key source anchors:
-- `crates/mux-core/src/graph.rs:218-229` -- graph_state reverse maps
-- `crates/mux-client/src/control.rs:30-36` -- ControlNotification (generic struct, to be migrated)
-- `crates/mux-client/src/control.rs:249-261` -- Notification parsing path
-- `crates/mux-os/src/scm_rights.rs:141-149` -- CLOEXEC via set_cloexec()
-- `crates/mux-otel/src/otel.rs:283-321` -- OTEL init and subscriber wiring
-- `crates/mux-otel/src/lib.rs:100-112` -- OTEL export filter gate
-- `crates/mux-otel/src/config.rs:52-103` -- OTEL allow/deny config model
-- `crates/mux-otel/src/otel.rs:627-689` -- OTEL context merge behavior
+- `ratatui/src/lib.rs:192-196` -- Terminal::draw closure pattern
+- `ratatui-core/src/buffer/buffer.rs:492` -- Buffer::diff
+- `ratatui-core/src/widgets/widget.rs:70-75` -- Widget::render trait signature
+
+### libtmux (`~/work/python/libtmux/`)
+
+- `src/libtmux/server.py:18` -- Server class
+- `src/libtmux/session.py:15` -- Session class
+- `src/libtmux/window.py:16` -- Window class
+
+### PyO3 (`~/study/rust-python/pyo3/`)
+
+- `src/instance.rs` -- `Bound<'py, T>` smart pointer
+- `src/marker.rs:558` -- `Python::detach` (formerly `allow_threads`)
+- `guide/src/migration.md:300-312` -- PyO3 0.26 renames
+
+### Neon (`~/study/rust-node/neon/crates/neon/src/`)
+
+- `lib.rs:42-52` -- `#[neon::main]` attribute macro
+- `context/mod.rs` -- `Context` trait, `ModuleContext`, `cx.argument()`
+- `event/channel.rs:92` -- `Channel` for async scheduling
+
+### OTEL Rust SDK (`~/study/otel/opentelemetry-rust/`)
+
+- `opentelemetry/src/trace/tracer.rs` -- `Tracer` trait
+- `opentelemetry/src/trace/span.rs` -- `Span` trait
+- `opentelemetry-sdk/src/trace/provider.rs:158` -- `SdkTracerProvider`
+- `opentelemetry-sdk/src/trace/span.rs` -- SDK `Span`, `SpanData`
+- `opentelemetry-sdk/src/trace/export.rs:17` -- `SpanExporter` trait
+- `opentelemetry-sdk/src/trace/span_processor.rs:284` -- `BatchSpanProcessor` (queue 2048, delay 5000ms)
+- `opentelemetry-sdk/src/trace/sampler.rs:24` -- `SamplingDecision` (Drop, RecordOnly, RecordAndSample)
+
+### Learning projects
+
+- `~/study/rust/learning-rust-nodejs/native/src/logic.rs` -- Pure logic separation pattern
 
 ---
 
 ## 30. Appendix: Canonical Type Quick Reference
-These are the canonical Rust types that must be implemented. All types must compile. The `LayoutTree` uses the flat-arena approach mandated by Section 11 (Vec with index-based parent/children references, not recursive nesting).
 
-### ErrorClass, Classified, DecodeOutcome
-
-```rust
-#![forbid(unsafe_code)]
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ErrorClass {
-    Transient,
-    ProtocolViolation,
-    UserError,
-    Bug,
-}
-
-pub trait Classified {
-    fn class(&self) -> ErrorClass;
-    fn is_fatal(&self) -> bool {
-        matches!(self.class(), ErrorClass::ProtocolViolation | ErrorClass::Bug)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DecodeOutcome {
-    NeedMore,
-    Frame(ImsgFrame),
-    ProtocolViolation(ProtocolError),
-}
-```
-
-### LayoutTree, LayoutCell (Flat Arena)
-
-Uses a flat Vec arena with index-based parent/children references, matching the settled decision in Section 11. Not a recursive tree.
-
-```rust
-pub const PANE_MINIMUM: u16 = 1; // Reference: tmux.h:100
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LayoutType {
-    WindowPane,
-    LeftRight,
-    TopBottom,
-}
-
-#[derive(Debug, Clone)]
-pub struct LayoutCell {
-    pub cell_type: LayoutType,
-    pub sx: u16,
-    pub sy: u16,
-    pub xoff: u16,
-    pub yoff: u16,
-    pub parent: Option<usize>,      // index into LayoutTree.cells
-    pub children: Vec<usize>,       // indices into LayoutTree.cells
-    pub pane_id: Option<PaneId>,    // only for WindowPane cells
-}
-
-#[derive(Debug, Clone)]
-pub struct LayoutTree {
-    pub cells: Vec<LayoutCell>,     // flat arena, index 0 is root
-}
-```
-
-### OptionStore
-
-```rust
-use std::collections::BTreeMap;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum OptionScope { Server, Session, Window, Pane }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OptionValue {
-    String(String),
-    Number(i64),
-    Flag(bool),
-    Style(String),
-    Array(Vec<String>),
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct OptionStore {
-    local: BTreeMap<String, OptionValue>,
-}
-```
-
-### HlcTimestamp
-
-```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash,
-         serde::Serialize, serde::Deserialize)]
-pub struct NodeId(pub u64);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash,
-         serde::Serialize, serde::Deserialize)]
-pub struct HlcTimestamp {
-    pub millis: u64,
-    pub counter: u32,
-    pub node_id: NodeId,
-}
-```
-
-### LockFile
-
-```rust
-use std::path::PathBuf;
-
-#[derive(Debug)]
-pub struct LockFile {
-    _file: std::fs::File,  // held open to keep flock
-    path: PathBuf,
-}
-```
-
-### ControlNotification (typed target model)
-
-```rust
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ControlNotification {
-    SessionsChanged,
-    SessionChanged { session_id: u32, name: String },
-    SessionRenamed { session_id: u32, name: String },
-    SessionWindowChanged { session_id: u32, window_id: u32 },
-    WindowAdd { window_id: u32 },
-    WindowClose { window_id: u32 },
-    WindowRenamed { window_id: u32, name: String },
-    WindowPaneChanged { window_id: u32, pane_id: u32 },
-    Output { pane_id: u32, data: Vec<u8> },
-    ExtendedOutput { pane_id: u32, age: u64, data: Vec<u8> },
-    LayoutChange { window_id: u32, layout: String },
-    PaneModeChanged { pane_id: u32 },
-    ClientSessionChanged { client: String, session_id: u32 },
-    ClientDetached { client: String },
-    Pause { pane_id: u32 },
-    Continue { pane_id: u32 },
-    Exit { reason: Option<String> },
-}
-```
-
-### ServerGraph core entity types
-
-```rust
-use slotmap::{SlotMap, new_key_type};
-
-new_key_type! {
-    pub struct SessionId;
-    pub struct WindowId;
-    pub struct PaneId;
-    pub struct ClientId;
-    pub struct JobId;
-    pub struct BufferId;
-}
-
-#[derive(Debug, Clone)]
-pub struct Session {
-    pub name: String,
-    pub cwd: String,
-    pub windows: Vec<WindowId>,
-    pub active_window: Option<WindowId>,
-    pub last_window: Option<WindowId>,
-    pub created_at: i64,
-    pub last_attached_at: i64,
-    pub destroying: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct Window {
-    pub name: String,
-    pub panes: Vec<PaneId>,
-    pub active_pane: Option<PaneId>,
-    pub last_active_pane: Option<PaneId>,
-    pub layout_root: LayoutTree,
-}
-
-#[derive(Debug, Clone)]
-pub struct Pane {
-    pub size: PaneSize,
-    pub bounds: Option<Rect>,
-    pub exited: bool,
-    pub exit_status: Option<i32>,
-    pub title: String,
-    pub grid: Arc<Grid>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Client {
-    pub name: String,
-    pub session: Option<SessionId>,
-    pub last_session: Option<SessionId>,
-    pub tty_name: String,
-    pub term_type: String,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct ServerGraph {
-    pub sessions: SlotMap<SessionId, Session>,
-    pub windows: SlotMap<WindowId, Window>,
-    pub panes: SlotMap<PaneId, Pane>,
-    pub clients: SlotMap<ClientId, Client>,
-    pub jobs: SlotMap<JobId, Job>,
-    pub buffers: SlotMap<BufferId, Buffer>,
-    pub key_tables: KeyTableSet,
-}
-```
-
-### Event, Effect, QueryOp
+### Event (Section 7)
 
 ```rust
 #[derive(Debug, Clone)]
@@ -5366,18 +4987,20 @@ pub enum Event {
     DestroyWindow { window_id: WindowId },
     CreatePane { window_id: WindowId, size: PaneSize, command: Vec<String>, cwd: Option<String> },
     DestroyPane { pane_id: PaneId },
-    SplitWindow { window_id: WindowId, direction: SplitDirection, size: PaneSize,
-                  command: Vec<String>, cwd: Option<String> },
-    ResizePane { pane_id: PaneId, size: PaneSize },
-    Key { client_id: ClientId, key: KeyCode },
     PaneOutput { pane_id: PaneId, data: Vec<u8> },
     PaneExited { pane_id: PaneId, exit_status: i32 },
+    Key { client_id: ClientId, key: KeyCode },
     Command { name: String, args: Vec<String>, client_id: Option<ClientId> },
     SetOption { scope: OptionScope, key: String, value: OptionValue },
+    CopyModeAction { pane_id: PaneId, action: CopyModeAction },
     Tick { now_millis: i64 },
-    EffectFailed { token: EffectToken, reason: String },
+    // ... additional variants
 }
+```
 
+### Effect (Section 7)
+
+```rust
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Effect {
@@ -5386,19 +5009,89 @@ pub enum Effect {
     WritePane { pane_id: PaneId, data: Vec<u8> },
     ResizePty { pane_id: PaneId, size: PaneSize },
     Redraw { scope: RedrawScope },
-    NotifyClient { client_id: ClientId, message: String },
     SendToClient { client_id: ClientId, frame: FrameData },
     DisconnectClient { client_id: ClientId },
-    ErrorReply { client_id: ClientId, message: String },
     Shutdown,
     PublishSnapshot,
+    // ... additional variants
 }
+```
 
+### ErrorClass (Section 8)
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ErrorClass {
+    Transient,
+    ProtocolViolation,
+    UserError,
+    Bug,
+}
+```
+
+### HlcTimestamp (Section 17)
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HlcTimestamp {
+    pub millis: u64,
+    pub counter: u32,
+    pub node_id: u64,
+}
+```
+
+### LayoutCell (Section 11)
+
+```rust
+#[derive(Debug, Clone)]
+pub struct LayoutCell {
+    pub cell_type: LayoutType,
+    pub sx: u16, pub sy: u16,
+    pub xoff: u16, pub yoff: u16,
+    pub parent: Option<usize>,
+    pub children: Vec<usize>,
+    pub pane_id: Option<PaneId>,
+}
+```
+
+### ControlNotification (Section 15)
+
+```rust
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum QueryOp {
-    Exact, Contains, IContains, StartsWith, IStartsWith,
-    EndsWith, IEndsWith, Regex, In, Gt, Gte, Lt, Lte,
-    IsNone, IsSome,
+pub enum ControlNotification {
+    SessionsChanged,
+    SessionChanged { session_id: u32, name: String },
+    WindowAdd { window_id: u32 },
+    Output { pane_id: u32, data: Vec<u8> },
+    ExtendedOutput { pane_id: u32, age: u64, data: Vec<u8> },
+    LayoutChange { window_id: u32, layout: String },
+    Exit { reason: Option<String> },
+    // ... additional variants
+}
+```
+
+### ImsgHdr (Section 9)
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImsgHdr {
+    pub msg_type: u32,
+    pub len: u32,
+    pub peerid: u32,
+    pub pid: u32,
+    pub has_fd: bool,
+}
+```
+
+### ParserState (Section 23)
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParserState {
+    Ground, EscEnter, EscIntermediate,
+    CsiEnter, CsiParameter, CsiIntermediate, CsiIgnore,
+    DcsEnter, DcsParameter, DcsIntermediate, DcsHandler, DcsEscape, DcsIgnore,
+    OscString, ApcString, RenameString, ConsumeSt,
 }
 ```
 
@@ -5406,158 +5099,213 @@ pub enum QueryOp {
 
 ## 31. Supplemental Test Matrix
 
-This section provides concrete test definitions for sections that lack dedicated test-strategy headings. Each test specifies: name, function/target under test, concrete input or setup, expected assertion, and framework.
+This section provides concrete test cases for sections that lack dedicated test-strategy subsections.
 
-### 31.1 Vision and Philosophy (Section 1)
+### 31.1 Workspace Layout Tests
 
-| Test Name | Target | Setup / Input | Expected | Framework |
-|---|---|---|---|---|
-| `mission_clause_presence` | Spec preamble text | Parse document preamble | Both "compatibility" and "Rust-native" statements present | `trycmd` |
-| `non_port_claim_guard` | Document text | Grep for forbidden phrase "tmux port" | Zero matches | `insta` |
-| `scope_statement` | Architecture paragraph | Parse architecture section | Adapter boundary explicitly stated | unit |
-| `protocol_target` | Version line | Read protocol target | `PROTOCOL_VERSION 8` | unit |
-| `preamble_consistency` | Settled decisions table | Cross-check all 10 settled decisions | No contradictions with body sections | script |
+1. **WASM compilation:** `cargo check --target wasm32-unknown-unknown -p mux-core -p mux-grid -p mux-proto`.
+2. **Dependency direction:** `cargo deny check` fails if binding crate imports mux-server.
+3. **No unsafe in Layer 0:** CI grep confirms zero `unsafe` outside `mux-os`.
 
-### 31.2 North Star Acceptance Criteria (Section 2)
+### 31.2 Entity Model Property Tests
 
-| Test Name | Target | Setup / Input | Expected | Framework |
-|---|---|---|---|---|
-| `C1_attach_real_tmux` | Client attach | Start tmux server, attach TermForge client | Exit code 0, session visible | `tokio::test` |
-| `C4_identify_burst` | Identify messages 100-112 | Replay fixture capture | Roundtrip byte-exact | `insta` |
-| `C6_command_audit` | Command coverage | Scan implemented vs tmux `cmd_table` | Uncovered count within budget | audit harness |
-| `P1_latency_gate` | `new-window` benchmark | Bench new-window creation | p95 under target | `criterion` |
-| `P6_replay_parity` | FakePty scenario | Replay recorded scenario | Grid state matches tmux output | integration |
+```rust
+proptest! {
+    #[test]
+    fn entity_roundtrip(
+        n_sessions in 1..20usize,
+        n_windows in 1..10usize,
+    ) {
+        let mut graph = ServerGraph::new();
+        let sessions: Vec<_> = (0..n_sessions)
+            .map(|i| graph.create_session(format!("s{i}")))
+            .collect();
+        for &sid in &sessions {
+            for j in 0..n_windows {
+                let wid = graph.create_window(format!("w{j}"));
+                graph.add_window_to_session(sid, wid);
+            }
+        }
+        let state = graph.graph_state();
+        prop_assert_eq!(state.sessions.len(), n_sessions);
+    }
+}
+```
 
-### 31.3 High-Level Architecture (Section 3)
+### 31.3 Protocol Encoding Property Tests
 
-| Test Name | Target | Setup / Input | Expected | Framework |
-|---|---|---|---|---|
-| `layer_import_guard` | Layer 0 purity | Attempt `mux-core` -> `mux-os` import | Compile failure | `trybuild` |
-| `api_boundary` | Facade enforcement | Call core bypassing `mux-api` | State unchanged on forbidden path | unit |
-| `actor_serialization` | State actor ordering | Concurrent command flood (100 events) | Deterministic output order | `tokio::test` |
-| `snapshot_copy` | Snapshot immutability | Mutate live graph after taking snapshot | Snapshot unchanged | unit |
-| `adapter_mapping` | Frame-to-event mapping | Decode identify frame | Expected `Event` variant produced | `rstest` |
+```rust
+proptest! {
+    #[test]
+    fn imsg_roundtrip(
+        msg_type in 0u32..400,
+        payload_len in 0usize..1000,
+    ) {
+        let payload = vec![0u8; payload_len];
+        let frame = ImsgFrame::new(msg_type, &payload, false);
+        let mut buf = BytesMut::new();
+        frame.encode(&mut buf);
+        let mut codec = ImsgCodec::new();
+        let decoded = codec.decode(&mut buf).unwrap().unwrap();
+        prop_assert_eq!(decoded.header.msg_type, msg_type);
+        prop_assert_eq!(decoded.payload.len(), payload_len);
+    }
+}
+```
 
-### 31.4 Workspace Layout (Section 4)
+### 31.4 Layout Resize Property Tests
 
-| Test Name | Target | Setup / Input | Expected | Framework |
-|---|---|---|---|---|
-| `workspace_membership` | `Cargo.toml` members | Parse workspace members list | All required crates present | unit |
-| `mux_types_leaf` | `mux-types` dependency graph | Inspect `mux-types` deps via `cargo metadata` | No inward workspace deps | `cargo metadata` |
-| `tool_crate_roles` | Tool crate targets | Check bin/lib targets for tool crates | Tool crates expose bins only | unit |
-| `tests_layout` | Fixture directories | Verify `fixtures/` subdirs | Paths exist and are readable | `assert_fs` |
-| `docs_layout` | Documentation paths | Link-check doc file paths | No missing files | script |
+```rust
+proptest! {
+    #[test]
+    fn resize_always_valid(
+        n_panes in 2..20usize,
+        new_w in 3..300u16,
+        new_h in 3..100u16,
+    ) {
+        let panes: Vec<PaneId> = (0..n_panes).map(|_| PaneId::default()).collect();
+        let mut tree = LayoutPreset::Tiled.arrange(&panes, 100, 40, None);
+        tree.resize(new_w, new_h);
+        prop_assert!(layout_check(&tree));
+    }
+}
+```
 
-### 31.5 Layering Contract (Section 5)
+### 31.5 Option Scope Resolution Matrix Test
 
-| Test Name | Target | Setup / Input | Expected | Framework |
-|---|---|---|---|---|
-| `pure_crate_no_io` | `mux-core` purity | Scan for `std::net`/`std::fs` usage | None found | `clippy` lint |
-| `boundary_error_mapping` | IO error conversion | Inject `io::Error` at runtime edge | Mapped to domain error type | unit |
-| `protocol_adapter_only` | `MsgType` isolation | Search `MsgType` usage in `mux-core` | None found | `rg` test |
-| `ffi_boundary` | FFI validation | Pass invalid FFI argument | `UserError` surfaced to binding | binding integration |
-| `layer_cycle_check` | Crate dependency graph | `cargo metadata` dependency analysis | Acyclic layering confirmed | script |
+```rust
+#[test]
+fn scope_resolution_exhaustive() {
+    let cases = vec![
+        // (option_scope, flags, expected_scope, expected_target)
+        (TableScope::Server, SetOptionFlags::default(), OptionScope::Server, TargetKind::Server),
+        (TableScope::Session, SetOptionFlags { global: true, ..Default::default() }, OptionScope::Session, TargetKind::Server),
+        (TableScope::WindowPane, SetOptionFlags { pane: true, ..Default::default() }, OptionScope::Pane, TargetKind::Pane),
+        (TableScope::WindowPane, SetOptionFlags { global: true, ..Default::default() }, OptionScope::Window, TargetKind::Server),
+        (TableScope::WindowPane, SetOptionFlags::default(), OptionScope::Window, TargetKind::Window),
+        // ... all 12+ combinations
+    ];
+    for (table_scope, flags, expected_scope, expected_target) in cases {
+        let (scope, target) = resolve_option_scope_test(table_scope, &flags);
+        assert_eq!(scope, expected_scope, "scope mismatch for {table_scope:?}/{flags:?}");
+        assert_eq!(target.kind(), expected_target, "target mismatch for {table_scope:?}/{flags:?}");
+    }
+}
+```
 
-### 31.6 Performance Targets (Section 24)
+### 31.6 CRDT Convergence Property Tests
 
-| Test Name | Target | Setup / Input | Expected | Framework |
-|---|---|---|---|---|
-| `bench_harness_present` | `mux-refresh/Cargo.toml` | Parse `Cargo.toml` | `[[bench]]` with `harness = false` exists | unit |
-| `latency_budget` | `split-window` benchmark | Run split-window operation | Within threshold | `criterion` |
-| `memory_regression` | Long output workload | Stream 100 MB through pane | RSS slope bounded | perf harness |
-| `ci_130pct_gate` | Baseline comparison | Compare baseline vs current medians | Fail only when > 130% | script |
-| `empty_output_guard` | Criterion output | Simulate missing criterion output file | CI step fails with clear error | `trycmd` |
+```rust
+proptest! {
+    #[test]
+    fn lww_converges(
+        a_val in any::<u64>(),
+        b_val in any::<u64>(),
+        a_time in 1..1000u64,
+        b_time in 1..1000u64,
+    ) {
+        let mut ra = LwwRegister::new(a_val, HlcTimestamp { millis: a_time, counter: 0, node_id: 1 });
+        let mut rb = LwwRegister::new(b_val, HlcTimestamp { millis: b_time, counter: 0, node_id: 2 });
 
-### 31.7 AGENTS.md Rules (Section 26)
+        // Merge in both directions
+        let mut ra2 = ra.clone();
+        ra2.merge(&rb);
+        let mut rb2 = rb.clone();
+        rb2.merge(&ra);
 
-| Test Name | Target | Setup / Input | Expected | Framework |
-|---|---|---|---|---|
-| `rule3_protocol_kill` | Rule 3 enforcement | Inject malformed frame | Client disconnected | integration |
-| `rule4_pure_boundary` | Rule 4 enforcement | Attempt `io::Error` leak to core | Compile or test failure | `trybuild` |
-| `rule8_layout_checksum` | Rule 8 enforcement | Layout roundtrip parity vector | Checksum matches tmux exactly | `rstest` |
-| `rule16_no_proportional` | Rule 16 enforcement | Force resize on uneven 3-pane split | Round-robin geometry (not proportional) | unit |
-| `rule18_config_timing` | Rule 18 enforcement | Trace startup order | Config loaded after identify | integration |
+        // Must converge
+        prop_assert_eq!(ra2.value, rb2.value);
+    }
+}
+```
 
-### 31.8 Risks and Mitigations (Section 27)
+### 31.7 Control Mode Parser Parity Tests
 
-| Test Name | Target | Setup / Input | Expected | Framework |
-|---|---|---|---|---|
-| `risk_id_uniqueness` | Risk table IDs | Parse risk table | All IDs unique (R1-R27) | unit |
-| `high_risk_has_mitigation` | High-severity rows | Filter rows where Impact=High | All have non-empty Mitigation | script |
-| `resolved_risks_regressions` | Resolved risks | Run tagged regression test set | All pass | CI job |
-| `reference_table_validity` | Cited file:line references | Validate each cited path:line exists | All valid | checker |
-| `status_field_presence` | Table columns | Parse table structure | Impact and Likelihood columns present | lint |
+```rust
+#[test]
+fn control_notification_parity() {
+    let test_lines = vec![
+        ("%sessions-changed", ControlNotification::SessionsChanged),
+        ("%session-changed $0 work", ControlNotification::SessionChanged {
+            session_id: 0, name: "work".into()
+        }),
+        ("%window-add @5", ControlNotification::WindowAdd { window_id: 5 }),
+        ("%output %3 hello world", ControlNotification::Output {
+            pane_id: 3, data: b"hello world".to_vec()
+        }),
+        ("%exit server exited", ControlNotification::Exit {
+            reason: Some("server exited".into())
+        }),
+    ];
 
-### 31.9 Summary and Changelog (Section 28)
+    for (line, expected) in test_lines {
+        let parsed = parse_notification(line).unwrap();
+        assert_eq!(parsed, expected, "mismatch for line: {line}");
+    }
+}
+```
 
-| Test Name | Target | Setup / Input | Expected | Framework |
-|---|---|---|---|---|
-| `v4_v5_v6_delta_presence` | Changelog headings | Parse changelog section | All three phase tables present | unit |
-| `mandatory_corrections_listed` | Six v5 corrections | Search for correction keywords | All six found (protocol kill, flock, round-robin, config timing, mux-types, control typed) | script |
-| `checklist_completeness` | Section checklist | Count numbered sections | Sections 1-31 all present and checked | unit |
-| `summary_vs_sections_consistency` | Cross-comparison | Compare correction claims against section content | No contradictions | lint |
-| `render_markdown` | Document validity | Convert to HTML | No parse errors | markdown parser |
+### 31.8 Security Boundary Tests
 
-### 31.10 Reference Anchors (Section 29)
+```rust
+#[test]
+fn post_identify_message_kills_connection() {
+    let mut server = TmuxTestServer::new();
+    let mut client = connect_to(&server);
 
-| Test Name | Target | Setup / Input | Expected | Framework |
-|---|---|---|---|---|
-| `tmux_anchor_exists` | tmux source anchors | Open each cited `path:line` | All files exist, lines in range | checker |
-| `vibe_anchor_exists` | vibe-tmux anchors | Open each cited `path:line` | All files exist, lines in range | checker |
-| `libtmux_anchor_exists` | libtmux anchors | Open each cited `path:line` | All files exist, lines in range | checker |
-| `ratatui_anchor_exists` | ratatui anchors | Open each cited `path:line` | All files exist, lines in range | checker |
-| `anchor_regression_guard` | CI anchor check | Re-run checker on doc changes | Pass on every PR | CI |
+    // Complete identify burst
+    client.send_identify_burst();
+    assert!(client.is_connected());
 
-### 31.11 Appendix: Canonical Types (Section 30)
+    // Send another identify message (should be rejected)
+    client.send_raw_frame(MsgType::IdentifyFlags, &[0u8; 4]);
 
-| Test Name | Target | Setup / Input | Expected | Framework |
-|---|---|---|---|---|
-| `error_types_compile` | ErrorClass + Classified blocks | Extract and compile Rust block | Compilation succeeds | `trybuild` |
-| `flat_arena_layout_no_recursion` | LayoutTree block | AST-parse LayoutCell definition | No recursive `Vec<LayoutCell>` field | `syn` test |
-| `option_store_block_compile` | OptionStore block | Compile with stub ID types | Compilation succeeds | `trybuild` |
-| `crdt_types_ordering` | HlcTimestamp derives | Check `Ord` derivation | Compiles and compares correctly | unit |
-| `event_effect_queryop_block` | Event/Effect/QueryOp enums | Compile with `#[non_exhaustive]` attrs | Compilation succeeds | `trybuild` |
+    // Connection should be killed
+    assert!(!client.is_connected());
+}
+
+#[test]
+fn malformed_frame_kills_connection() {
+    let mut server = TmuxTestServer::new();
+    let mut client = connect_to(&server);
+    client.send_identify_burst();
+
+    // Send frame with len < 16 (impossible for valid imsg)
+    client.send_raw_bytes(&[200, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+    assert!(!client.is_connected());
+}
+```
+
+### 31.9 Binding Memory Safety Tests
+
+```python
+def test_no_memory_leak(server):
+    """Verify no memory leak over 1000 create/destroy cycles."""
+    import tracemalloc
+    tracemalloc.start()
+    baseline = tracemalloc.get_traced_memory()[0]
+
+    for i in range(1000):
+        server.cmd(f"new-session -d -s leak-{i}")
+        server.cmd(f"kill-session -t leak-{i}")
+
+    current = tracemalloc.get_traced_memory()[0]
+    tracemalloc.stop()
+
+    # Allow 10% growth for internal caches
+    assert current < baseline * 1.1, f"Memory grew from {baseline} to {current}"
+```
+
+### 31.10 Full CI Pipeline Summary
+
+| Stage | Trigger | Tests |
+|---|---|---|
+| PR (fast) | Every PR | Unit tests, WASM check, clippy, fmt |
+| PR (integration) | Every PR | mux-regress with tmux 3.4 + 3.6a |
+| Nightly | Daily | Full version matrix, fuzz (1h), benchmarks |
+| Release candidate | Manual | Full matrix + upstream regress + binding tests |
 
 ---
 
-## 32. tmux Citation Verification Table (Full Pass)
-
-This table covers every `file:line` / `file:line-line` tmux citation present in this v7 document.
-
-| Citation | Status | Verification Note |
-|---|---|---|
-| `client.c:77-101` | Verified | lock-file path uses `flock`-based locking flow |
-| `client.c:78-101` | Verified | overlapping citation of same lock path; line range valid |
-| `client.c:450-495` | Verified | client lock/command path range exists and matches described behavior |
-| `control.c:450-461` | Verified | control backpressure/disconnect path |
-| `control.c:620-623` | Verified | `%extended-output` format emission |
-| `control.c:758-796` | Verified | control mode start path, no separate auth handshake |
-| `input.c:99-147` | Verified | parser context struct (`input_ctx`) |
-| `input.c:257-344` | Verified | CSI enum + table block present; 40 enum variants and 42 table entries |
-| `input.c:370-386` | Updated | updated from older `370-383`; full 17 state forward declarations include line 386 |
-| `layout-custom.c:46-57` | Verified | layout checksum algorithm |
-| `layout-custom.c:69` | Verified | checksum helper/reference point used by parser/dump flow |
-| `layout-custom.c:119-153` | Verified | layout validation (`layout_check`) |
-| `layout.c:366-415` | Verified | `layout_resize_check` logic |
-| `layout.c:421-463` | Verified | `layout_resize_adjust` block |
-| `layout.c:448-462` | Verified | round-robin one-cell redistribution loop |
-| `layout.c:465-513` | Verified | resize child traversal and adjustments |
-| `layout.c:534-583` | Verified | resize propagation/helper block |
-| `layout.c:937-944` | Verified | split-size minimum check subrange |
-| `layout.c:937-950` | Verified | split minimum guard with `PANE_MINIMUM * 2 + 1` |
-| `options.c:228-241` | Verified | parent-chain option lookup |
-| `options.c:850-919` | Verified | scope resolution function block |
-| `options.c:891-903` | Verified | `WindowPane -> Window` FALLTHROUGH section |
-| `options.c:903` | Verified | exact FALLTHROUGH marker line |
-| `options.c:1269-1285` | Verified | `options_remove_or_default` behavior |
-| `options.c:1282` | Verified | indexed remove/reset edge case anchor |
-| `server-client.c:3472-3475` | Verified | malformed protocol path jumps to peer kill |
-| `server-client.c:3597-3600` | Verified | reject identify-only messages after identify phase |
-| `server-client.c:3599-3600` | Verified | narrower citation of same reject path |
-| `server-client.c:3725-3734` | Verified | config load sequencing after first client identify |
-| `server.c:126-129` | Verified | socket permission/umask setup |
-| `tmux-protocol.h:23` | Verified | protocol version constant |
-| `tmux-protocol.h:26-71` | Verified | protocol enum block including identify messages |
-| `tmux-protocol.h:29-41` | Verified | identify burst message IDs |
-| `tmux.h:100` | Verified | `PANE_MINIMUM` constant |
-
+*End of TermForge v7 Architecture Specification (Pass 2 Synthesis)*
