@@ -1,0 +1,1 @@
+I will begin by listing the `notes/` directory to locate the Pass 2 specifications and then proceed to read the content of the three Pass 2 files to synthesize them into the final Pass 3 specification.
