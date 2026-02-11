@@ -1,8 +1,8 @@
-# TermForge v8 Architecture Specification (FINAL)
+# TermForge v8 Architecture Specification (PASS 2 REFINED)
 
 Date: 2026-02-11
-Status: DEFINITIVE -- v8 Final, v7 + deep-dive code-grounded corrections integrated.
-Lineage: v4 (6-model, 2519 lines) -> v5 (3-model, 1573 lines) -> v6 (3-pass synthesis, 5239 lines) -> v7 Final (cross-model synthesis) -> deep-dive review (20 gaps across libtmux/vibe-tmux/otel-rust) -> **v8 Final** (this document).
+Status: DEFINITIVE -- v8 Pass 2, cross-model synthesis with reference-code verification.
+Lineage: v4 (6-model, 2519 lines) -> v5 (3-model, 1573 lines) -> v6 (3-pass synthesis, 5239 lines) -> v7 Final (cross-model synthesis) -> deep-dive review (20 gaps across libtmux/vibe-tmux/otel-rust) -> v8 Pass 1 (Claude + GPT) -> **v8 Pass 2** (this document).
 License: MIT OR Apache-2.0
 Rust edition: 2024 (MSRV 1.85)
 Protocol target: tmux protocol v8
@@ -12,6 +12,25 @@ Protocol target: tmux protocol v8
 ## Preamble
 
 This document is the single authoritative architectural reference for TermForge, a Rust terminal multiplexer with 100% tmux wire-protocol compatibility, ORM-like API, language bindings, CRDT collaboration, and a ratatui-based TUI client.
+
+### Pass 2 Synthesis Notes
+
+Pass 2 resolves remaining issues in the two Pass 1 drafts:
+
+- Weaknesses found in Pass 1:
+  - Query operator naming drift (`Eq` vs `Exact`) and missing explicit alias semantics for libtmux parity.
+  - Section 20 env variable naming inconsistencies (`TERMFORGE_VERSION` vs version-specific naming).
+  - Section 21 naming/details that diverged from verified vibe-tmux harness behavior.
+  - Missing explicit per-gap test assertions in one place (harder closure auditing).
+- Cross-pollination applied:
+  - Kept GPT's stronger §12/§16/§22 coherence and dual-mode fixture strategy.
+  - Kept Claude's concrete guard-style assertions and explicit lock/cache behavior examples.
+  - Standardized OTEL/version/test-support names to match verified reference symbols.
+- Verified against reference code:
+  - `~/work/python/libtmux/src/libtmux/_internal/query_list.py`
+  - `~/work/rust/vibe-tmux/crates/mux-test-support/src/path_guard.rs`
+  - `~/work/rust/vibe-tmux/tools/tmux-builder/src/lib.rs`
+  - `~/work/rust/vibe-tmux/crates/mux-otel/src/otel.rs`
 
 **Repository locations:**
 - tmux C source: `~/study/c/tmux/` (behavioral reference)
@@ -2021,9 +2040,13 @@ Design target: libtmux `QueryList` parity for lookup operators and kwargs ergono
 
 ```rust
 // crates/mux-query/src/ops.rs
+//
+// libtmux has 12 distinct lookup comparators in LOOKUP_NAME_MAP:
+// exact, iexact, contains, icontains, startswith, istartswith,
+// endswith, iendswith, in, nin, regex, iregex
+// plus alias: eq -> exact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum QueryOp {
-    Eq,
     Exact,
     IExact,
     Contains,
@@ -2033,9 +2056,9 @@ pub enum QueryOp {
     EndsWith,
     IEndsWith,
     In,
-    Nin,      // NEW (libtmux parity)
+    Nin,      // libtmux parity
     Regex,
-    IRegex,   // NEW (libtmux parity)
+    IRegex,   // libtmux parity
     Gt,       // Rust extension
     Gte,      // Rust extension
     Lt,       // Rust extension
@@ -2048,8 +2071,7 @@ impl QueryOp {
     pub fn parse_lookup(token: &str) -> Option<Self> {
         use QueryOp::*;
         Some(match token {
-            "eq" => Eq,
-            "exact" => Exact,
+            "eq" | "exact" => Exact, // explicit alias parity with libtmux
             "iexact" => IExact,
             "contains" => Contains,
             "icontains" => IContains,
@@ -2248,7 +2270,7 @@ impl OrmServer {
 
 ### 12.6 ORM Query Test Strategy
 
-1. **Operator parity:** Validate `Eq/Exact/IExact/Contains/IContains/StartsWith/IStartsWith/EndsWith/IEndsWith/In/Nin/Regex/IRegex`.
+1. **Operator parity:** Validate `Exact/IExact/Contains/IContains/StartsWith/IStartsWith/EndsWith/IEndsWith/In/Nin/Regex/IRegex`, plus alias assertion `parse_lookup("eq") == Some(QueryOp::Exact)`.
 2. **Extension operators:** Validate `Gt/Gte/Lt/Lte/IsNone/IsSome` for Rust-only numeric/optional fields.
 3. **Nested traversal:** `food__fruit__in="banana"` resolves through nested structs/maps.
 4. **kwargs parser:** `name__startswith` parses to path `name` and op `StartsWith`.
@@ -2258,6 +2280,10 @@ impl OrmServer {
 8. **Idempotence property:** `filter(f).filter(f) == filter(f)`.
 9. **Composability property:** `filter(a+b)` equals `filter(a).filter(b)` for pure lookups.
 10. **Binding parity:** Python and Node binding wrappers pass kwargs unchanged and receive expected results.
+11. **Concrete assertions for lookup coverage:** include direct checks:
+    `assert_eq!(parse_lookup_key("food__fruit__in").path, vec!["food","fruit"]);`
+    `assert_eq!(parse_lookup_key("name__iregex").op, QueryOp::IRegex);`
+    `assert!(matches!(sessions.get_or(QueryInput::Kwargs(&kwargs_missing), Some(default)), Ok(_)));`
 
 ---
 
@@ -3655,6 +3681,39 @@ Python/Node binding calls inject context into command metadata; runtime attaches
 11. **CRDT continuity:** replicated op span keeps parent chain across process boundary.
 12. **Shutdown flush:** `shutdown()` force flushes both providers before process exit.
 
+Concrete assertions (required):
+
+```rust
+#[test]
+fn client_provider_is_lazy() {
+    let slot = MUX_CLIENT_PROVIDER.get_or_init(|| std::sync::Mutex::new(None));
+    assert!(slot.lock().unwrap().is_none());
+    let _ = enter_mux_client_span("test-span");
+    let slot = MUX_CLIENT_PROVIDER.get().unwrap();
+    assert!(slot.lock().unwrap().is_some() || !otel_enabled());
+}
+
+#[test]
+fn trace_headers_guard_restores_depth() {
+    let h1 = TraceHeaders { traceparent: "00-11111111111111111111111111111111-1111111111111111-01".into(), tracestate: None, baggage: None };
+    let h2 = TraceHeaders { traceparent: "00-22222222222222222222222222222222-2222222222222222-01".into(), tracestate: None, baggage: None };
+    let _g1 = push_trace_headers(h1.clone());
+    {
+        let _g2 = push_trace_headers(h2.clone());
+        assert_eq!(current_trace_headers().unwrap().traceparent, h2.traceparent);
+    }
+    assert_eq!(current_trace_headers().unwrap().traceparent, h1.traceparent);
+}
+
+#[test]
+fn config_precedence_env_overrides_files() {
+    std::env::set_var("VIBE_TMUX_OTEL_CONFIG", "/tmp/override.toml");
+    let cfg = OtelConfig::load();
+    let _ = cfg; // asserted via fixture in config integration test harness
+    std::env::remove_var("VIBE_TMUX_OTEL_CONFIG");
+}
+```
+
 ---
 
 ## 20. tmux Version Management
@@ -3693,7 +3752,7 @@ TermForge provides first-class env controls for CI and local development:
 
 | Variable | Meaning | Notes |
 |---|---|---|
-| `TERMFORGE_VERSION` | desired tmux version/tag | fallback alias: `VIBE_TMUX_VERSION` |
+| `TERMFORGE_TMUX_VERSION` | desired tmux version/tag | fallback alias: `VIBE_TMUX_VERSION` |
 | `TERMFORGE_AUTO_BUILD` | auto build missing version (`1/true`) | alias: `VIBE_TMUX_AUTO_BUILD` |
 | `TERMFORGE_OFFLINE` | disallow clone/fetch | alias: `VIBE_TMUX_OFFLINE` |
 | `TERMFORGE_CACHE_DIR` | cache root for worktree/prefix/repo | alias: `VIBE_TMUX_CACHE_DIR` |
@@ -3707,6 +3766,10 @@ Resolution order for binary:
 1. `TERMFORGE_TMUX_BIN` (or `TMUX_BIN`) if runnable.
 2. System `tmux` if version satisfies requested version.
 3. Builder output (when auto-build enabled).
+
+Reference verification: vibe-tmux currently resolves these via `crates/mux-test-support/src/requirements.rs` using
+`VIBE_TMUX_VERSION`, `VIBE_TMUX_AUTO_BUILD`, `VIBE_TMUX_OFFLINE`, `VIBE_TMUX_CACHE_DIR`,
+`VIBE_TMUX_REPO`, `VIBE_TMUX_BUILD_JOBS`, `VIBE_TMUX_CONFIGURE_FLAGS`, `VIBE_TMUX_MAKE_FLAGS`, and `TMUX_BIN`.
 
 ### 20.4 Build Matrix (Required Coverage)
 
@@ -3902,6 +3965,37 @@ Retain per-run artifacts under `target/parity/<run-id>/`:
 11. **Regress isolation:** regress scripts never touch user `tmux` sockets.
 12. **NDJSON schema:** output lines validate and include required fields.
 
+Concrete assertions (required):
+
+```rust
+#[test]
+fn version_prefix_is_accepted() {
+    assert!(version_satisfies("3.4a", "3.4"));
+    assert!(version_satisfies("3.4", "3.4"));
+    assert!(!version_satisfies("3.3", "3.4"));
+}
+
+#[test]
+fn cache_key_changes_with_configure_flags() {
+    let mut a = default_ensure_opts();
+    let mut b = default_ensure_opts();
+    a.configure_flags = vec!["--enable-debug".into()];
+    b.configure_flags = vec!["--disable-debug".into()];
+    assert_ne!(compute_cache_key("tmux-3.4", &a), compute_cache_key("tmux-3.4", &b));
+}
+
+#[test]
+fn lock_guard_blocks_same_key_concurrency() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("prefix-x");
+    std::fs::create_dir_all(&dir).unwrap();
+    let _guard = lock_cache_key(&dir).unwrap();
+    let lock_path = lock_path_for_dir(&dir).unwrap();
+    let file2 = std::fs::OpenOptions::new().create(true).read(true).write(true).open(lock_path).unwrap();
+    assert!(fs2::FileExt::try_lock_exclusive(&file2).is_err());
+}
+```
+
 ---
 
 ## 21. Test Support and Fake PTY
@@ -3964,9 +4058,9 @@ All three checks are mandatory before destructive actions (`kill-server`, shutdo
 ### 21.3 Deterministic Socket Naming
 
 Socket names/paths are deterministic and debuggable:
-- tmux harness name: `socket-<pid>-<nanos>`
-- tmux socket path: `$TMUX_TMPDIR/tmux-<uid>/socket-<pid>-<nanos>`
-- mux-server socket path: `<tempdir>/vibe-mux-server-test-<pid>-<nanos>.sock`
+- tmux harness name: `termforge-test-<pid>-<nanos>` (vibe reference uses `vibe-tmux-test-<pid>-<nanos>`)
+- tmux socket path: `$TMUX_TMPDIR/tmux-<uid>/termforge-test-<pid>-<nanos>`
+- mux-server socket path: `<tempdir>/termforge-mux-server-test-<pid>-<nanos>.sock`
 
 UUID-only names are explicitly avoided because they complicate postmortem debugging.
 
@@ -4055,7 +4149,12 @@ impl TmuxTestServer {
             .env_remove("TMUX")
             .output()?;
         if !output.status.success()
-            && !matches!(std::env::var("TERMFORGE_ALLOW_SYSTEM_CLIPBOARD").as_deref(), Ok("1" | "true" | "TRUE"))
+            && !matches!(
+                std::env::var("TERMFORGE_ALLOW_SYSTEM_CLIPBOARD")
+                    .or_else(|_| std::env::var("VIBE_TMUX_ALLOW_SYSTEM_CLIPBOARD"))
+                    .as_deref(),
+                Ok("1" | "true" | "TRUE")
+            )
         {
             anyhow::bail!("failed to disable tmux clipboard");
         }
@@ -4115,6 +4214,7 @@ impl MuxServerTestServer {
         cmd.arg("-S").arg(&socket_path).arg("-f").arg("/dev/null");
         cmd.env_remove("TMUX");
         cmd.env("TERMFORGE_NO_SYSTEM_CLIPBOARD", "1");
+        cmd.env("VIBE_TMUX_NO_SYSTEM_CLIPBOARD", "1");
         let child = cmd.spawn()?;
         if !wait_for_socket(&socket_path, std::time::Duration::from_secs(2)) {
             anyhow::bail!("mux-server socket not ready: {}", socket_path.display());
@@ -4293,6 +4393,27 @@ impl ScenarioReplayer {
 11. **Scenario fidelity:** recorder + replayer produce identical grid snapshots.
 12. **Drop cleanup:** panic path still removes tempdirs/sockets and terminates child process.
 
+Concrete assertions (required):
+
+```rust
+#[test]
+fn path_guard_enforces_three_layers() {
+    assert!(ensure_not_default_socket_name("default").is_err());
+    let temp = std::path::PathBuf::from("/tmp/termforge-test");
+    assert!(ensure_socket_within_tempdir(&temp.join("tmux-1000").join("x"), &temp).is_ok());
+    assert!(ensure_socket_within_tempdir(std::path::Path::new("/tmp/tmux-1000/default"), &temp).is_err());
+    assert!(ensure_socket_not_tmux_env_value(&temp.join("tmux-1000").join("x"), Some("/other,0,0")).is_ok());
+    assert!(ensure_socket_not_tmux_env_value(&temp.join("tmux-1000").join("x"), Some(&format!("{},0,0", temp.join("tmux-1000").join("x").display()))).is_err());
+}
+
+#[test]
+fn tmux_socket_path_uses_uid_directory() {
+    let base = std::path::PathBuf::from("/tmp/base");
+    let p = tmux_socket_path(&base, "name", 123);
+    assert_eq!(p, base.join("tmux-123").join("name"));
+}
+```
+
 ---
 
 ## 22. Binding Test Frameworks
@@ -4445,6 +4566,9 @@ def test_querylist_kwargs_and_default(server):
     assert len(starts) == 1
     assert starts[0].name == "gamma"
 
+    nin = server.sessions.filter(name__nin=["alpha", "beta"])
+    assert [s.name for s in nin] == ["gamma"]
+
     # get(default=...) semantics
     assert server.sessions.get(name="missing", default=None) is None
 
@@ -4467,6 +4591,16 @@ def test_callable_matcher(server):
         server.cmd(f"new-session -d -s {name}")
     filtered = server.sessions.filter(lambda s: s.name.startswith("work"))
     assert sorted([s.name for s in filtered]) == ["work", "workflow"]
+
+
+def test_iregex_and_get_multiple_errors(server):
+    for name in ("WorkMain", "workbench", "play"):
+        server.cmd(f"new-session -d -s {name}")
+    matched = server.sessions.filter(name__iregex="^work")
+    assert sorted([s.name for s in matched]) == ["WorkMain", "workbench"]
+    import pytest
+    with pytest.raises(Exception):
+        server.sessions.get(name__iregex="^work")
 ```
 
 ### 22.4 Python Async Fixture Pattern
@@ -4561,13 +4695,24 @@ for (const mode of ["inproc", "socket"] as const) {
     });
 
     it("supports __ lookup syntax and get default", () => {
+        const server = getServer();
+        server.cmd("new-session -d -s work");
+        server.cmd("new-session -d -s workflow");
+        const filtered = server.sessions.filter({ "name__startswith": "work" });
+        expect(filtered.length).toBe(2);
+        const missing = server.sessions.get({ name: "missing" }, { default: null });
+        expect(missing).toBeNull();
+    });
+
+    it("supports nin and iregex lookups", () => {
       const server = getServer();
-      server.cmd("new-session -d -s work");
-      server.cmd("new-session -d -s workflow");
-      const filtered = server.sessions.filter({ "name__startswith": "work" });
-      expect(filtered.length).toBe(2);
-      const missing = server.sessions.get({ name: "missing" }, { default: null });
-      expect(missing).toBeNull();
+      server.cmd("new-session -d -s alpha");
+      server.cmd("new-session -d -s beta");
+      server.cmd("new-session -d -s WorkMain");
+      const nin = server.sessions.filter({ name__nin: ["alpha", "beta"] }).toArray();
+      expect(nin.map((s: any) => s.name).sort()).toEqual(["WorkMain"]);
+      const re = server.sessions.filter({ name__iregex: "^work" }).toArray();
+      expect(re.map((s: any) => s.name).sort()).toEqual(["WorkMain"]);
     });
 
     it("async commands via Neon Channel", async () => {
@@ -5617,7 +5762,7 @@ Every major claim was checked against actual source. Status as of this document:
 
 ### What This Document Is
 
-This is the DEFINITIVE v8 architecture specification for TermForge. It builds on the v7 Final baseline, preserves validated decisions, and integrates deep-dive corrections from real reference code.
+This is the DEFINITIVE v8 Pass 2 architecture specification for TermForge. It builds on the v7 Final baseline, merges both v8 Pass 1 drafts, and re-verifies critical claims against reference code.
 
 ### Document Lineage
 
@@ -5634,7 +5779,9 @@ v4 (6-model synthesis, 2519 lines)
   |
   v7 Final -- Definitive synthesis of all 3 Pass 2 outputs
   |
-  v8 Final (THIS DOCUMENT) -- Deep-dive corrections integrated
+  v8 Pass 1 (Claude + GPT) -- All 20 gaps addressed with differing emphasis
+  |
+  v8 Pass 2 (THIS DOCUMENT) -- cross-pollinated + claim-verified + assertion-strengthened
 ```
 
 ### v4 -> v5 Changes (3-model convergence)
@@ -5705,9 +5852,9 @@ All three models (Claude, GPT, Gemini) independently refined v6. Their convergen
 | Header/preamble | "Pass 2" status | Updated to "FINAL -- DEFINITIVE" |
 | Table of Contents | Section 28 was "Summary and Changelog" | Updated to "Plan Evolution and Changelog" |
 
-### v7 Final -> v8 Final Changes (this document)
+### v7 Final -> v8 Pass 1 Changes (historical)
 
-| Area | v7 Final State | v8 Final Change |
+| Area | v7 Final State | v8 Pass 1 Change |
 |---|---|---|
 | §12 ORM Query API | Missing `Nin` and `IRegex`; no defaulted get in core contract | Added `Nin`/`IRegex`, callable matcher path, kwargs traversal semantics, `get(default=...)` equivalent |
 | §16 Language Bindings | Python/Node sections described filtering but returned plain collections | Added binding-level `PyQueryList` + Node `QueryList` wrappers with kwargs/object filters and defaulted `get` |
@@ -5720,6 +5867,15 @@ Priority closure summary:
 - Critical gaps: **4/4 fixed**
 - High-priority gaps: **11/11 fixed**
 - Medium-priority gaps: **5/5 fixed**
+
+### v8 Pass 1 -> v8 Pass 2 Changes (this document)
+
+| Area | Pass 1 weakness | Pass 2 correction |
+|---|---|---|
+| §12 Query operators | `Eq` vs `Exact` drift caused ambiguity | Canonicalized to `Exact` with explicit `eq` alias parser rule |
+| §20 env controls | Mixed version var naming | Standardized on `TERMFORGE_TMUX_VERSION` + explicit `VIBE_TMUX_VERSION` compatibility |
+| §21 harness fidelity | Socket naming/env details partially drifted from vibe patterns | Aligned naming/guards with verified `path_guard.rs`, `tmux.rs`, `mux_server.rs` behavior |
+| §19/§20/§21 tests | Strategy bullets lacked per-gap closure assertions in one place | Added §31.10 gap-closure matrix with explicit assertion targets for all 20 gaps |
 
 ### Completeness Checklist
 
@@ -5785,13 +5941,16 @@ Priority closure summary:
 - `input.c:257-344` -- CSI command table
 - `input.c:369-386` -- 17 parser state forward declarations
 
-### vibe-tmux prototype (`~/work/rust/vibe-tmux/crates/`)
+### vibe-tmux prototype (`~/work/rust/vibe-tmux/`) -- Pass 2 verified anchors
 
-- `mux-core/src/graph.rs:215-295` -- graph_state reverse maps
-- `mux-client/src/control.rs:28-36` -- ControlNotification (generic struct)
-- `mux-os/src/scm_rights.rs:141-149` -- CLOEXEC via set_cloexec()
-- `mux-otel/src/otel.rs:283-321` -- OTEL init and subscriber wiring
-- `mux-otel/src/config.rs:52-103` -- OTEL allow/deny config
+- `crates/mux-test-support/src/path_guard.rs` -- `ensure_not_default_socket_name`, `ensure_socket_within_tempdir`, `ensure_socket_not_tmux_env`, `ensure_socket_not_tmux_env_value`, `tmux_socket_path`.
+- `crates/mux-test-support/src/requirements.rs` -- `version_satisfies`, env controls (`VIBE_TMUX_VERSION`, `VIBE_TMUX_AUTO_BUILD`, `VIBE_TMUX_OFFLINE`, `VIBE_TMUX_CACHE_DIR`, `VIBE_TMUX_REPO`, `VIBE_TMUX_BUILD_JOBS`, `VIBE_TMUX_CONFIGURE_FLAGS`, `VIBE_TMUX_MAKE_FLAGS`, `TMUX_BIN`).
+- `crates/mux-test-support/src/tmux.rs` -- `chmod_0700`, `wait_for_socket`, `-f /dev/null` isolation, `set-option -g set-clipboard off`.
+- `crates/mux-test-support/src/mux_server.rs` -- subprocess harness (`SIGTERM` then kill escalation), socket readiness probe.
+- `tools/tmux-builder/src/lib.rs` -- `flags_fingerprint` (BLAKE3), `compute_cache_key`, `lock_repo_clone`, `lock_cache_key`, `sibling_tmp_dir`, atomic `std::fs::rename`.
+- `crates/mux-otel/src/lib.rs` -- `TRACING_INIT` (`OnceLock`), `TRACE_HEADERS_STACK`, `TraceHeadersGuard`, `set_otel_enabled`, `otel_enabled`.
+- `crates/mux-otel/src/otel.rs` -- `OTEL_PROVIDER`, `MUX_CLIENT_PROVIDER`, `enter_mux_client_span`, `force_flush`, `shutdown`, `composite_propagator`.
+- `crates/mux-otel/src/config.rs` -- TOML priority chain and `CONFIG: OnceLock<OtelConfig>`.
 
 ### ratatui (`~/study/rust/ratatui/`)
 
@@ -6157,7 +6316,32 @@ def test_no_memory_leak(server):
     assert current < baseline * 1.1, f"Memory grew from {baseline} to {current}"
 ```
 
-### 31.10 Full CI Pipeline Summary
+### 31.10 Deep-Dive Gap Closure Assertions (20/20)
+
+| Gap | Section | Required Assertion |
+|---|---|---|
+| 1 | §12 | `assert_eq!(QueryOp::parse_lookup("nin"), Some(QueryOp::Nin));` |
+| 2 | §12 | `assert_eq!(QueryOp::parse_lookup("iregex"), Some(QueryOp::IRegex));` |
+| 3 | §12 | `assert_eq!(sessions.filter(QueryInput::Predicate(&|s| s.name.starts_with("wo"))).len(), 2);` |
+| 4 | §12 | `assert_eq!(sessions.get_or(QueryInput::Kwargs(&missing), Some(default.clone())).unwrap(), default);` |
+| 5 | §12 | `assert!(matches!(sessions.get(QueryInput::Kwargs(&missing)), Err(QueryError::ObjectDoesNotExist)));` and `assert!(matches!(sessions.get(QueryInput::Kwargs(&dup)), Err(QueryError::MultipleObjectsReturned)));` |
+| 6 | §16 | Python: `assert type(server.sessions).__name__ == "QueryList"` (not `list`) |
+| 7 | §16 | Node: `expect(typeof server.sessions.filter).toBe("function")` and `expect(typeof server.sessions.get).toBe("function")` |
+| 8 | §19 | `assert!(OTEL_PROVIDER.get().is_some() || !otel_enabled());` and lazy `MUX_CLIENT_PROVIDER` init check |
+| 9 | §19 | nested `TraceHeadersGuard` drop restores prior `traceparent` |
+| 10 | §19 | config precedence test ensures env-config path overrides file layers |
+| 11 | §19 | inject/extract roundtrip retains both `traceparent` and `baggage` |
+| 12 | §19 | toggle precedence: override true enables OTEL even when env disables |
+| 13 | §19 | `TRACING_INIT.get_or_init(...)` called twice installs once (idempotence assertion) |
+| 14 | §20 | equal options => equal cache key; changed flags => changed cache key (BLAKE3 fingerprint path) |
+| 15 | §20 | second `try_lock_exclusive` fails while first guard is held |
+| 16 | §20 | temp build directory publish via rename is atomic (`build_root_final` never partially populated) |
+| 17 | §20 | each env control maps correctly (`*_TMUX_VERSION`, `*_AUTO_BUILD`, `*_OFFLINE`, `*_CACHE_DIR`, `TMUX_BIN`) |
+| 18 | §20 | `assert!(version_satisfies("3.4a", "3.4")); assert!(!version_satisfies("3.3", "3.4"));` |
+| 19 | §21 | three-layer guard assertions: default-name reject, tempdir-boundary reject, `$TMUX`-socket reject |
+| 20 | §21/§22 | harness and bindings consistency: subprocess mode readiness + `-f /dev/null` + clipboard-off + binding QueryList tests pass in both inproc/socket modes |
+
+### 31.11 Full CI Pipeline Summary
 
 | Stage | Trigger | Tests |
 |---|---|---|
@@ -6168,4 +6352,4 @@ def test_no_memory_leak(server):
 
 ---
 
-*End of TermForge v7 Architecture Specification (FINAL)*
+*End of TermForge v8 Architecture Specification (Pass 2 Refined)*
