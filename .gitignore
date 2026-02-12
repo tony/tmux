@@ -65,4 +65,7 @@ notes/diagnostics/pty-report-*.json
 
 .fingerprint/
 .debug/
+target/
+build/
+build-otel/
 *.bin
