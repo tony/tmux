@@ -1,0 +1,10 @@
+[package]
+name = "mux-orm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "ORM-like QueryList with Queryable trait, filter/get semantics"
+
+[dependencies]
+mux-types = { workspace = true }

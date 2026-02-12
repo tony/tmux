@@ -1,0 +1,15 @@
+[package]
+name = "mux-kernel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Sans-IO kernel reducer with Event/Effect, ServerGraph, and generational slot map"
+
+[features]
+default = []
+crdt = []
+
+[dependencies]
+mux-time = { workspace = true }
+tracing = { workspace = true }

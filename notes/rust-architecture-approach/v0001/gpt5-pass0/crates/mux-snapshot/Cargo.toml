@@ -1,0 +1,11 @@
+[package]
+name = "mux-snapshot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+crc32fast.workspace = true
+mux-types = { path = "../mux-types" }
+mux-grapheme-arena = { path = "../mux-grapheme-arena" }
+serde = { workspace = true, features = ["derive"] }

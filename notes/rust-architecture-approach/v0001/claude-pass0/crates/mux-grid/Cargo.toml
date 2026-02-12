@@ -1,0 +1,12 @@
+[package]
+name = "mux-grid"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Terminal grid with VecDeque lines, Arc COW scrollback, and viewport"
+
+[dependencies]
+mux-types = { workspace = true }
+mux-grapheme-arena = { workspace = true }
+compact_str = { workspace = true }

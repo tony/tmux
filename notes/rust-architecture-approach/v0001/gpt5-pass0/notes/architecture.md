@@ -1,0 +1,634 @@
+# TermForge v16 Condensed Architecture (from v15 definitive)
+
+Working reference used by the scaffold implementation. It includes conflict resolutions, invariants, settled decisions, crate contracts, and a compact rule index.
+
+## Scope
+
+- Protocol parity target: tmux wire-protocol v8 behavior compatibility.
+- Determinism baseline: all public APIs are deterministic under fixed seed + injected time (S100, INV-033).
+- Data model baseline: CompactString cells, PackedCell 64-bit layout, COW scrollback lines, CRC32C snapshots.
+
+## Conflict Resolution Table (Definitive)
+
+| # | Topic | Resolution | Agreement |
+|---|---|---|---|
+| 1 | String type | **compact_str::CompactString** (S91) | Gemini+Claude (2/3) |
+| 2 | Grapheme extension | **GraphemeArena with 14-bit ext index** (S92) | GPT+Claude (2/3) |
+| 3 | Checksum | **CRC32C canonical encode; FNV-1a decode-only** (S93) | All three (3/3) |
+| 4 | PackedCell layout | **scalar:21+style:15+flags:12+width:2+ext:14** (S94) | GPT (adopted 3/3 in P2) |
+| 5 | ByteClass dispatch | **Static CLASS_TABLE[256] + match oracle** (S95) | All three (3/3) |
+| 6 | Grid line storage | **Arc<Vec<Cell>> scrollback; Vec<Cell> live grid** (S96) | Gemini (adopted 3/3 in P2) |
+| 7 | Error hierarchy | **TermletError 16 variants + error_code()** (S98) | Claude+GPT merged |
+| 8 | Time abstraction | **DeterministicTimeSource (wall+Lamport+vector)** (S97) | GPT (adopted 3/3 in P2) |
+
+## Invariants (INV-001..INV-034)
+
+- `INV-001`: Protocol Parity -- 100% tmux wire-protocol v8 compatibility.
+- `INV-002`: Crate prefix `mux-` for all library crates.
+- `INV-003`: No unsafe in library code outside `mux-pty` platform layer.
+- `INV-004`: All public types derive Debug.
+- `INV-005`: Error types implement std::error::Error + Send + Sync + 'static.
+- `INV-006`: No panicking in library code; all fallible operations return Result.
+- `INV-007`: Grid coordinates are zero-based (row, col).
+- `INV-008`: Cell grapheme is always valid UTF-8.
+- `INV-009`: Style attributes are bitfield-packed for cache efficiency.
+- `INV-010`: Parser state machine is total (no undefined transitions).
+- `INV-011`: Snapshot binary format is platform-endian-independent (LE canonical).
+- `INV-012`: Grid mutation ONLY via `put_char()`/`put_grapheme()`.
+- `INV-013`: PtyHandle lifecycle is monotonic (no reverse transitions).
+- `INV-014`: Socket paths use `termforge-<uid>` prefix.
+- `INV-015`: Configuration keys are tmux-compatible where possible.
+- `INV-016`: Layout engine produces deterministic output for identical input.
+- `INV-017`: OTEL spans cover all cross-crate boundaries.
+- `INV-018`: Feature flags are additive-only (no negative features).
+- `INV-019`: Gate results are Clone + PartialEq + Eq.
+- `INV-020`: Protocol frames are length-delimited.
+- `INV-021`: Clipboard contents never exceed configurable size limit.
+- `INV-022`: Key bindings are hierarchically scoped (global < session < window < pane).
+- `INV-023`: Snapshot header is 31 bytes with checksum_algo at offset 30.
+- `INV-024`: SmallVec REJECTED FINAL for line cells (S75).
+- `INV-025`: VectorClock entries monotonically non-decreasing per node.
+- `INV-026`: ByteClass has 7 variants including DcsEntry for 0x90.
+- `INV-027`: Parser Step function is pure (no side effects).
+- `INV-028`: GraphemeArena optional trailing section after snapshot checksum.
+- `INV-029`: PackedCell width field (2 bits) MUST match wcwidth() for stored codepoint.
+- `INV-030`: GraphemeArena ext index 0x0000 is reserved ("no extension").
+- `INV-031`: CRC32C is sole encode algorithm. FNV-1a accepted on decode only.
+- `INV-032`: Scrollback lines use Arc<Vec<Cell>>; live grid lines use Vec<Cell>.
+- `INV-033`: All public APIs are deterministic under fixed seed and clock injection. [v15 P3]
+- `INV-034`: Serialization order is canonical and stable across versions. [v15 P3]
+
+## Settled Decisions (S1..S100)
+
+- `S1`: Project identity constants are canonicalized in `mux-types`.
+- `S2`: Rust 2021 edition is mandatory across all crates.
+- `S3`: Release lanes remain LTS/Current/Preview.
+- `S4`: Gate outcomes are explicit and non-panicking.
+- `S5`: Dependency layering is lint-enforced in CI.
+- `S6`: Workspace layout contracts are treated as API.
+- `S7`: Grid mutability and history mutability use separate storage semantics.
+- `S8`: UTF-8 parser recovery is deterministic.
+- `S9`: Pty lifecycle uses typed transitions.
+- `S10`: Snapshot headers are versioned and checksum-bound.
+- `S11`: Wire protocol parity tests are mandatory.
+- `S12`: Config validation produces typed diagnostics.
+- `S13`: Layout checksum is part of snapshot integrity.
+- `S14`: Query APIs return stable typed errors.
+- `S15`: Slot generation prevents stale ID reuse.
+- `S16`: ServerGraph remains single-writer.
+- `S17`: Control mode supports deterministic replay.
+- `S18`: Keymaps define strict precedence ordering.
+- `S19`: CRDT merges must preserve causal monotonicity.
+- `S20`: IPC handshake capability bits are validated.
+- `S21`: OTEL instrumentation is mandatory on control/data boundaries.
+- `S22`: Language binding contracts include canonical error codes.
+- `S23`: Clipboard operations preserve grapheme boundaries.
+- `S24`: Mouse input serialization is replay-safe.
+- `S25`: Status-bar updates are deterministic.
+- `S26`: Scrollback search supports bounded memory operation.
+- `S27`: CRC32C module is canonical checksum lane.
+- `S28`: Consolidated rules in S26 are normative.
+- `S29`: Consolidated risks in S27 are normative.
+- `S30`: Evolution log is updated on normative changes.
+- `S31`: Test infra guarantees deterministic fixture execution.
+- `S32`: Benchmarks use pinned environment descriptors.
+- `S33`: Governance requires multi-review for contract changes.
+- `S34`: Termlet is the canonical integration test harness.
+- `S35`: Expect APIs prefer non-panicking result variants.
+- `S36`: Binary snapshot compatibility is semver-gated.
+- `S37`: Differential testing against tmux is release-blocking.
+- `S38`: Network simulation must support deterministic partitions.
+- `S39`: Slow-consumer behavior must preserve backpressure invariants.
+- `S40`: Recorder artifacts are stable under deterministic clocks.
+- `S41`: Quarantine process exists for flaky tests.
+- `S42`: Fuzz harnesses run with corpus persistence.
+- `S43`: Property tests include shrink-safe invariants.
+- `S44`: ABI checks are required for FFI release artifacts.
+- `S45`: Termlet state machine has explicit failure transitions.
+- `S46`: Cross-language assertions share canonical error semantics.
+- `S47`: Snapshot digests are carried in failure envelopes.
+- `S48`: Rule IDs remain stable once published.
+- `S49`: Risk IDs remain stable once published.
+- `S50`: Test IDs remain stable once published.
+- `S51`: PackedCell uses exact 64-bit layout contract.
+- `S52`: Width bits are explicit in packed form.
+- `S53`: Grapheme extension index width is 14 bits.
+- `S54`: ByteClass includes `DcsEntry` variant.
+- `S55`: Classifier LUT is static and immutable.
+- `S56`: Match classifier remains oracle for differential tests.
+- `S57`: Scrollback uses Arc COW semantics.
+- `S58`: Live grid stays mutable via plain Vec lines.
+- `S59`: GraphemeArena index 0 reserved for none.
+- `S60`: GraphemeArena bounds are checked on decode.
+- `S61`: Checksum algorithm byte is required in header.
+- `S62`: Decode supports legacy FNV-1a only for compatibility.
+- `S63`: Encode forbids non-CRC32C in v15.
+- `S64`: DeterministicTimeSource is single canonical time abstraction.
+- `S65`: MonotonicGuard wraps all externally visible ticks.
+- `S66`: Lamport increments on every causally relevant event.
+- `S67`: Vector entries update on local and merge events.
+- `S68`: Wall ticks are injectable for reproducible tests.
+- `S69`: Error hierarchy exposes `error_code()` string mapping.
+- `S70`: Error hierarchy remains cross-binding stable.
+- `S71`: Resource quotas are enforced by preflight admission checks.
+- `S72`: Sandbox violations are explicit typed errors.
+- `S73`: Recorder format includes deterministic metadata.
+- `S74`: FFI layouts are compile-time validated.
+- `S75`: Snapshot migration tools require backward fixtures.
+- `S76`: Rule changes require governance update entries.
+- `S77`: Risk mitigation contracts require owning team assignment.
+- `S78`: Test catalog additions require deterministic seed policy.
+- `S79`: CI matrix must include feature-combination smoke lane.
+- `S80`: Release notes include decision/risk/test delta summary.
+- `S81`: Section 26 is authoritative consolidated rule source.
+- `S82`: Section 27 is authoritative consolidated risk source.
+- `S83`: Section 29 carries definitive testing infrastructure contract.
+- `S84`: Section 32 remains integration and execution harness core.
+- `S85`: Sections 1-31 keep DD/RE/TS/AR structure.
+- `S86`: Section 32 maintains 56+ numbered subsections.
+- `S87`: Compiler edition lock is enforced in snippet CI.
+- `S88`: Snippet compile gate is required pre-merge.
+- `S89`: Non-deterministic APIs require injected clock/randomness.
+- `S90`: Replay determinism is release-critical.
+- `S91`: `compact_str::CompactString` is the canonical Cell string type. Hand-rolled REJECTED.
+- `S92`: GraphemeArena with 14-bit ext index is the canonical grapheme extension mechanism.
+- `S93`: CRC32C canonical for encode. FNV-1a decode-only backward compat.
+- `S94`: PackedCell v15 layout: scalar:21 + style:15 + flags:12 + width:2 + ext:14.
+- `S95`: CLASS_TABLE[256] static LUT is canonical ByteClass dispatch.
+- `S96`: Arc<Vec<Cell>> COW for scrollback lines; Vec<Cell> for live grid.
+- `S97`: DeterministicTimeSource unified time abstraction (wall + Lamport + vector).
+- `S98`: TermletError 16 variants with error_code() accessor.
+- `S99`: Unified InnerPtyState enum shared by PtyHandle<S> typestate and DynPtyHandle. PhantomData wrapper only. [v15 P3]
+- `S100`: All public APIs MUST be deterministic under fixed seed and clock injection. Non-determinism is a bug. [v15 P3]
+
+## Crate Contracts
+
+### mux-types
+
+- Cell uses `compact_str::CompactString` (S91).
+- PackedCell uses `21/15/12/2/14` bit layout (S94).
+- Line uses Arc-backed COW for snapshot/scrollback semantics (S96).
+- IdentityManifest canonical serialization order is stable (INV-034).
+- TermletError has 16 variants + stable `error_code()` mapping (S98).
+
+### mux-parser
+
+- Dispatch via static `CLASS_TABLE[256]` in hot path (S95).
+- Seven byte classes include `DcsEntry` for `0x90` (INV-026).
+- Oracle classifier retained for LUT parity tests.
+
+### mux-grid
+
+- Live rows are mutable `Vec<Cell>` buffers.
+- Scrollback uses COW `Line` snapshots (`Arc<Vec<Cell>>`).
+- Mutation APIs (`put_char`/`put_grapheme`) provide bounds-checked writes.
+
+### mux-snapshot
+
+- Header is fixed 31 bytes with checksum algorithm byte at offset 30 (INV-023).
+- Encode path uses CRC32C canonical checksum (S93/INV-031).
+- Decode path supports legacy FNV-1a only for compatibility reads.
+- PackedCell payload is LE and platform-independent.
+
+### mux-grapheme-arena
+
+- 14-bit extension index with `0` reserved for no extension (S92/INV-030).
+- Arena deduplicates grapheme clusters and validates bounds.
+
+### mux-pty
+
+- Unified `InnerPtyState` shared by typestate and dynamic handle APIs (S99).
+- Lifecycle transitions are monotonic and invalid transitions are typed errors (INV-013).
+
+### mux-time
+
+- DeterministicTimeSource unifies wall, lamport, and vector clocks (S97).
+- Vector/lamport merges preserve monotonicity and reproducibility.
+
+### mux-proto
+
+- Frames are length-delimited with strict decode checks (INV-020).
+- Message variants are explicit, typed, and round-trippable.
+
+### mux-termlet
+
+- Quota and sandbox checks gate runtime actions before execution.
+- Recorder output remains deterministic for fixed clock/seed inputs.
+
+### mux-orm
+
+- QueryList provides typed retrieval errors (ObjectDoesNotExist/MultipleObjectsReturned).
+- Filter/exclude operations are immutable and composable.
+
+### mux-test-support
+
+- Per-test isolated socket roots are created and cleaned automatically.
+- Eventually assertions are bounded for deterministic CI behavior.
+
+## Rule Index (405 IDs, one-line)
+
+- `RULE-S01-01`: Project name is TermForge.
+- `RULE-S01-02`: Binary name is termforge.
+- `RULE-S01-03`: Library prefix is mux-.
+- `RULE-S01-04`: Rust edition is 2021.
+- `RULE-S01-05`: MSRV is 1.75.0.
+- `RULE-S01-06`: License is MIT OR Apache-2.0.
+- `RULE-S01-07`: IdentityManifest is canonical metadata struct.
+- `RULE-S01-08`: BuildProfile has 3 variants.
+- `RULE-S01-09`: git_sha populated in release builds.
+- `RULE-S01-10`: IdentityManifest derives Clone + PartialEq + Eq.
+- `RULE-S01-11`: **[v15]** BuildProfile::Profiling variant present.
+- `RULE-S01-12`: **[v15 P2]** target_triple MUST be non-empty.
+- `RULE-S01-13`: **[v15 P2]** feature_flags MUST record active Cargo features.
+- `RULE-S01-14`: **[v15 P3]** version_string() MUST contain spec version tag.
+- `RULE-S01-15`: **[v15 P3]** Identity serialization MUST be canonical (sorted keys).
+- `RULE-S02-01`: Three release lanes: LTS, Current, Preview.
+- `RULE-S02-02`: Preview failures are warnings.
+- `RULE-S02-03`: LTS/Current failures block release.
+- `RULE-S02-04`: Waivers have expiry timestamps.
+- `RULE-S02-05`: Expired waivers block release.
+- `RULE-S02-06`: CI matrix has 16 jobs.
+- `RULE-S02-07`: GateOutcome has 5 variants.
+- `RULE-S02-08`: Gate results are Clone + PartialEq + Eq.
+- `RULE-S02-09`: **[v15 P2]** FailWithBypass for security hotfixes.
+- `RULE-S02-10`: **[v15 P2]** 4 feature sets: default, crdt, crc32c, wasm.
+- `RULE-S02-11`: **[v15 P3]** Gate evaluation MUST be deterministic (INV-033).
+- `RULE-S02-12`: **[v15 P3]** Gate audit trail MUST be JSON-serializable (INV-034).
+- `RULE-S03-01`: Crate dependency graph is acyclic.
+- `RULE-S03-02`: L0 crates have no external deps.
+- `RULE-S03-03`: All library crates use `mux-` prefix.
+- `RULE-S03-04`: WASM target for L0.
+- `RULE-S03-05`: Feature flags are additive-only.
+- `RULE-S03-06`: **[v15 P2]** 4 feature sets: default, crdt, crc32c, wasm.
+- `RULE-S03-07`: **[v15 P3]** crdt and wasm MUST be mutually exclusive.
+- `RULE-S03-08`: **[v15 P3]** Supply chain security via cargo-vet.
+- `RULE-S03-09`: **[v15 P3]** snapshot-compress feature is non-normative.
+- `RULE-S03-10`: **[v15 P3]** Dependency additions require RFC review.
+- `RULE-S04-01`: Workspace uses `crates/` directory.
+- `RULE-S04-02`: Benchmarks in `benchmarks/`.
+- `RULE-S04-03`: Fuzz targets in `fuzz/`.
+- `RULE-S04-04`: Golden fixtures in `fixtures/`.
+- `RULE-S04-05`: Integration tests in `tests/`.
+- `RULE-S04-06`: **[v15 P2]** Examples in `examples/`.
+- `RULE-S04-07`: **[v15 P3]** CI MUST validate directory structure.
+- `RULE-S04-08`: **[v15 P3]** Each crate MUST have README.md.
+- `RULE-S04-09`: **[v15 P3]** Workspace layout changes require RFC.
+- `RULE-S04-10`: **[v15 P3]** All crate Cargo.toml MUST reference workspace version.
+- `RULE-S05-01`: Grid coordinates are zero-based.
+- `RULE-S05-02`: Mutation only via put_char/put_grapheme.
+- `RULE-S05-03`: SmallVec rejected FINAL for line cells.
+- `RULE-S05-04`: Cell grapheme is valid UTF-8.
+- `RULE-S05-05`: Style is bitfield-packed.
+- `RULE-S05-06`: **[v15 P2]** Cell width field MUST be 0, 1, or 2.
+- `RULE-S05-07`: **[v15 P2]** CompactString for Cell grapheme.
+- `RULE-S05-08`: **[v15 P2]** Arc<Vec<Cell>> for scrollback.
+- `RULE-S05-09`: **[v15 P2]** VecDeque for grid lines.
+- `RULE-S05-10`: **[v15 P3]** Unicode scalar validated at insertion, not encoding.
+- `RULE-S05-11`: **[v15 P3]** Scrollback limit is configurable.
+- `RULE-S05-12`: **[v15 P3]** Scroll region bounds MUST be validated.
+- `RULE-S06-01`: CLASS_TABLE[256] is canonical hot path.
+- `RULE-S06-02`: classify_match() retained as oracle.
+- `RULE-S06-03`: ByteClass has 7 variants.
+- `RULE-S06-04`: ByteClass is #[repr(u8)].
+- `RULE-S06-05`: DcsEntry for 0x90.
+- `RULE-S06-06`: Step function is pure.
+- `RULE-S06-07`: All transitions defined.
+- `RULE-S06-08`: **[v15 P2]** CLASS_TABLE matches oracle for all 256 bytes.
+- `RULE-S06-09`: **[v15 P3]** Actions are effect-free records.
+- `RULE-S06-10`: **[v15 P3]** Parser fuzz target present.
+- `RULE-S06-11`: **[v15 P3]** Unsupported CSI finals logged as metrics, not panics.
+- `RULE-S06-12`: **[v15 P3]** Parser state machine is serializable for replay.
+- `RULE-S07-01`: PtyHandle has 7 states.
+- `RULE-S07-02`: Lifecycle is monotonic (INV-013).
+- `RULE-S07-03`: Typestate PtyHandle for Rust core.
+- `RULE-S07-04`: DynPtyHandle for FFI boundary.
+- `RULE-S07-05`: TryFrom<DynPtyHandle> for typed recovery.
+- `RULE-S07-06`: **[v15 P2]** Generation counting prevents ABA.
+- `RULE-S07-07`: **[v15 P2]** validate_generation before slot ops.
+- `RULE-S07-08`: **[v15 P3]** Unified InnerPtyState enum (S99).
+- `RULE-S07-09`: **[v15 P3]** Restart barrier enforced.
+- `RULE-S07-10`: **[v15 P3]** Closed handle returns HandleClosed deterministically.
+- `RULE-S07-11`: **[v15 P3]** PtyHandleError implements std::error::Error.
+- `RULE-S07-12`: **[v15 P3]** Drop on PtyHandle forces kill if not terminal.
+- `RULE-S08-01`: Snapshot magic is "TFSNAP13".
+- `RULE-S08-02`: Header is 31 bytes (INV-023).
+- `RULE-S08-03`: CRC32C canonical for encode (S93, INV-031).
+- `RULE-S08-04`: FNV-1a decode-only.
+- `RULE-S08-05`: PackedCell is 64 bits (S94).
+- `RULE-S08-06`: PackedCell layout: scalar:21+style:15+flags:12+width:2+ext:14.
+- `RULE-S08-07`: GraphemeArena is optional trailer (INV-028).
+- `RULE-S08-08`: Platform-endian-independent (LE canonical, INV-011).
+- `RULE-S08-09`: **[v15 P2]** Unknown algorithms are hard errors.
+- `RULE-S08-10`: **[v15 P3]** Software CRC32C fallback mandatory.
+- `RULE-S08-11`: **[v15 P3]** Truncated payloads rejected before UTF-8.
+- `RULE-S08-12`: **[v15 P3]** Snapshot round-trip MUST preserve all fields.
+- `RULE-S09-01`: 100% tmux wire-protocol v8 compat (INV-001).
+- `RULE-S09-02`: Frames are length-delimited (INV-020).
+- `RULE-S09-03`: Socket path uses termforge-<uid> prefix (INV-014).
+- `RULE-S09-04`: **[v15 P2]** SO_PASSCRED on Linux.
+- `RULE-S09-05`: **[v15 P3]** Frame size limit MUST be enforced.
+- `RULE-S09-06`: **[v15 P3]** Replay MUST be idempotent by message ID.
+- `RULE-S09-07`: **[v15 P3]** FrameTooLarge error MUST include size and limit.
+- `RULE-S09-08`: **[v15 P3]** Protocol version mismatch MUST be a hard error.
+- `RULE-S09-09`: **[v15 P3]** Differential parity against tmux mandatory for wire-visible paths.
+- `RULE-S09-10`: **[v15 P3]** DCS passthrough piped correctly (INV-026).
+- `RULE-S10-01`: tmux-compatible option names for all `set-option` keys (INV-015).
+- `RULE-S10-02`: Hierarchical scoping with 4 levels (server/session/window/pane).
+- `RULE-S10-03`: TOML configuration format (no YAML, no JSON).
+- `RULE-S10-04`: XDG base directory support per XDG Base Directory Specification.
+- `RULE-S10-05`: **[v15 P3]** Hot-reload MUST NOT require server restart. File-system watcher applies diffs atomically.
+- `RULE-S10-06`: **[v15 P3]** Config serialization is canonical (sorted keys, INV-034). Two identical configs produce byte-identical TOML.
+- `RULE-S10-07`: **[v15 P3]** Invalid keys produce ConfigError::UnknownKey with the key name.
+- `RULE-S10-08`: **[v15 P3]** Config changes logged to OTEL with old and new values.
+- `RULE-S10-09`: **[v15 P3]** Type-safe values: ConfigError::TypeMismatch for wrong types.
+- `RULE-S10-10`: **[v15 P3]** Config diff is deterministic.
+- `RULE-S10-11`: **[v15 P3]** Failed hot-reload rolls back, logs warning.
+- `RULE-S10-12`: **[v15 P3]** Config values support bool, integer, string, enum, color types.
+- `RULE-S11-01`: Deterministic layout for identical input (INV-016).
+- `RULE-S11-02`: Minimum pane size 1x1.
+- `RULE-S11-03`: tmux-compatible split semantics.
+- `RULE-S11-04`: Split directions: horizontal, vertical.
+- `RULE-S11-05`: **[v15 P3]** Layout engine is pure (no IO, no global state).
+- `RULE-S11-06`: **[v15 P3]** Layout changes logged to OTEL with pane geometry.
+- `RULE-S11-07`: **[v15 P3]** Resize preserves split ratios.
+- `RULE-S11-08`: **[v15 P3]** Layout state serializable for snapshots.
+- `RULE-S11-09`: **[v15 P3]** Layout tree supports recursive nesting.
+- `RULE-S11-10`: **[v15 P3]** find_pane() traverses all children.
+- `RULE-S12-01`: Server-Session-Window-Pane hierarchy.
+- `RULE-S12-02`: QueryList with typed errors.
+- `RULE-S12-03`: ObjectDoesNotExist and MultipleObjectsReturned variants.
+- `RULE-S12-04`: Pane owns Grid and PtyHandle.
+- `RULE-S12-05`: **[v15 P3]** IDs are monotonic.
+- `RULE-S12-06`: **[v15 P3]** Key bindings hierarchically scoped (INV-022).
+- `RULE-S12-07`: **[v15 P3]** Session/Window serializable.
+- `RULE-S12-08`: **[v15 P3]** Pane destruction releases PtyHandle.
+- `RULE-S12-09`: **[v15 P3]** QueryList supports filter() for multi-result queries.
+- `RULE-S12-10`: **[v15 P3]** QueryError is Send + Sync.
+- `RULE-S13-01`: Hierarchical scoping: Global < Session < Window < Pane (INV-022).
+- `RULE-S13-02`: tmux-compatible key notation (C-, M-, S-, F1-F12).
+- `RULE-S13-03`: Description field MUST be non-empty for all built-in bindings.
+- `RULE-S13-04`: Most-specific scope wins.
+- `RULE-S13-05`: **[v15 P3]** Last-writer-wins within same scope is deterministic.
+- `RULE-S13-06`: **[v15 P3]** Key binding changes emit OTEL span with old and new command.
+- `RULE-S13-07`: **[v15 P3]** Key table names match tmux (`prefix`, `root`, `copy-mode-vi`, `copy-mode`).
+- `RULE-S13-08`: **[v15 P3]** Invalid modifiers produce KeyParseError::InvalidModifier.
+- `RULE-S13-09`: **[v15 P3]** Repeat flag (-r) support within repeat-time.
+- `RULE-S13-10`: **[v15 P3]** Custom key tables do not pollute default tables.
+- `RULE-S14-01`: Clipboard size limit enforced (INV-021).
+- `RULE-S14-02`: OSC 52 set and get operations.
+- `RULE-S14-03`: **[v15 P3]** Clipboard content sanitized: CSI, OSC, DCS sequences stripped before storage.
+- `RULE-S14-04`: **[v15 P3]** Clipboard changes emit OTEL span with buffer name and size.
+- `RULE-S14-05`: **[v15 P3]** Named buffers use BTreeMap for deterministic order (INV-034).
+- `RULE-S14-06`: **[v15 P3]** History ring respects configurable size, evicts FIFO.
+- `RULE-S14-07`: **[v15 P3]** BufferNotFound error for missing buffer names.
+- `RULE-S14-08`: **[v15 P3]** OSC 52 query returns base64-encoded current buffer.
+- `RULE-S15-01`: SGR extended mouse protocol (CSI < Pb;Px;Py M/m).
+- `RULE-S15-02`: Cell and pixel modes both supported.
+- `RULE-S15-03`: **[v15 P2]** pixel_mode field with px_x/px_y coordinates.
+- `RULE-S15-04`: **[v15 P3]** Mouse events deterministic in replay (INV-033).
+- `RULE-S15-05`: **[v15 P3]** Button code decode handles all SGR button values.
+- `RULE-S15-06`: **[v15 P3]** Modifier bit extraction (shift=4, meta=8, ctrl=16, motion=32).
+- `RULE-S15-07`: **[v15 P3]** Drag events have motion flag set.
+- `RULE-S15-08`: **[v15 P3]** Mouse events emit OTEL spans in debug mode.
+- `RULE-S16-01`: tmux-compatible format strings (#S, #W, #I, #P, #T, #H, #F, #{...}).
+- `RULE-S16-02`: pane_count and TermForge-specific variables.
+- `RULE-S16-03`: **[v15 P3]** Status bar rendering is pure function of (format, context).
+- `RULE-S16-04`: **[v15 P3]** Custom variables MUST be documented in help text.
+- `RULE-S16-05`: **[v15 P3]** Missing variables produce empty string, not error.
+- `RULE-S16-06`: **[v15 P3]** Status truncation preserves left content with "..." suffix.
+- `RULE-S16-07`: **[v15 P3]** Style directives (#[...]) parsed and applied.
+- `RULE-S16-08`: **[v15 P3]** Rate-limited updates at configurable interval.
+- `RULE-S17-01`: Vi and Emacs copy mode styles with full tmux keybinding parity.
+- `RULE-S17-02`: Search within scrollback (forward and backward).
+- `RULE-S17-03`: **[v15 P2]** Copy mode operates on COW scrollback snapshot.
+- `RULE-S17-04`: **[v15 P3]** Search results deterministic (INV-033).
+- `RULE-S17-05`: **[v15 P3]** Three selection modes: character, line, block.
+- `RULE-S17-06`: **[v15 P3]** Yanked text goes through clipboard sanitization.
+- `RULE-S17-07`: **[v15 P3]** Search match wraps around at end of buffer.
+- `RULE-S17-08`: **[v15 P3]** Copy mode entry/exit emits OTEL span.
+- `RULE-S18-01`: OTEL spans at cross-crate boundaries (INV-017).
+- `RULE-S18-02`: Metrics for key operations.
+- `RULE-S18-03`: **[v15 P2]** grapheme_arena.size metric present.
+- `RULE-S18-04`: **[v15 P2]** cow_trigger_count metric present.
+- `RULE-S18-05`: **[v15 P3]** OTEL opt-in via feature flag.
+- `RULE-S18-06`: **[v15 P3]** Disabled path has zero overhead.
+- `RULE-S18-07`: **[v15 P3]** Semantic naming convention: `<namespace>.<metric_name>`.
+- `RULE-S18-08`: **[v15 P3]** Dimension labels on all metrics (session_id, pane_id, crate_name).
+- `RULE-S18-09`: **[v15 P3]** Trace context propagation across async boundaries.
+- `RULE-S18-10`: **[v15 P3]** OTEL exporter configurable (Jaeger, OTLP, stdout).
+- `RULE-S19-01`: All errors implement `std::error::Error + Send + Sync + 'static` (INV-005).
+- `RULE-S19-02`: No panicking in library code (INV-006). No `unwrap()`, `expect()`, `panic!()` outside tests.
+- `RULE-S19-03`: Structured error types with per-variant diagnostic context.
+- `RULE-S19-04`: **[v15 P3]** Error chains via `source()` for nested errors.
+- `RULE-S19-05`: **[v15 P3]** All errors derive Debug + Clone.
+- `RULE-S19-06`: **[v15 P3]** Unique u16 error codes per variant via `error_code()`.
+- `RULE-S19-07`: **[v15 P3]** Error codes are stable: existing codes MUST NOT change.
+- `RULE-S19-08`: **[v15 P3]** ErrorContext feeds into OTEL error spans.
+- `RULE-S19-09`: **[v15 P3]** Error Display includes [Ecode] prefix for log parsing.
+- `RULE-S19-10`: **[v15 P3]** Parser errors include byte_offset for diagnostic precision.
+- `RULE-S20-01`: Per-lane compatibility tracking for LTS, Current, Preview.
+- `RULE-S20-02`: Parity percentage tracked and reported in CI.
+- `RULE-S20-03`: **[v15 P3]** Compatibility evidence machine-verifiable: every compat entry has a test_id.
+- `RULE-S20-04`: **[v15 P3]** New tmux commands MUST be added to compat matrix before implementation.
+- `RULE-S20-05`: **[v15 P3]** Differential tests compare TermForge output against tmux binary output.
+- `RULE-S20-06`: **[v15 P3]** Unsupported commands return typed error, not panic.
+- `RULE-S20-07`: **[v15 P3]** Category grouping covers all 10 categories.
+- `RULE-S20-08`: **[v15 P3]** Compat matrix is const and requires no I/O.
+- `RULE-S21-01`: Features additive-only (INV-018). Enabling a feature MUST NOT break existing tests.
+- `RULE-S21-02`: crdt and wasm mutually exclusive via compile_error!().
+- `RULE-S21-03`: Unknown features rejected at both compile time (Cargo) and runtime (from_name).
+- `RULE-S21-04`: **[v15 P3]** Feature flags documented in crate README with description.
+- `RULE-S21-05`: **[v15 P3]** Feature names are kebab-case and match Cargo feature names.
+- `RULE-S21-06`: **[v15 P3]** FeatureSet::active() provides runtime detection.
+- `RULE-S21-07`: **[v15 P3]** crc32c feature is always enabled (default).
+- `RULE-S21-08`: **[v15 P3]** Feature error types implement std::error::Error.
+- `RULE-S22-01`: Platform-specific code in mux-pty only.
+- `RULE-S22-02`: No unsafe outside mux-pty (INV-003).
+- `RULE-S22-03`: **[v15 P3]** Platform divergence explicit via PlatformCaps. Code MUST check caps before using platform features.
+- `RULE-S22-04`: **[v15 P3]** PtySpawner trait abstracts all platform PTY differences.
+- `RULE-S22-05`: **[v15 P3]** FreeBSD support: kqueue IO backend, posix_openpt PTY.
+- `RULE-S22-06`: **[v15 P3]** Signal handling isolated in mux-pty.
+- `RULE-S22-07`: **[v15 P3]** IO backend fallback to poll when neither epoll nor kqueue available.
+- `RULE-S22-08`: **[v15 P3]** WASM resize is a no-op.
+- `RULE-S23-01`: CRDT behind feature flag.
+- `RULE-S23-02`: VectorClock monotonic (INV-025).
+- `RULE-S23-03`: DeterministicTimeSource unified (S97).
+- `RULE-S23-04`: OpLog uses partition_point.
+- `RULE-S23-05`: **[v15 P2]** NemesisScheduler present.
+- `RULE-S23-06`: **[v15 P2]** HistoryChecker validates consistency.
+- `RULE-S23-07`: **[v15 P3]** LWWFieldMap merge commutative.
+- `RULE-S23-08`: **[v15 P3]** CRDT operations idempotent.
+- `RULE-S23-09`: **[v15 P3]** Replay convergence for N merge orders.
+- `RULE-S23-10`: **[v15 P3]** LWW tie-break by actor_id.
+- `RULE-S24-01`: L0 crates compile to wasm32-unknown-unknown.
+- `RULE-S24-02`: WASM and CRDT mutually exclusive via compile_error!().
+- `RULE-S24-03`: **[v15 P3]** WASM crates use no-std + alloc, no std::io or std::net.
+- `RULE-S24-04`: **[v15 P3]** WASM binary size under 256 KiB (gzipped).
+- `RULE-S24-05`: **[v15 P3]** wasm-bindgen exports for PackedCell, Grid viewport, parser.
+- `RULE-S24-06`: **[v15 P3]** WASM crate list maintained (exactly 2 L0 crates).
+- `RULE-S24-07`: **[v15 P3]** WASM viewport provides cell_count() for browser rendering.
+- `RULE-S24-08`: **[v15 P3]** Size budget enforced in CI with regression alert.
+- `RULE-S25-01`: DCS 0x90 classified as DcsEntry in CLASS_TABLE (INV-026).
+- `RULE-S25-02`: DCS passthrough piped transparently to client.
+- `RULE-S25-03`: **[v15 P3]** DCS fuzz target in `fuzz/fuzz_dcs.rs`.
+- `RULE-S25-04`: **[v15 P3]** DCS notification emitted on passthrough.
+- `RULE-S25-05`: **[v15 P3]** DCS payload size limited to 16 MiB.
+- `RULE-S25-06`: **[v15 P3]** DCS subtype classification for sixel, DECDLD, DECRQSS, tmux control, iTerm2.
+- `RULE-S25-07`: **[v15 P3]** DCS errors typed (PayloadTooLarge, InvalidStringTerminator).
+- `RULE-S25-08`: **[v15 P3]** DCS passthrough logged to OTEL with subtype.
+- `RULE-S26-01`: Every section contributes rules to this consolidated index.
+- `RULE-S26-02`: Rules use `RULE-Snn-xx` format with explicit enforcement.
+- `RULE-S26-03`: **[v15 P3]** Every rule has concrete enforcement artifact (test, lint, or CI check).
+- `RULE-S26-04`: **[v15 P3]** Rules MUST NOT be removed, only deprecated.
+- `RULE-S26-05`: **[v15 P3]** Rule IDs are unique across the entire registry.
+- `RULE-S27-01`: Risks numbered R001-R145+ with sequential IDs.
+- `RULE-S27-02`: Each risk has non-empty mitigation string.
+- `RULE-S27-03`: **[v15 P2]** Per-risk mitigation contracts (testable assertions).
+- `RULE-S27-04`: **[v15 P3]** Every risk has associated TST in test_id field.
+- `RULE-S27-05`: **[v15 P3]** H/H and M/H risks MUST be mitigated before feature ships.
+- `RULE-S27-06`: **[v15 P3]** Risk IDs are unique and sequential.
+- `RULE-S27-07`: **[v15 P3]** New risks added on each spec version bump.
+- `RULE-S27-08`: **[v15 P3]** Risk descriptions are non-empty and specific.
+- `RULE-S28-01`: Plan evolution table maintained.
+- `RULE-S28-02`: Breaking changes documented with migration.
+- `RULE-S28-03`: **[v15 P3]** Definitive passes marked as such.
+- `RULE-S28-04`: **[v15 P3]** Breaking changes carry migration instructions.
+- `RULE-S28-05`: **[v15 P3]** Spec version enum is exhaustive.
+- `RULE-S29-01`: Unit tests per module with `#[cfg(test)] mod tests`.
+- `RULE-S29-02`: 5+ fuzz targets in `fuzz/`.
+- `RULE-S29-03`: Property tests (proptest) for all encoding round-trips.
+- `RULE-S29-04`: **[v15 P3]** Every section has 5+ TSTs.
+- `RULE-S29-05`: **[v15 P3]** Differential testing against tmux binary.
+- `RULE-S29-06`: **[v15 P3]** Test isolation via unique socket names.
+- `RULE-S29-07`: **[v15 P3]** Snapshot tests with insta for grid state golden files.
+- `RULE-S29-08`: **[v15 P3]** TestGuard MUST clean up all resources on drop.
+- `RULE-S30-01`: Criterion benchmarks for all hot paths.
+- `RULE-S30-02`: 12+ benchmark targets.
+- `RULE-S30-03`: **[v15 P3]** Benchmark results stored as CI artifacts.
+- `RULE-S30-04`: **[v15 P3]** Micro-benchmarks MUST have ns-level threshold.
+- `RULE-S30-05`: **[v15 P3]** >5% regression on any benchmark fails CI.
+- `RULE-S30-06`: **[v15 P3]** Benchmark names are unique across all targets.
+- `RULE-S31-01`: Architecture changes require RFC with decision record.
+- `RULE-S31-02`: Breaking changes need 2/3 maintainer approval.
+- `RULE-S31-03`: Decision records maintained in `docs/decisions/`.
+- `RULE-S31-04`: **[v15 P3]** DRs reference invariants affected.
+- `RULE-S31-05`: **[v15 P3]** DRs reference settled decisions affected.
+- `RULE-S31-06`: **[v15 P3]** RFC lifecycle: Proposed -> UnderReview -> Accepted/Rejected -> Superseded.
+- `RULE-S31-07`: **[v15 P3]** External contributor RFCs require one core-team sponsor.
+- `RULE-S31-08`: **[v15 P3]** RFC template fields: Problem, Solution, Alternatives, Impact, Migration.
+- `RULE-S31-09`: **[v15 P3]** Superseded DRs MUST reference the superseding DR.
+- `RULE-S31-10`: **[v15 P3]** DR status transitions logged with timestamp.
+- `RULE-S32-01`: Termlet trait is object-safe.
+- `RULE-S32-02`: Termlet::spawn() returns typed error.
+- `RULE-S32-03`: Termlet::send_keys() accepts tmux key notation.
+- `RULE-S32-04`: Termlet::wait_for() has configurable timeout.
+- `RULE-S32-05`: Termlet::snapshot() is deterministic (INV-033).
+- `RULE-S32-06`: Termlet::resize() validates minimum 1x1.
+- `RULE-S32-07`: Termlet::kill() releases all resources.
+- `RULE-S32-08`: TermletError has 16 variants.
+- `RULE-S32-09`: TermletError implements std::error::Error.
+- `RULE-S32-10`: TermletError::error_code() returns unique u16.
+- `RULE-S32-11`: FakePty produces deterministic output.
+- `RULE-S32-12`: FakePty supports resize.
+- `RULE-S32-13`: TermletBuilder follows builder pattern.
+- `RULE-S32-14`: TermletBuilder default shell is $SHELL.
+- `RULE-S32-15`: TermletBuilder socket_path is isolated.
+- `RULE-S32-16`: Resource quotas enforce max_ptys.
+- `RULE-S32-17`: Resource quotas enforce max_memory.
+- `RULE-S32-18`: Resource quotas enforce max_duration.
+- `RULE-S32-19`: Sandbox isolates file system.
+- `RULE-S32-20`: Sandbox isolates network.
+- `RULE-S32-21`: Recorder captures events with timestamps.
+- `RULE-S32-22`: Recorder uses .tlet file format.
+- `RULE-S32-23`: Recorder size limit prevents unbounded growth.
+- `RULE-S32-24`: FFI exports via cbindgen.
+- `RULE-S32-25`: FFI handles NULL pointers safely.
+- `RULE-S32-26`: GraphemeArena::insert returns valid index.
+- `RULE-S32-27`: GraphemeArena dedup stores identical graphemes once.
+- `RULE-S32-28`: GraphemeArena::lookup returns correct string.
+- `RULE-S32-29`: GraphemeArena capacity tracked.
+- `RULE-S32-30`: GraphemeArena overflow returns CapacityExceeded.
+- `RULE-S32-31`: GraphemeArena 14-bit index cap enforced.
+- `RULE-S32-32`: GraphemeArena thread-safe via interior mutability.
+- `RULE-S32-33`: GraphemeArena metrics emitted to OTEL.
+- `RULE-S32-34`: GraphemeArena clear resets all indices.
+- `RULE-S32-35`: GraphemeArena snapshot serializable.
+- `RULE-S32-36`: GraphemeArena edge cases (empty string, max-length, combining chars). (v13 P3).
+- `RULE-S32-40`: GraphemeArena edge cases (empty string, max-length, combining chars). (v13 P3).
+- `RULE-S32-41`: COW scrollback uses Arc<Vec<Cell>>.
+- `RULE-S32-42`: COW clone is O(1) (Arc::clone).
+- `RULE-S32-43`: COW mutation uses Arc::make_mut.
+- `RULE-S32-44`: COW eviction respects scrollback limit.
+- `RULE-S32-45`: COW comparison is byte-level.
+- `RULE-S32-46`: COW trigger count tracked in metrics.
+- `RULE-S32-47`: COW scrollback deterministic in replay.
+- `RULE-S32-48`: COW edge cases (empty, max-size, concurrent readers). (v13 P3).
+- `RULE-S32-55`: COW edge cases (empty, max-size, concurrent readers). (v13 P3).
+- `RULE-S32-56`: DeterministicTimeSource wall clock access.
+- `RULE-S32-57`: DeterministicTimeSource Lamport clock monotonic.
+- `RULE-S32-58`: DeterministicTimeSource vector clock merge.
+- `RULE-S32-59`: DeterministicTimeSource monotonic guard prevents backward jumps.
+- `RULE-S32-60`: DeterministicTimeSource seed-based determinism.
+- `RULE-S32-61`: TimeSource edge cases (overflow, precision, timezone). (v13 P3).
+- `RULE-S32-70`: TimeSource edge cases (overflow, precision, timezone). (v13 P3).
+- `RULE-S32-71`: NemesisScheduler delay injection.
+- `RULE-S32-72`: NemesisScheduler partition injection.
+- `RULE-S32-73`: NemesisScheduler reorder injection.
+- `RULE-S32-74`: HistoryChecker linearizability verification.
+- `RULE-S32-75`: HistoryChecker serializable history.
+- `RULE-S32-76`: Nemesis+History edge cases (empty history, single-op, concurrent). (v13 P3).
+- `RULE-S32-80`: Nemesis+History edge cases (empty history, single-op, concurrent). (v13 P3).
+- `RULE-S32-81`: PtyHandle Allocated state initial.
+- `RULE-S32-82`: PtyHandle Spawned state after spawn.
+- `RULE-S32-83`: PtyHandle Running state during operation.
+- `RULE-S32-84`: PtyHandle Stopping state on graceful shutdown.
+- `RULE-S32-85`: PtyHandle Exited state after child exit.
+- `RULE-S32-86`: PtyHandle Reaped state after waitpid.
+- `RULE-S32-87`: PtyHandle Closed terminal state.
+- `RULE-S32-88`: PtyHandle invalid transitions rejected.
+- `RULE-S32-89`: PtyHandle generation counter prevents ABA.
+- `RULE-S32-90`: PtyHandle Drop releases resources.
+- `RULE-S32-91`: Normative v15 rule carried from definitive registry.
+- `RULE-S32-100`: PtyHandle edge cases (double-close, signal-during-spawn, zombie). (v14 P3).
+- `RULE-S32-101`: Grid::put_char writes at cursor position.
+- `RULE-S32-102`: Grid::scroll_up moves lines correctly.
+- `RULE-S32-103`: Grid::resize preserves visible content.
+- `RULE-S32-104`: Grid::clear resets all cells.
+- `RULE-S32-105`: Grid cursor wraps at right margin.
+- `RULE-S32-106`: Grid edge cases (zero-width, overflow, CJK). (v14 P3).
+- `RULE-S32-110`: Grid edge cases (zero-width, overflow, CJK). (v14 P3).
+- `RULE-S32-111`: Python binding round-trip for Session.
+- `RULE-S32-112`: Python binding round-trip for Window.
+- `RULE-S32-113`: Python binding round-trip for Pane.
+- `RULE-S32-114`: Node.js binding round-trip for Session.
+- `RULE-S32-115`: Node.js binding round-trip for Window.
+- `RULE-S32-116`: Node.js binding round-trip for Pane.
+- `RULE-S32-117`: Python QuerySet-like filtering.
+- `RULE-S32-118`: Node.js QuerySet-like filtering.
+- `RULE-S32-119`: Language binding error propagation. (v14 P3).
+- `RULE-S32-120`: Language binding error propagation. (v14 P3).
+- `RULE-S32-121`: Termlet lifecycle: spawn creates PTY.
+- `RULE-S32-122`: Termlet lifecycle: interact sends keys.
+- `RULE-S32-123`: Termlet lifecycle: capture reads output.
+- `RULE-S32-124`: Termlet lifecycle: teardown releases resources.
+- `RULE-S32-125`: Termlet lifecycle edge cases (timeout, crash, signal). (v15 P1).
+- `RULE-S32-130`: Termlet lifecycle edge cases (timeout, crash, signal). (v15 P1).
+- `RULE-S32-131`: Snapshot encode produces valid bytes.
+- `RULE-S32-132`: Snapshot decode recovers original.
+- `RULE-S32-133`: Recording replay produces identical output.
+- `RULE-S32-134`: Snapshot/recording edge cases (corrupt, truncated, version). (v15 P2).
+- `RULE-S32-140`: Snapshot/recording edge cases (corrupt, truncated, version). (v15 P2).
+- `RULE-S32-141`: CRDT merge produces convergent state.
+- `RULE-S32-142`: CRDT actor management (add, remove, GC).
+- `RULE-S32-143`: CRDT edge cases (empty, single-actor, clock overflow). (v15 P2).
+- `RULE-S32-145`: CRDT edge cases (empty, single-actor, clock overflow). (v15 P2).
+- `RULE-S32-146`: **[v15 P3]** InnerPtyState MUST be shared by typestate and dynamic handles (S99).
+- `RULE-S32-147`: **[v15 P3]** All Termlet public APIs MUST be deterministic under fixed seed (INV-033, S100).
+- `RULE-S32-148`: **[v15 P3]** Backpressure on send_keys when output buffer full.
+- `RULE-S32-149`: **[v15 P3]** Replay MUST be idempotent by key.
+- `RULE-S32-150`: **[v15 P3]** ResizePayload encode/decode MUST round-trip.
+- `RULE-S32-151`: **[v15 P3]** PtyRegistry MUST track capacity utilization.
+- `RULE-S32-152`: **[v15 P3]** PtyRegistry capacity exceeded MUST return typed error.
+- `RULE-S32-153`: **[v15 P3]** Sandbox mode opt-in via TermletBuilder.
+- `RULE-S32-154`: **[v15 P3]** Recorder size limit MUST prevent unbounded growth.
+- `RULE-S32-155`: **[v15 P3]** All error types in Section 32 implement std::error::Error + Send + Sync.
