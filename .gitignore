@@ -62,3 +62,7 @@ notes/diagnostics/pty-report-*.json
 # Local config overrides (not tracked)
 .vibe-tmux/otel.local.toml
 *.local.toml
+
+.fingerprint/
+.debug/
+*.bin
