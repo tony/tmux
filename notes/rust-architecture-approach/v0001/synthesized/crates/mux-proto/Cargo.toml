@@ -1,0 +1,7 @@
+[package]
+name = "mux-proto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Wire protocol v8 TLV frames for TermForge"

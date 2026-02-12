@@ -1,0 +1,10 @@
+[package]
+name = "mux-time"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "DeterministicTimeSource: wall + Lamport + vector clock for TermForge"
+
+[dependencies]
+mux-types = { workspace = true }

@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mux-types",
+    "crates/mux-parser",
+    "crates/mux-grid",
+    "crates/mux-snapshot",
+    "crates/mux-grapheme-arena",
+    "crates/mux-pty",
+    "crates/mux-proto",
+    "crates/mux-time",
+    "crates/mux-termlet",
+    "crates/mux-orm",
+    "crates/mux-test-support",
+    "crates/mux-kernel",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/termforge/termforge"
+
+[workspace.dependencies]
+compact_str = "0.8"
+crc32fast = "1.4"
+serde = { version = "1.0", default-features = false }
+
+# Internal crate dependencies
+mux-types = { path = "crates/mux-types" }
+mux-parser = { path = "crates/mux-parser" }
+mux-grid = { path = "crates/mux-grid" }
+mux-snapshot = { path = "crates/mux-snapshot" }
+mux-grapheme-arena = { path = "crates/mux-grapheme-arena" }
+mux-pty = { path = "crates/mux-pty" }
+mux-proto = { path = "crates/mux-proto" }
+mux-time = { path = "crates/mux-time" }
+mux-termlet = { path = "crates/mux-termlet" }
+mux-orm = { path = "crates/mux-orm" }
+mux-test-support = { path = "crates/mux-test-support" }
+mux-kernel = { path = "crates/mux-kernel" }

@@ -1,0 +1,12 @@
+[package]
+name = "mux-snapshot"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Snapshot format: 31-byte header, CRC32C checksum, PackedCell encode/decode"
+
+[dependencies]
+mux-types = { workspace = true }
+mux-grapheme-arena = { workspace = true }
+crc32fast = { workspace = true }

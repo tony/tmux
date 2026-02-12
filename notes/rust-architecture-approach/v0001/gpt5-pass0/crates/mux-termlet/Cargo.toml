@@ -1,0 +1,10 @@
+[package]
+name = "mux-termlet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mux-pty = { path = "../mux-pty" }
+mux-time = { path = "../mux-time" }
+mux-types = { path = "../mux-types" }

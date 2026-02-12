@@ -1,0 +1,7 @@
+[package]
+name = "mux-grapheme-arena"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "GraphemeArena with 14-bit ext index and deduplication for TermForge"

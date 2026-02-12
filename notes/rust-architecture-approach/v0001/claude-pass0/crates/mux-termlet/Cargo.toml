@@ -1,0 +1,13 @@
+[package]
+name = "mux-termlet"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Termlet runtime: SDK-first testing pods with resource quotas"
+
+[dependencies]
+mux-types = { workspace = true }
+mux-grid = { workspace = true }
+mux-pty = { workspace = true }
+mux-time = { workspace = true }

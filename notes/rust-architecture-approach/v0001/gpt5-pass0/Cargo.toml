@@ -1,0 +1,25 @@
+[workspace]
+members = [
+  "crates/mux-types",
+  "crates/mux-grid",
+  "crates/mux-parser",
+  "crates/mux-snapshot",
+  "crates/mux-grapheme-arena",
+  "crates/mux-pty",
+  "crates/mux-proto",
+  "crates/mux-time",
+  "crates/mux-termlet",
+  "crates/mux-orm",
+  "crates/mux-test-support",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+version = "0.1.0"
+
+[workspace.dependencies]
+compact_str = "0.8"
+crc32fast = "1.4"
+serde = { version = "1.0", default-features = false }

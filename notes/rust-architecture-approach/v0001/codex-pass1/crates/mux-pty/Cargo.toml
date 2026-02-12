@@ -1,0 +1,10 @@
+[package]
+name = "mux-pty"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "PtyHandle typestate lifecycle, InnerPtyState, and DynPtyHandle for TermForge"
+
+[dependencies]
+mux-types = { workspace = true }

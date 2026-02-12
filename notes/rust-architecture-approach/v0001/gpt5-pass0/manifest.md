@@ -1,0 +1,44 @@
+# Manifest of Created Files
+
+Files created for `notes/rust-architecture-approach/v0001` during the v16 scaffold run.
+
+- `gpt5-pass0/architecture.md`: Raw first-pass architecture draft for v16 scaffolding.
+- `gpt5-pass0/manifest.md`: Inventory of files created for this run.
+- `synthesized/AGENTS.md`: Consolidated 405-rule v15 rulebook with enforcement metadata.
+- `synthesized/CLAUDE.md`: Claude-oriented coding/testing conventions and constraints.
+- `synthesized/Cargo.lock`: Lockfile generated during workspace test verification.
+- `synthesized/Cargo.toml`: Workspace root manifest with members and shared dependencies.
+- `synthesized/README.md`: Project overview, crate map, and build instructions.
+- `synthesized/crates/mux-grapheme-arena/Cargo.toml`: Crate manifest for grapheme arena.
+- `synthesized/crates/mux-grapheme-arena/src/lib.rs`: 14-bit GraphemeArena implementation.
+- `synthesized/crates/mux-grid/Cargo.toml`: Crate manifest for grid module.
+- `synthesized/crates/mux-grid/src/grid.rs`: Live grid with mutation/scroll/viewport logic.
+- `synthesized/crates/mux-grid/src/lib.rs`: Grid crate exports.
+- `synthesized/crates/mux-grid/src/scrollback.rs`: Scrollback history model and search.
+- `synthesized/crates/mux-orm/Cargo.toml`: Crate manifest for ORM-style query layer.
+- `synthesized/crates/mux-orm/src/lib.rs`: QueryList API and typed query errors.
+- `synthesized/crates/mux-parser/Cargo.toml`: Crate manifest for parser module.
+- `synthesized/crates/mux-parser/src/byte_class.rs`: Static CLASS_TABLE[256] byte classifier.
+- `synthesized/crates/mux-parser/src/lib.rs`: Parser crate exports.
+- `synthesized/crates/mux-proto/Cargo.toml`: Crate manifest for wire protocol.
+- `synthesized/crates/mux-proto/src/lib.rs`: Length-delimited frame codec implementation.
+- `synthesized/crates/mux-pty/Cargo.toml`: Crate manifest for PTY state model.
+- `synthesized/crates/mux-pty/src/lib.rs`: Typestate and dynamic PTY handle implementation.
+- `synthesized/crates/mux-snapshot/Cargo.toml`: Crate manifest for snapshot module.
+- `synthesized/crates/mux-snapshot/src/lib.rs`: Snapshot encode/decode API with checksum handling.
+- `synthesized/crates/mux-snapshot/src/packed_cell.rs`: PackedCell payload serializer/deserializer.
+- `synthesized/crates/mux-termlet/Cargo.toml`: Crate manifest for termlet runtime.
+- `synthesized/crates/mux-termlet/src/lib.rs`: Quota/sandbox/runtime execution logic.
+- `synthesized/crates/mux-test-support/Cargo.toml`: Crate manifest for test support utilities.
+- `synthesized/crates/mux-test-support/src/lib.rs`: Isolated socket paths and eventual assertion helpers.
+- `synthesized/crates/mux-time/Cargo.toml`: Crate manifest for deterministic time.
+- `synthesized/crates/mux-time/src/lib.rs`: DeterministicTimeSource implementation.
+- `synthesized/crates/mux-types/Cargo.toml`: Crate manifest for core types.
+- `synthesized/crates/mux-types/src/cell.rs`: Cell implementation using CompactString.
+- `synthesized/crates/mux-types/src/error.rs`: TermletError (16 variants) with stable codes.
+- `synthesized/crates/mux-types/src/identity.rs`: IdentityManifest and canonical serialization helpers.
+- `synthesized/crates/mux-types/src/lib.rs`: Module exports for core types crate.
+- `synthesized/crates/mux-types/src/line.rs`: Arc-backed COW line implementation.
+- `synthesized/crates/mux-types/src/packed_cell.rs`: PackedCell bit layout codec and validation.
+- `synthesized/notes/architecture.md`: Condensed architecture reference (conflicts, invariants, decisions, rule index).
+- `synthesized/notes/plan.md`: Phase-based implementation roadmap.

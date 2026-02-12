@@ -1,0 +1,7 @@
+[package]
+name = "mux-parser"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "VT parser with CLASS_TABLE[256] static LUT and ByteClass dispatch for TermForge"
