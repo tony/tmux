@@ -1,0 +1,15 @@
+[package]
+name = "mux-proto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "TF01 wire protocol for client-server communication (L2)"
+
+[dependencies]
+thiserror.workspace = true
+crc32fast.workspace = true
+
+[lints]
+workspace = true

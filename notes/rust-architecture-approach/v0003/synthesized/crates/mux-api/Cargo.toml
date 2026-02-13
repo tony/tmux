@@ -1,0 +1,19 @@
+[package]
+name = "mux-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "SDK entry point for TermForge (L4)"
+
+[dependencies]
+mux-types.workspace = true
+mux-kernel.workspace = true
+mux-pty.workspace = true
+mux-time.workspace = true
+mux-options.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
