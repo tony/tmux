@@ -1,0 +1,20 @@
+[package]
+name = "mux-ffi"
+description = "C FFI shim for linking TermForge into C tmux process"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+mux-types = { workspace = true }
+mux-grid = { workspace = true }
+mux-kernel = { workspace = true }
+mux-proto = { workspace = true }
+
+[lints]
+workspace = true

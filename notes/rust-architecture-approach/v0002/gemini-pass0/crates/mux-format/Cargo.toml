@@ -1,0 +1,8 @@
+[package]
+name = "mux-format"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mux-types = { path = "../mux-types" }
+--- END FILE ---

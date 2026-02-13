@@ -1,0 +1,410 @@
+//! # mux-test-support
+//!
+//! Test harness for TermForge: isolated sockets, cleanup guards,
+//! differential testing against tmux, and snapshot test utilities.
+
+#![forbid(unsafe_code)]
+
+use std::collections::HashMap;
+
+/// Ergonomic re-exports for downstream crates.
+pub mod prelude {
+    pub use super::{
+        assert_output_equivalent, test_socket_name, validate_section_coverage, DiffReport,
+        DiffResult, GridSnapshot, TestGuard, TmuxVersionRange, FUZZ_TARGETS, MIN_FUZZ_TARGETS,
+        MIN_TSTS_PER_SECTION,
+    };
+}
+
+/// Minimum required fuzz targets.
+pub const MIN_FUZZ_TARGETS: usize = 5;
+
+/// Known fuzz target names.
+pub const FUZZ_TARGETS: &[&str] = &[
+    "fuzz_parser",
+    "fuzz_snapshot",
+    "fuzz_dcs",
+    "fuzz_protocol",
+    "fuzz_grapheme",
+];
+
+/// Minimum TSTs (tests) per section.
+pub const MIN_TSTS_PER_SECTION: usize = 5;
+
+/// Supported tmux version ranges for testing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TmuxVersionRange {
+    Lts,
+    Current,
+    Preview,
+}
+
+impl TmuxVersionRange {
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Lts => "3.3a-3.4",
+            Self::Current => "3.5+",
+            Self::Preview => "HEAD",
+        }
+    }
+}
+
+/// Generate a unique socket name for test isolation.
+#[must_use]
+pub fn test_socket_name(test_name: &str) -> String {
+    format!(
+        "/tmp/termforge-test-{}-{}",
+        test_name,
+        std::process::id()
+    )
+}
+
+/// Validate that all sections meet the minimum TST coverage.
+#[must_use]
+pub fn validate_section_coverage(section_tst_counts: &HashMap<u8, usize>) -> Vec<u8> {
+    let mut failures: Vec<u8> = section_tst_counts
+        .iter()
+        .filter(|&(_, &count)| count < MIN_TSTS_PER_SECTION)
+        .map(|(&section, _)| section)
+        .collect();
+    failures.sort();
+    failures
+}
+
+/// Compare two output byte slices with context on mismatch.
+#[must_use]
+pub fn assert_output_equivalent(termforge: &[u8], tmux: &[u8]) -> Result<(), String> {
+    if termforge == tmux {
+        return Ok(());
+    }
+    for (i, (a, b)) in termforge.iter().zip(tmux.iter()).enumerate() {
+        if a != b {
+            return Err(format!(
+                "output diverges at byte {i}: termforge=0x{a:02x}, tmux=0x{b:02x}"
+            ));
+        }
+    }
+    Err(format!(
+        "output length differs: termforge={}, tmux={}",
+        termforge.len(),
+        tmux.len()
+    ))
+}
+
+/// Result of a differential test comparison.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiffResult {
+    pub command: String,
+    pub termforge_output: Vec<u8>,
+    pub tmux_output: Vec<u8>,
+    pub passed: bool,
+    pub first_diff_byte: Option<usize>,
+}
+
+impl DiffResult {
+    #[must_use]
+    pub fn compare(command: &str, termforge: &[u8], tmux: &[u8]) -> Self {
+        let first_diff = termforge.iter().zip(tmux.iter())
+            .position(|(a, b)| a != b)
+            .or_else(|| {
+                if termforge.len() != tmux.len() {
+                    Some(termforge.len().min(tmux.len()))
+                } else {
+                    None
+                }
+            });
+        Self {
+            command: command.to_string(),
+            termforge_output: termforge.to_vec(),
+            tmux_output: tmux.to_vec(),
+            passed: first_diff.is_none(),
+            first_diff_byte: first_diff,
+        }
+    }
+}
+
+/// Aggregated differential test report.
+#[derive(Debug, Clone)]
+pub struct DiffReport {
+    pub results: Vec<DiffResult>,
+}
+
+impl DiffReport {
+    #[must_use]
+    pub fn new() -> Self {
+        Self { results: Vec::new() }
+    }
+
+    pub fn add(&mut self, result: DiffResult) {
+        self.results.push(result);
+    }
+
+    #[must_use]
+    pub fn pass_rate(&self) -> f64 {
+        if self.results.is_empty() {
+            return 0.0;
+        }
+        let passed = self.results.iter().filter(|r| r.passed).count();
+        passed as f64 / self.results.len() as f64 * 100.0
+    }
+
+    #[must_use]
+    pub fn failures(&self) -> Vec<&DiffResult> {
+        self.results.iter().filter(|r| !r.passed).collect()
+    }
+
+    #[must_use]
+    pub fn total(&self) -> usize {
+        self.results.len()
+    }
+
+    #[must_use]
+    pub fn passed_count(&self) -> usize {
+        self.results.iter().filter(|r| r.passed).count()
+    }
+}
+
+impl Default for DiffReport {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Default)]
+struct CleanupFn(Option<Box<dyn FnOnce()>>);
+
+impl std::fmt::Debug for CleanupFn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CleanupFn(..)")
+    }
+}
+
+impl CleanupFn {
+    fn new(f: impl FnOnce() + 'static) -> Self {
+        Self(Some(Box::new(f)))
+    }
+
+    fn run(mut self) {
+        if let Some(f) = self.0.take() {
+            f();
+        }
+    }
+}
+
+/// Test cleanup guard: ensures resources are released on drop.
+#[derive(Debug)]
+pub struct TestGuard {
+    socket_path: String,
+    cleanup_fns: Vec<CleanupFn>,
+}
+
+impl TestGuard {
+    #[must_use]
+    pub fn new(socket_path: &str) -> Self {
+        Self {
+            socket_path: socket_path.to_string(),
+            cleanup_fns: Vec::new(),
+        }
+    }
+
+    pub fn on_cleanup(&mut self, f: impl FnOnce() + 'static) {
+        self.cleanup_fns.push(CleanupFn::new(f));
+    }
+
+    #[must_use]
+    pub fn socket_path(&self) -> &str {
+        &self.socket_path
+    }
+}
+
+impl Drop for TestGuard {
+    fn drop(&mut self) {
+        while let Some(f) = self.cleanup_fns.pop() {
+            f.run();
+        }
+        let _ = std::fs::remove_file(&self.socket_path);
+    }
+}
+
+/// Captured grid state for snapshot comparison.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GridSnapshot {
+    pub rows: usize,
+    pub cols: usize,
+    pub cells: Vec<Vec<String>>,
+    pub cursor_row: usize,
+    pub cursor_col: usize,
+}
+
+impl GridSnapshot {
+    #[must_use]
+    pub fn new(rows: usize, cols: usize) -> Self {
+        Self {
+            rows,
+            cols,
+            cells: vec![vec![String::new(); cols]; rows],
+            cursor_row: 0,
+            cursor_col: 0,
+        }
+    }
+
+    pub fn set(&mut self, row: usize, col: usize, value: &str) {
+        if row < self.rows && col < self.cols {
+            self.cells[row][col] = value.to_string();
+        }
+    }
+
+    #[must_use]
+    pub fn to_text(&self) -> String {
+        self.cells.iter()
+            .map(|row| {
+                let line: String = row.iter()
+                    .map(|c| if c.is_empty() { " " } else { c.as_str() })
+                    .collect();
+                line.trim_end().to_string()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+/// Compare two grid snapshots, returning human-readable diffs.
+#[must_use]
+pub fn snapshot_diff(expected: &GridSnapshot, actual: &GridSnapshot) -> Vec<String> {
+    let mut diffs = Vec::new();
+    if expected.rows != actual.rows || expected.cols != actual.cols {
+        diffs.push(format!(
+            "dimension mismatch: expected {}x{}, got {}x{}",
+            expected.rows, expected.cols, actual.rows, actual.cols
+        ));
+        return diffs;
+    }
+    for row in 0..expected.rows {
+        for col in 0..expected.cols {
+            if expected.cells[row][col] != actual.cells[row][col] {
+                diffs.push(format!(
+                    "({},{}) expected {:?}, got {:?}",
+                    row, col, expected.cells[row][col], actual.cells[row][col]
+                ));
+            }
+        }
+    }
+    diffs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fuzz_targets_count() {
+        assert!(FUZZ_TARGETS.len() >= MIN_FUZZ_TARGETS);
+    }
+
+    #[test]
+    fn test_socket_name_unique() {
+        let s1 = test_socket_name("test_a");
+        let s2 = test_socket_name("test_b");
+        assert_ne!(s1, s2);
+        assert!(s1.starts_with("/tmp/termforge-test-"));
+    }
+
+    #[test]
+    fn test_output_equivalent_identical() {
+        assert!(assert_output_equivalent(b"hello", b"hello").is_ok());
+    }
+
+    #[test]
+    fn test_output_equivalent_different() {
+        let result = assert_output_equivalent(b"hello", b"hallo");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("byte 1"));
+    }
+
+    #[test]
+    fn test_output_equivalent_length_differs() {
+        // Same prefix but different length: "hello" vs "hello world"
+        let result = assert_output_equivalent(b"hello", b"hello world");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("length"));
+    }
+
+    #[test]
+    fn test_diff_report_pass_rate() {
+        let mut report = DiffReport::new();
+        report.add(DiffResult::compare("a", b"ok", b"ok"));
+        report.add(DiffResult::compare("b", b"ok", b"no"));
+        assert!((report.pass_rate() - 50.0).abs() < 0.01);
+        assert_eq!(report.total(), 2);
+        assert_eq!(report.passed_count(), 1);
+    }
+
+    #[test]
+    fn test_diff_report_empty() {
+        let report = DiffReport::new();
+        assert_eq!(report.pass_rate(), 0.0);
+        assert!(report.failures().is_empty());
+    }
+
+    #[test]
+    fn test_grid_snapshot_to_text() {
+        let mut snap = GridSnapshot::new(2, 5);
+        snap.set(0, 0, "H");
+        snap.set(0, 1, "i");
+        let text = snap.to_text();
+        assert!(text.starts_with("Hi"));
+    }
+
+    #[test]
+    fn test_snapshot_diff_identical() {
+        let a = GridSnapshot::new(2, 2);
+        let b = GridSnapshot::new(2, 2);
+        assert!(snapshot_diff(&a, &b).is_empty());
+    }
+
+    #[test]
+    fn test_snapshot_diff_dimension_mismatch() {
+        let a = GridSnapshot::new(2, 2);
+        let b = GridSnapshot::new(3, 2);
+        let diffs = snapshot_diff(&a, &b);
+        assert_eq!(diffs.len(), 1);
+        assert!(diffs[0].contains("dimension"));
+    }
+
+    #[test]
+    fn test_snapshot_diff_cell_mismatch() {
+        let mut a = GridSnapshot::new(2, 2);
+        let mut b = GridSnapshot::new(2, 2);
+        a.set(0, 0, "X");
+        b.set(0, 0, "Y");
+        let diffs = snapshot_diff(&a, &b);
+        assert_eq!(diffs.len(), 1);
+        assert!(diffs[0].contains("(0,0)"));
+    }
+
+    #[test]
+    fn test_tmux_version_range_labels() {
+        assert_eq!(TmuxVersionRange::Lts.label(), "3.3a-3.4");
+        assert_eq!(TmuxVersionRange::Current.label(), "3.5+");
+        assert_eq!(TmuxVersionRange::Preview.label(), "HEAD");
+    }
+
+    #[test]
+    fn test_validate_section_coverage_passing() {
+        let mut counts = HashMap::new();
+        counts.insert(1u8, 10);
+        counts.insert(2, 5);
+        let failures = validate_section_coverage(&counts);
+        assert!(failures.is_empty());
+    }
+
+    #[test]
+    fn test_validate_section_coverage_failing() {
+        let mut counts = HashMap::new();
+        counts.insert(1u8, 3); // below MIN_TSTS_PER_SECTION
+        counts.insert(2, 10);
+        let failures = validate_section_coverage(&counts);
+        assert_eq!(failures, vec![1]);
+    }
+}

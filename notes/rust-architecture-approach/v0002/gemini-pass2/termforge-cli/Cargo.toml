@@ -1,0 +1,12 @@
+[package]
+name = "termforge-cli"
+version = "0.0.2"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+mux-proto = { workspace = true }
+mux-config = { workspace = true }
+anyhow = { workspace = true }

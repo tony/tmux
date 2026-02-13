@@ -1,0 +1,15 @@
+[package]
+name = "mux-proto"
+version = "0.0.2"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+bytes = { workspace = true }
+serde = { workspace = true }
+mux-types = { workspace = true }
+
+[dev-dependencies]
+bincode = "1.3"

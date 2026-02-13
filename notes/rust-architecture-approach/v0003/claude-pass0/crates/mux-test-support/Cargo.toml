@@ -1,0 +1,17 @@
+[package]
+name = "mux-test-support"
+description = "Shared test harness and fixtures for TermForge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mux-types = { workspace = true }
+mux-kernel = { workspace = true }
+mux-time = { workspace = true }
+uuid = { workspace = true }
+
+[lints]
+workspace = true

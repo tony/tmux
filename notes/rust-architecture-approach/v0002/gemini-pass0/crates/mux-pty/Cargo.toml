@@ -1,0 +1,10 @@
+[package]
+name = "mux-pty"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nix = { version = "0.28", features = ["fs", "term", "process", "signal"] }
+libc = "0.2"
+thiserror = "1.0"
+--- END FILE ---

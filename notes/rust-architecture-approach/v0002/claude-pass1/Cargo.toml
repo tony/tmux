@@ -1,0 +1,170 @@
+[workspace]
+resolver = "2"
+members = [
+    # --- Core crates (21) ---
+    "crates/mux-api",
+    "crates/mux-types",
+    "crates/mux-parser",
+    "crates/mux-grid",
+    "crates/mux-snapshot",
+    "crates/mux-grapheme-arena",
+    "crates/mux-pty",
+    "crates/mux-proto",
+    "crates/mux-time",
+    "crates/mux-termlet",
+    "crates/mux-orm",
+    "crates/mux-test-support",
+    "crates/mux-kernel",
+    "crates/mux-format",
+    "crates/mux-options",
+    "crates/mux-target",
+    "crates/mux-render",
+    "crates/mux-cmd-parse",
+    "crates/mux-config",
+    "crates/mux-ffi",
+    "crates/mux-otel",
+    # --- Tools (4) ---
+    "tools/tmux-builder",
+    "tools/tmux-vm",
+    "tools/tmux-sniff",
+    "tools/mux-doctor",
+]
+exclude = [
+    "bindings/node",
+    "bindings/python",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/termforge/termforge"
+publish = false
+
+[workspace.dependencies]
+# Error + logging
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Core data model + utils
+bitflags = "2"
+bitvec = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+slotmap = "1"
+indexmap = "2"
+unicode-width = "0.2"
+unicode-segmentation = "1"
+bytes = "1"
+
+# Protocol / parsing
+winnow = "0.7"
+crc32fast = "1"
+
+# Serialization (from Gemini synthesis: config/state)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Runtime
+tokio = { version = "1", features = ["full", "signal"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+futures = "0.3"
+
+# Channels (from Gemini synthesis: kernel-IO bridge)
+crossbeam-channel = "0.5"
+
+# Unix/platform
+nix = { version = "0.31", default-features = false, features = [
+    "fs", "poll", "process", "signal", "term", "uio", "socket", "user",
+] }
+libc = "0.2"
+signal-hook = "0.4"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Testing
+insta = { version = "1", features = ["yaml"] }
+proptest = "1"
+tempfile = "3"
+assert_cmd = "2"
+uuid = { version = "1", features = ["v4"] }
+
+# OpenTelemetry
+opentelemetry = "0.28"
+opentelemetry_sdk = "0.28"
+opentelemetry-otlp = "0.28"
+
+# Internal crate dependencies
+mux-api = { path = "crates/mux-api" }
+mux-types = { path = "crates/mux-types" }
+mux-parser = { path = "crates/mux-parser" }
+mux-grid = { path = "crates/mux-grid" }
+mux-snapshot = { path = "crates/mux-snapshot" }
+mux-grapheme-arena = { path = "crates/mux-grapheme-arena" }
+mux-pty = { path = "crates/mux-pty" }
+mux-proto = { path = "crates/mux-proto" }
+mux-time = { path = "crates/mux-time" }
+mux-termlet = { path = "crates/mux-termlet" }
+mux-orm = { path = "crates/mux-orm" }
+mux-test-support = { path = "crates/mux-test-support" }
+mux-kernel = { path = "crates/mux-kernel" }
+mux-format = { path = "crates/mux-format" }
+mux-options = { path = "crates/mux-options" }
+mux-target = { path = "crates/mux-target" }
+mux-render = { path = "crates/mux-render" }
+mux-cmd-parse = { path = "crates/mux-cmd-parse" }
+mux-config = { path = "crates/mux-config" }
+mux-ffi = { path = "crates/mux-ffi" }
+mux-otel = { path = "crates/mux-otel" }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+# Lint groups with priority -1 so individual lints can override
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+
+# Safety-critical denials
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+# Codex-style guardrails
+uninlined_format_args = "deny"
+redundant_clone = "deny"
+redundant_closure = "deny"
+redundant_closure_for_method_calls = "deny"
+needless_borrow = "deny"
+needless_collect = "deny"
+manual_map = "deny"
+manual_flatten = "deny"
+manual_filter = "deny"
+
+# Practical exceptions
+module_name_repetitions = "allow"
+too_many_lines = "allow"
+similar_names = "allow"
+must_use_candidate = "allow"
+multiple_crate_versions = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "unwind"   # REQUIRED for catch_unwind panic recovery (INV-117)
+
+[profile.dev]
+panic = "unwind"   # REQUIRED for catch_unwind panic recovery (INV-117)
+
+[profile.test]
+opt-level = 1
+panic = "unwind"   # REQUIRED for catch_unwind panic recovery (INV-117)

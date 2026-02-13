@@ -1,0 +1,11 @@
+[package]
+name = "mux-kernel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mux-protocol = { path = "../mux-protocol" }
+crossbeam-channel = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }
+vte = { workspace = true }

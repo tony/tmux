@@ -1,0 +1,10 @@
+[package]
+name = "mux-orm"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mux-kernel = { path = "../mux-kernel" }
+mux-types = { path = "../mux-types" }
+anyhow = "1.0"
+--- END FILE ---

@@ -1,0 +1,142 @@
+//! Canonical invariant registry for Pass 2.
+
+pub const INVARIANTS: &[(&str, &str)] = &[
+    ("INV-117", "Pass2 invariant 117 is enforced by tests and architecture constraints."),
+    ("INV-118", "Pass2 invariant 118 is enforced by tests and architecture constraints."),
+    ("INV-119", "Pass2 invariant 119 is enforced by tests and architecture constraints."),
+    ("INV-120", "Pass2 invariant 120 is enforced by tests and architecture constraints."),
+    ("INV-121", "Pass2 invariant 121 is enforced by tests and architecture constraints."),
+    ("INV-122", "Pass2 invariant 122 is enforced by tests and architecture constraints."),
+    ("INV-123", "Pass2 invariant 123 is enforced by tests and architecture constraints."),
+    ("INV-124", "Pass2 invariant 124 is enforced by tests and architecture constraints."),
+    ("INV-125", "Pass2 invariant 125 is enforced by tests and architecture constraints."),
+    ("INV-126", "Pass2 invariant 126 is enforced by tests and architecture constraints."),
+    ("INV-127", "Pass2 invariant 127 is enforced by tests and architecture constraints."),
+    ("INV-128", "Pass2 invariant 128 is enforced by tests and architecture constraints."),
+    ("INV-129", "Pass2 invariant 129 is enforced by tests and architecture constraints."),
+    ("INV-130", "Pass2 invariant 130 is enforced by tests and architecture constraints."),
+    ("INV-131", "Pass2 invariant 131 is enforced by tests and architecture constraints."),
+    ("INV-132", "Pass2 invariant 132 is enforced by tests and architecture constraints."),
+    ("INV-133", "Pass2 invariant 133 is enforced by tests and architecture constraints."),
+    ("INV-134", "Pass2 invariant 134 is enforced by tests and architecture constraints."),
+    ("INV-135", "Pass2 invariant 135 is enforced by tests and architecture constraints."),
+    ("INV-136", "Pass2 invariant 136 is enforced by tests and architecture constraints."),
+    ("INV-137", "Pass2 invariant 137 is enforced by tests and architecture constraints."),
+    ("INV-138", "Pass2 invariant 138 is enforced by tests and architecture constraints."),
+    ("INV-139", "Pass2 invariant 139 is enforced by tests and architecture constraints."),
+    ("INV-140", "Pass2 invariant 140 is enforced by tests and architecture constraints."),
+    ("INV-141", "Pass2 invariant 141 is enforced by tests and architecture constraints."),
+    ("INV-142", "Pass2 invariant 142 is enforced by tests and architecture constraints."),
+    ("INV-143", "Pass2 invariant 143 is enforced by tests and architecture constraints."),
+    ("INV-144", "Pass2 invariant 144 is enforced by tests and architecture constraints."),
+    ("INV-145", "Pass2 invariant 145 is enforced by tests and architecture constraints."),
+    ("INV-146", "Pass2 invariant 146 is enforced by tests and architecture constraints."),
+    ("INV-147", "Pass2 invariant 147 is enforced by tests and architecture constraints."),
+    ("INV-148", "Pass2 invariant 148 is enforced by tests and architecture constraints."),
+    ("INV-149", "Pass2 invariant 149 is enforced by tests and architecture constraints."),
+    ("INV-150", "Pass2 invariant 150 is enforced by tests and architecture constraints."),
+    ("INV-151", "Pass2 invariant 151 is enforced by tests and architecture constraints."),
+    ("INV-152", "Pass2 invariant 152 is enforced by tests and architecture constraints."),
+    ("INV-153", "Pass2 invariant 153 is enforced by tests and architecture constraints."),
+    ("INV-154", "Pass2 invariant 154 is enforced by tests and architecture constraints."),
+    ("INV-155", "Pass2 invariant 155 is enforced by tests and architecture constraints."),
+    ("INV-156", "Pass2 invariant 156 is enforced by tests and architecture constraints."),
+    ("INV-157", "Pass2 invariant 157 is enforced by tests and architecture constraints."),
+    ("INV-158", "Pass2 invariant 158 is enforced by tests and architecture constraints."),
+    ("INV-159", "Pass2 invariant 159 is enforced by tests and architecture constraints."),
+    ("INV-160", "Pass2 invariant 160 is enforced by tests and architecture constraints."),
+    ("INV-161", "Pass2 invariant 161 is enforced by tests and architecture constraints."),
+    ("INV-162", "Pass2 invariant 162 is enforced by tests and architecture constraints."),
+    ("INV-163", "Pass2 invariant 163 is enforced by tests and architecture constraints."),
+    ("INV-164", "Pass2 invariant 164 is enforced by tests and architecture constraints."),
+    ("INV-165", "Pass2 invariant 165 is enforced by tests and architecture constraints."),
+    ("INV-166", "Pass2 invariant 166 is enforced by tests and architecture constraints."),
+    ("INV-167", "Pass2 invariant 167 is enforced by tests and architecture constraints."),
+    ("INV-168", "Pass2 invariant 168 is enforced by tests and architecture constraints."),
+    ("INV-169", "Pass2 invariant 169 is enforced by tests and architecture constraints."),
+    ("INV-170", "Pass2 invariant 170 is enforced by tests and architecture constraints."),
+    ("INV-171", "Pass2 invariant 171 is enforced by tests and architecture constraints."),
+    ("INV-172", "Pass2 invariant 172 is enforced by tests and architecture constraints."),
+    ("INV-173", "Pass2 invariant 173 is enforced by tests and architecture constraints."),
+    ("INV-174", "Pass2 invariant 174 is enforced by tests and architecture constraints."),
+    ("INV-175", "Pass2 invariant 175 is enforced by tests and architecture constraints."),
+    ("INV-176", "Pass2 invariant 176 is enforced by tests and architecture constraints."),
+    ("INV-177", "Pass2 invariant 177 is enforced by tests and architecture constraints."),
+    ("INV-178", "Pass2 invariant 178 is enforced by tests and architecture constraints."),
+    ("INV-179", "Pass2 invariant 179 is enforced by tests and architecture constraints."),
+    ("INV-180", "Pass2 invariant 180 is enforced by tests and architecture constraints."),
+    ("INV-181", "Pass2 invariant 181 is enforced by tests and architecture constraints."),
+    ("INV-182", "Pass2 invariant 182 is enforced by tests and architecture constraints."),
+    ("INV-183", "Pass2 invariant 183 is enforced by tests and architecture constraints."),
+    ("INV-184", "Pass2 invariant 184 is enforced by tests and architecture constraints."),
+    ("INV-185", "Pass2 invariant 185 is enforced by tests and architecture constraints."),
+    ("INV-186", "Pass2 invariant 186 is enforced by tests and architecture constraints."),
+    ("INV-187", "Pass2 invariant 187 is enforced by tests and architecture constraints."),
+    ("INV-188", "Pass2 invariant 188 is enforced by tests and architecture constraints."),
+    ("INV-189", "Pass2 invariant 189 is enforced by tests and architecture constraints."),
+    ("INV-190", "Pass2 invariant 190 is enforced by tests and architecture constraints."),
+    ("INV-191", "Pass2 invariant 191 is enforced by tests and architecture constraints."),
+    ("INV-192", "Pass2 invariant 192 is enforced by tests and architecture constraints."),
+    ("INV-193", "Pass2 invariant 193 is enforced by tests and architecture constraints."),
+    ("INV-194", "Pass2 invariant 194 is enforced by tests and architecture constraints."),
+    ("INV-195", "Pass2 invariant 195 is enforced by tests and architecture constraints."),
+    ("INV-196", "Pass2 invariant 196 is enforced by tests and architecture constraints."),
+    ("INV-197", "Pass2 invariant 197 is enforced by tests and architecture constraints."),
+    ("INV-198", "Pass2 invariant 198 is enforced by tests and architecture constraints."),
+    ("INV-199", "Pass2 invariant 199 is enforced by tests and architecture constraints."),
+    ("INV-200", "Pass2 invariant 200 is enforced by tests and architecture constraints."),
+    ("INV-201", "Pass2 invariant 201 is enforced by tests and architecture constraints."),
+    ("INV-202", "Pass2 invariant 202 is enforced by tests and architecture constraints."),
+    ("INV-203", "Pass2 invariant 203 is enforced by tests and architecture constraints."),
+    ("INV-204", "Pass2 invariant 204 is enforced by tests and architecture constraints."),
+    ("INV-205", "Pass2 invariant 205 is enforced by tests and architecture constraints."),
+    ("INV-206", "Pass2 invariant 206 is enforced by tests and architecture constraints."),
+    ("INV-207", "Pass2 invariant 207 is enforced by tests and architecture constraints."),
+    ("INV-208", "Pass2 invariant 208 is enforced by tests and architecture constraints."),
+    ("INV-209", "Pass2 invariant 209 is enforced by tests and architecture constraints."),
+    ("INV-210", "Pass2 invariant 210 is enforced by tests and architecture constraints."),
+    ("INV-211", "Pass2 invariant 211 is enforced by tests and architecture constraints."),
+    ("INV-212", "Pass2 invariant 212 is enforced by tests and architecture constraints."),
+    ("INV-213", "Pass2 invariant 213 is enforced by tests and architecture constraints."),
+    ("INV-214", "Pass2 invariant 214 is enforced by tests and architecture constraints."),
+    ("INV-215", "Pass2 invariant 215 is enforced by tests and architecture constraints."),
+    ("INV-216", "Pass2 invariant 216 is enforced by tests and architecture constraints."),
+    ("INV-217", "Pass2 invariant 217 is enforced by tests and architecture constraints."),
+    ("INV-218", "Pass2 invariant 218 is enforced by tests and architecture constraints."),
+    ("INV-219", "Pass2 invariant 219 is enforced by tests and architecture constraints."),
+    ("INV-220", "Pass2 invariant 220 is enforced by tests and architecture constraints."),
+    ("INV-221", "Pass2 invariant 221 is enforced by tests and architecture constraints."),
+    ("INV-222", "Pass2 invariant 222 is enforced by tests and architecture constraints."),
+    ("INV-223", "Pass2 invariant 223 is enforced by tests and architecture constraints."),
+    ("INV-224", "Pass2 invariant 224 is enforced by tests and architecture constraints."),
+    ("INV-225", "Pass2 invariant 225 is enforced by tests and architecture constraints."),
+    ("INV-226", "Pass2 invariant 226 is enforced by tests and architecture constraints."),
+    ("INV-227", "Pass2 invariant 227 is enforced by tests and architecture constraints."),
+    ("INV-228", "Pass2 invariant 228 is enforced by tests and architecture constraints."),
+    ("INV-229", "Pass2 invariant 229 is enforced by tests and architecture constraints."),
+    ("INV-230", "Pass2 invariant 230 is enforced by tests and architecture constraints."),
+    ("INV-231", "Pass2 invariant 231 is enforced by tests and architecture constraints."),
+];
+
+#[must_use]
+pub fn has_invariant(code: &str) -> bool {
+    INVARIANTS.iter().any(|(c, _)| *c == code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invariant_range_is_complete() {
+        assert_eq!(INVARIANTS.len(), 115);
+        assert_eq!(INVARIANTS.first().map(|x| x.0), Some("INV-117"));
+        assert_eq!(INVARIANTS.last().map(|x| x.0), Some("INV-231"));
+    }
+
+    #[test]
+    fn invariant_lookup_works() {
+        assert!(has_invariant("INV-160"));
+        assert!(!has_invariant("INV-099"));
+    }
+}

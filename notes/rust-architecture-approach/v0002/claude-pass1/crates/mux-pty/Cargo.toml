@@ -1,0 +1,17 @@
+[package]
+name = "mux-pty"
+description = "PTY allocation, process management, raw mode guard (unsafe quarantine)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mux-types = { workspace = true }
+nix = { workspace = true }
+libc = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

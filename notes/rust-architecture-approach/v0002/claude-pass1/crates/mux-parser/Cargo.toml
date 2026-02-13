@@ -1,0 +1,15 @@
+[package]
+name = "mux-parser"
+description = "VT escape sequence parser (Paul Williams state machine)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mux-types = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

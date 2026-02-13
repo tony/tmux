@@ -1,0 +1,77 @@
+[workspace]
+resolver = "2"
+members = [
+    "mux-api",
+    "mux-config",
+    "mux-control",
+    "mux-grapheme-arena",
+    "mux-grid",
+    "mux-io",
+    "mux-kernel",
+    "mux-layout",
+    "mux-log",
+    "mux-parser",
+    "mux-proto",
+    "mux-pty",
+    "mux-render",
+    "mux-term",
+    "mux-time",
+    "mux-types",
+    "mux-util",
+    "termforge-cli",
+    "termforge-debug",
+    "termforge-server",
+    "termforge-status",
+]
+
+[workspace.package]
+version = "0.0.2"
+edition = "2024"
+rust-version = "1.85"
+authors = ["TermForge Authors"]
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1.0"
+bitflags = "2.4"
+bitvec = "1.0"
+bytes = { version = "1.5", features = ["serde"] }
+crossbeam-channel = "0.5"
+crossterm = { version = "0.27" } # Only for legacy/comparison, explicit opt-in
+libc = "0.2"
+log = "0.4"
+mio = { version = "0.8", features = ["os-poll", "os-ext", "net"] }
+nix = { version = "0.27", features = ["ioctl", "fs", "term", "process", "signal"] }
+parking_lot = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+signal-hook = "0.3"
+smallvec = "1.11"
+thiserror = "1.0"
+toml = "0.8"
+vte = "0.13" # Used only as reference or low-level if needed, prefer custom parser
+unicode-width = "0.1"
+# Internal deps
+mux-api = { path = "./mux-api" }
+mux-config = { path = "./mux-config" }
+mux-control = { path = "./mux-control" }
+mux-grapheme-arena = { path = "./mux-grapheme-arena" }
+mux-grid = { path = "./mux-grid" }
+mux-io = { path = "./mux-io" }
+mux-kernel = { path = "./mux-kernel" }
+mux-layout = { path = "./mux-layout" }
+mux-log = { path = "./mux-log" }
+mux-parser = { path = "./mux-parser" }
+mux-proto = { path = "./mux-proto" }
+mux-pty = { path = "./mux-pty" }
+mux-render = { path = "./mux-render" }
+mux-term = { path = "./mux-term" }
+mux-time = { path = "./mux-time" }
+mux-types = { path = "./mux-types" }
+mux-util = { path = "./mux-util" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

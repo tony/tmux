@@ -1,0 +1,17 @@
+[package]
+name = "mux-termlet"
+description = "Testing pods: PTY + VT + shell for integration tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mux-types = { workspace = true }
+mux-grid = { workspace = true }
+mux-parser = { workspace = true }
+mux-grapheme-arena = { workspace = true }
+
+[lints]
+workspace = true

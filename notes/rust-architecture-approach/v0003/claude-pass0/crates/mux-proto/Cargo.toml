@@ -1,0 +1,16 @@
+[package]
+name = "mux-proto"
+description = "TF01 wire protocol for TermForge client-server communication"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+bytes = { workspace = true }
+crc32fast = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,9 @@
+[package]
+name = "mux-otel"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+opentelemetry = "0.22"
+tracing = "0.1"
+--- END FILE ---

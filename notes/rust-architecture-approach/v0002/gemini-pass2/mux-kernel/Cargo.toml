@@ -1,0 +1,17 @@
+[package]
+name = "mux-kernel"
+version = "0.0.2"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+mux-types = { workspace = true }
+mux-grid = { workspace = true }
+mux-layout = { workspace = true }
+mux-pty = { workspace = true }
+mux-config = { workspace = true }
+mux-parser = { workspace = true }
+# mux-render is NOT a dependency of kernel usually, kernel produces state, render consumes it.
+# But kernel might drive the render loop. Let's keep them separate if possible.

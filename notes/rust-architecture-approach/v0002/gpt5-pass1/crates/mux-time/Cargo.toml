@@ -1,0 +1,10 @@
+[package]
+name = "mux-time"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Deterministic time: Lamport clock, vector clock, monotonic guard for TermForge"
+
+[features]
+crdt = []

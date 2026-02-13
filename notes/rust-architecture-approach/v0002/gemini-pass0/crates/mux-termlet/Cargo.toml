@@ -1,0 +1,13 @@
+[package]
+name = "mux-termlet"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mux-pty = { path = "../mux-pty" }
+mux-grid = { path = "../mux-grid" }
+mux-parser = { path = "../mux-parser" }
+mux-snapshot = { path = "../mux-snapshot" }
+anyhow = "1.0"
+std = { version = "0.0.0", package = "std" }
+--- END FILE ---

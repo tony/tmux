@@ -1,0 +1,9 @@
+[package]
+name = "mux-snapshot"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mux-grid = { path = "../mux-grid" }
+serde = { version = "1.0", features = ["derive"] }
+--- END FILE ---

@@ -1,0 +1,12 @@
+[package]
+name = "mux-grid"
+version = "0.0.2"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+bitvec = { workspace = true }
+mux-types = { workspace = true }
+unicode-width = { workspace = true }
