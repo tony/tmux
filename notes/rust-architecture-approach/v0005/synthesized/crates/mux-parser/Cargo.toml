@@ -1,0 +1,19 @@
+[package]
+name = "mux-parser"
+description = "Paul Williams VT state machine parser for tmux compatibility"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mux-types.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+mux-grapheme-arena.workspace = true
+mux-grid.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,18 @@
+[package]
+name = "mux-grid"
+description = "Chunked COW terminal grid with dirty tracking"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mux-grapheme-arena.workspace = true
+mux-types.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

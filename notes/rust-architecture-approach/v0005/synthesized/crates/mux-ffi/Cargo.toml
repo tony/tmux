@@ -1,0 +1,20 @@
+[package]
+name = "mux-ffi"
+description = "C-ABI FFI boundary with panic recovery"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mux-types.workspace = true
+mux-kernel.workspace = true
+mux-api.workspace = true
+mux-time.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,24 @@
+[package]
+name = "mux-kernel"
+description = "Sans-IO kernel: entities, layout, copy mode, event processing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mux-types.workspace = true
+mux-grid.workspace = true
+mux-grapheme-arena.workspace = true
+mux-parser.workspace = true
+mux-options.workspace = true
+mux-time.workspace = true
+mux-snapshot.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
