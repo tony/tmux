@@ -1,0 +1,9 @@
+[package]
+name = "mux-render"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mux-protocol = { path = "../mux-protocol" }
+serde = { workspace = true }
+bitflags = { workspace = true }

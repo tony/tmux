@@ -1,0 +1,16 @@
+[package]
+name = "mux-types"
+version = "0.0.2"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+bitflags = { version = "2.4", features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+smallvec = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = "1.0"

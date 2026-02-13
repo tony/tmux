@@ -1,0 +1,13 @@
+[package]
+name = "mux-test-support"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+uuid.workspace = true
+mux-kernel.workspace = true
+mux-termlet.workspace = true

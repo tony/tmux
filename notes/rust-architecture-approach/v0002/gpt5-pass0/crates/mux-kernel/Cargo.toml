@@ -1,0 +1,22 @@
+[package]
+name = "mux-kernel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+slotmap.workspace = true
+mux-types.workspace = true
+mux-grid.workspace = true
+mux-render.workspace = true
+mux-proto.workspace = true
+mux-time.workspace = true
+mux-options.workspace = true
+mux-target.workspace = true
+mux-cmd-parse.workspace = true
+mux-format.workspace = true

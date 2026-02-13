@@ -1,0 +1,13 @@
+[package]
+name = "mux-time"
+description = "Injectable clock for deterministic testing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

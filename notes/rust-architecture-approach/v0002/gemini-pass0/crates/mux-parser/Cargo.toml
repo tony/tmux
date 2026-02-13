@@ -1,0 +1,10 @@
+[package]
+name = "mux-parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mux-types = { path = "../mux-types" }
+thiserror = "1.0"
+tracing = "0.1"
+--- END FILE ---

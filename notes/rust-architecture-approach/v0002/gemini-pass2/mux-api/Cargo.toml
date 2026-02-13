@@ -1,0 +1,11 @@
+[package]
+name = "mux-api"
+version = "0.0.2"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+mux-kernel = { workspace = true }
+mux-config = { workspace = true }

@@ -1,0 +1,21 @@
+[package]
+name = "mux-doctor"
+description = "Diagnostic environment checker for TermForge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mux-doctor"
+path = "src/main.rs"
+
+[dependencies]
+mux-types = { workspace = true }
+mux-proto = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true

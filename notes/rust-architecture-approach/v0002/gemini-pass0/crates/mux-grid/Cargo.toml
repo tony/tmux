@@ -1,0 +1,10 @@
+[package]
+name = "mux-grid"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mux-types = { path = "../mux-types" }
+std = { version = "0.0.0", package = "std" } # Dummy, implicitly available
+sync_wrapper = "0.1" # For thread safety if needed
+--- END FILE ---

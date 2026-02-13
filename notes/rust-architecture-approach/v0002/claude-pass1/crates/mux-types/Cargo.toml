@@ -1,0 +1,16 @@
+[package]
+name = "mux-types"
+description = "Core types for TermForge: Cell, CellFlags, Colour, Attrs, entity IDs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mux-grapheme-arena = { workspace = true }
+bitflags = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

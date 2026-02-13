@@ -1,0 +1,11 @@
+[package]
+name = "mux-term"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+crossbeam-channel = { workspace = true }
+signal-hook = { workspace = true }
+mux-kernel = { workspace = true }

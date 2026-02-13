@@ -1,0 +1,9 @@
+[package]
+name = "mux-render"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mux-grid = { path = "../mux-grid" }
+mux-types = { path = "../mux-types" }
+--- END FILE ---

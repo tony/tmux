@@ -1,0 +1,18 @@
+[package]
+name = "tmux-builder"
+description = "CLI tool for building tmux workspace layouts from YAML/TOML"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mux-types = { workspace = true }
+mux-kernel = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+
+[[bin]]
+name = "tmux-builder"
+path = "src/main.rs"

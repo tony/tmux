@@ -1,0 +1,10 @@
+[package]
+name = "mux-proto"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bytes = "1.5"
+serde = { version = "1.0", features = ["derive"] }
+bitflags = "2.4"
+--- END FILE ---

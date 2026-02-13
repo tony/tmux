@@ -1,0 +1,14 @@
+[package]
+name = "mux-kernel"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mux-types = { path = "../mux-types" }
+mux-grid = { path = "../mux-grid" }
+mux-pty = { path = "../mux-pty" }
+mux-proto = { path = "../mux-proto" }
+slotmap = "1.0"
+tracing = "0.1"
+crossbeam-channel = "0.5"
+--- END FILE ---

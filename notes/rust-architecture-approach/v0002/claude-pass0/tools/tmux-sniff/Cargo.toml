@@ -1,0 +1,18 @@
+[package]
+name = "tmux-sniff"
+description = "Wire protocol sniffer for debugging TF01/imsg traffic"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mux-types = { workspace = true }
+mux-proto = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+
+[[bin]]
+name = "tmux-sniff"
+path = "src/main.rs"

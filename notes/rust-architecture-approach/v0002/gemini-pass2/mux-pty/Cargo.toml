@@ -1,0 +1,13 @@
+[package]
+name = "mux-pty"
+version = "0.0.2"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+nix = { workspace = true }
+mux-types = { workspace = true }
+libc = { workspace = true }
+anyhow = { workspace = true }

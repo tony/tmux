@@ -1,0 +1,16 @@
+[package]
+name = "mux-grapheme-arena"
+description = "Arena allocator for extended grapheme clusters"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,86 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/mux-types",
+  "crates/mux-parser",
+  "crates/mux-grid",
+  "crates/mux-snapshot",
+  "crates/mux-grapheme-arena",
+  "crates/mux-pty",
+  "crates/mux-proto",
+  "crates/mux-time",
+  "crates/mux-termlet",
+  "crates/mux-orm",
+  "crates/mux-test-support",
+  "crates/mux-kernel",
+  "crates/mux-format",
+  "crates/mux-options",
+  "crates/mux-target",
+  "crates/mux-render",
+  "crates/mux-cmd-parse",
+  "crates/mux-ffi",
+  "crates/mux-otel",
+  "tools/tmux-builder",
+  "tools/tmux-vm",
+  "tools/tmux-sniff",
+  "tools/mux-doctor",
+]
+exclude = [
+  "bindings/python",
+  "bindings/node",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+opentelemetry = "0.28"
+bitflags = { version = "2", features = ["serde"] }
+bitvec = "1"
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+slotmap = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util", "signal"] }
+uuid = { version = "1", features = ["v4"] }
+insta = { version = "1", features = ["yaml"] }
+clap = { version = "4", features = ["derive"] }
+
+mux-types = { path = "crates/mux-types" }
+mux-parser = { path = "crates/mux-parser" }
+mux-grid = { path = "crates/mux-grid" }
+mux-snapshot = { path = "crates/mux-snapshot" }
+mux-grapheme-arena = { path = "crates/mux-grapheme-arena" }
+mux-pty = { path = "crates/mux-pty" }
+mux-proto = { path = "crates/mux-proto" }
+mux-time = { path = "crates/mux-time" }
+mux-termlet = { path = "crates/mux-termlet" }
+mux-orm = { path = "crates/mux-orm" }
+mux-test-support = { path = "crates/mux-test-support" }
+mux-kernel = { path = "crates/mux-kernel" }
+mux-format = { path = "crates/mux-format" }
+mux-options = { path = "crates/mux-options" }
+mux-target = { path = "crates/mux-target" }
+mux-render = { path = "crates/mux-render" }
+mux-cmd-parse = { path = "crates/mux-cmd-parse" }
+mux-ffi = { path = "crates/mux-ffi" }
+mux-otel = { path = "crates/mux-otel" }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"

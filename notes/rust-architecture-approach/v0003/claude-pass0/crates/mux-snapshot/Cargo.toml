@@ -1,0 +1,16 @@
+[package]
+name = "mux-snapshot"
+description = "Grid snapshot serialization and text extraction"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mux-types = { workspace = true }
+mux-grid = { workspace = true }
+mux-grapheme-arena = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "mux-term"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mux-protocol = { path = "../mux-protocol" }
+crossbeam-channel = { workspace = true }
+nix = { workspace = true }
+signal-hook = { workspace = true }
+tokio = { workspace = true }
+log = { workspace = true }
