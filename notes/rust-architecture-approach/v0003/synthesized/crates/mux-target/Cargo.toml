@@ -1,0 +1,15 @@
+[package]
+name = "mux-target"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Target resolution for tmux-style session:window.pane addressing (L2)"
+
+[dependencies]
+mux-types.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

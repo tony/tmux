@@ -1,0 +1,18 @@
+[package]
+name = "mux-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Double-buffer diff renderer for terminal output (L3)"
+
+[dependencies]
+mux-types.workspace = true
+mux-grid.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

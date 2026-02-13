@@ -1,0 +1,18 @@
+[package]
+name = "mux-termlet"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Testing pods for terminal integration tests (L4)"
+
+[dependencies]
+mux-types.workspace = true
+mux-grid.workspace = true
+mux-parser.workspace = true
+mux-time.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

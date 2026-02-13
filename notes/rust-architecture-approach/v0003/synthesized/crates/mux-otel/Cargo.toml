@@ -1,0 +1,15 @@
+[package]
+name = "mux-otel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "OpenTelemetry tracing integration for TermForge (L5)"
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

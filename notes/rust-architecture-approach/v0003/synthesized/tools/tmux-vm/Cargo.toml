@@ -1,0 +1,15 @@
+[package]
+name = "tmux-vm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Headless terminal multiplexer for CI (L6)"
+
+[dependencies]
+clap.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true

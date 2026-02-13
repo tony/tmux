@@ -1,0 +1,18 @@
+[package]
+name = "mux-crdt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "CRDT types for collaborative terminal sessions (L2)"
+
+[dependencies]
+serde = { workspace = true }
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

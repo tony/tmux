@@ -1,0 +1,21 @@
+[package]
+name = "mux-kernel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Sans-IO terminal multiplexer kernel (L3)"
+
+[dependencies]
+mux-types.workspace = true
+mux-grid.workspace = true
+mux-parser.workspace = true
+mux-time.workspace = true
+mux-options.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,15 @@
+[package]
+name = "mux-snapshot"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Arc-COW grid snapshot for render thread isolation (L3)"
+
+[dependencies]
+mux-types.workspace = true
+mux-grid.workspace = true
+
+[lints]
+workspace = true

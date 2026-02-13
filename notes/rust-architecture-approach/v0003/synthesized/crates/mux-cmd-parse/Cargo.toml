@@ -1,0 +1,15 @@
+[package]
+name = "mux-cmd-parse"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "tmux command parser and dispatcher (L2)"
+
+[dependencies]
+mux-types.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

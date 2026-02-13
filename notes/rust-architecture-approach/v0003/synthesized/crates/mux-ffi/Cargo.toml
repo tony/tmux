@@ -1,0 +1,16 @@
+[package]
+name = "mux-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "C FFI shim with catch_unwind panic recovery (L5)"
+
+[dependencies]
+mux-grid.workspace = true
+mux-proto.workspace = true
+mux-types.workspace = true
+
+[lints]
+workspace = true
