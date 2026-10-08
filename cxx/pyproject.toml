@@ -1,0 +1,58 @@
+[build-system]
+requires = ["scikit-build-core==1.1.1", "nanobind==3.1.0", "ruff==0.16.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "tmux-cxx"
+version = "0.1.0.dev0"
+description = "Native control for the independent C++ tmux server"
+requires-python = ">=3.12"
+readme = "README.md"
+
+[dependency-groups]
+dev = [
+  "cmake==4.4.4",
+  "ninja==1.13.2",
+  "nanobind==3.1.0",
+  "scikit-build-core==1.1.1",
+  "pytest==9.1.1",
+  "ty==0.0.85",
+  "ruff==0.16.10",
+  "uv==0.12.23",
+]
+
+[tool.uv]
+exclude-newer = "2026-10-07T23:59:59Z"
+
+[tool.scikit-build]
+minimum-version = "1.1.1"
+build-dir = "_build/wheel/{wheel_tag}"
+wheel.packages = ["bindings/python/tmux_cxx"]
+cmake.define.BUILD_TESTING = "OFF"
+cmake.define.TMUX_CXX_BUILD_NODE_BINDING = "OFF"
+sdist.inclusion-mode = "explicit"
+sdist.include = ["README.md", "pyproject.toml", "CMakeLists.txt", "cmake/**", "include/**", "src/**", "bindings/**", "api/**", "support/**", "third_party/**"]
+sdist.exclude = ["_build/**", "bindings/node/node_modules/**", ".venv/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/integration", "tests/compat", "tests/tooling"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+include = ["support/**/*.py", "tests/**/*.py", "bindings/python/**/*.py", "bindings/python/**/*.pyi"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ty.src]
+exclude = ["tests/integration/types_negative.py"]
+
+[tool.ty.rules]
+unused-ignore-comment = "error"
+possibly-missing-attribute = "error"
+
+[tool.ty.environment]
+python-version = "3.12"
+extra-paths = ["_build/dev/python", "_build/tools/clang_python"]

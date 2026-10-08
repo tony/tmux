@@ -1,0 +1,4 @@
+InheritParentConfig: false
+Checks: '-*,clang-analyzer-*,bugprone-*,performance-*,modernize-use-nullptr'
+WarningsAsErrors: 'clang-analyzer-*'
+HeaderFilterRegex: '(include/tmux_cxx|src|bindings)/.*'

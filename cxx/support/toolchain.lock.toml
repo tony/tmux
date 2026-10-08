@@ -1,0 +1,231 @@
+schema = 1
+resolved = "2026-10-05"
+architecture = "x86_64"
+host_ubuntu = "24.04.5"
+final_ubuntu = "26.04.1"
+development_ubuntu = "26.10 beta (excluded)"
+ubuntu_source = "https://releases.ubuntu.com/26.04/"
+standard_library = "libstdc++ (host GCC 13 runtime); LLVM 23 libc++ lacks required std::move_only_function"
+llvm_components = ["clang", "clang++", "clang-format", "clang-tidy", "clangd", "lld", "lldb", "compiler-rt", "llvm-cov", "llvm-profdata"]
+python_graph = "uv.lock"
+node_graph = "bindings/node/package-lock.json"
+node_api = 8
+
+[llvm]
+version = "23.1.3"
+url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.3/LLVM-23.1.3-Linux-X64.tar.zst"
+sha256 = "14d2f701eb68fb799001bdea6231048f3990690fa2f406d563555ff8f744daba"
+source = "https://github.com/llvm/llvm-project/releases/tag/llvmorg-23.1.3"
+layout = "prefixed"
+resolved = "2026-10-07"
+
+[doxygen]
+version = "1.18.0"
+url = "https://github.com/doxygen/doxygen/releases/download/Release_1_18_0/doxygen-1.18.0.linux.bin.tar.gz"
+sha256 = "14fa81bdc34171edb5f1f02b1d60e74802f0439b77fa44e592565d517d72df90"
+source = "https://github.com/doxygen/doxygen/releases/tag/Release_1_18_0"
+layout = "prefixed"
+resolved = "2026-10-07"
+checked = "2026-10-07"
+
+[just]
+version = "1.58.0"
+url = "https://github.com/casey/just/releases/download/1.58.0/just-1.58.0-x86_64-unknown-linux-musl.tar.gz"
+sha256 = "4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d"
+source = "https://github.com/casey/just/releases/tag/1.58.0"
+layout = "flat"
+resolved = "2026-10-07"
+checked = "2026-10-07"
+
+[node_current]
+version = "26.11.0"
+npm = "11.20.0"
+url = "https://nodejs.org/dist/v26.11.0/node-v26.11.0-linux-x64.tar.xz"
+sha256 = "db6342d36ebdb3cbd72103d0ce5ccc528620f6c9df72a11f4ccb384bf1bef678"
+resolved = "2026-10-07"
+
+[node_lts]
+version = "24.21.0"
+npm = "11.19.0"
+url = "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz"
+sha256 = "fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6"
+resolved = "2026-10-07"
+
+[python]
+version = "3.14.8"
+source = "https://www.python.org/downloads/"
+ubuntu_version = "3.12.3"
+graph = "uv.lock"
+resolved = "2026-10-07"
+
+[uv]
+version = "0.12.23"
+source = "https://pypi.org/project/uv/"
+graph = "uv.lock"
+resolved = "2026-10-07"
+
+[gcc]
+version = "14.2.0"
+package = "14.2.0-4ubuntu2~24.04.1"
+upstream_resolved = "16.2.0"
+source = "Ubuntu noble-updates"
+target = "x86_64-linux-gnu"
+fallback = "Verified Ubuntu GCC 14.2 package fallback; stable upstream GCC 16.2.0 still requires a local build and verification."
+checked = "2026-10-08"
+provisioned = true
+
+[gcc.packages.cpp]
+filename = "cpp-14_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/cpp-14_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+sha256 = "4bc737f3aa5275dc4468f08119443a17f4a0ca87731f83cee4a187eda5bd862b"
+
+[gcc.packages.cpp_target]
+filename = "cpp-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/cpp-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+sha256 = "57a15d7740b39a6719e04a633e3471c6811adf1597f0797bef5e0501fc7ad7c2"
+
+[gcc.packages.gxx]
+filename = "g++-14_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/g++-14_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+sha256 = "1022aa40afd9d3c5e60a9e4172e01efc4a2854c27098d4b2f6bda7fe26748d35"
+
+[gcc.packages.gxx_target]
+filename = "g++-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/g++-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+sha256 = "437bfbb2285ef9023d80a6cbcf5054f902814239317438801fcb873c4b4de8ac"
+
+[gcc.packages.gcc]
+filename = "gcc-14_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/gcc-14_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+sha256 = "4fd974528294841c5a7d18d40dd7abb0788b3d80853970ed2d009c4172b845f4"
+
+[gcc.packages.gcc_base]
+filename = "gcc-14-base_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-14/gcc-14-base_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+sha256 = "b95c172411a7fdae70307cf33a9f5320ba5e056b556454543dd5b679d5ce1c4f"
+
+[gcc.packages.gcc_target]
+filename = "gcc-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/gcc-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+sha256 = "863df95a0d9f21d2bdb24696d04cf5032c9cb0f87d20e78a57b04add2cb21f16"
+
+[gcc.packages.libgcc_dev]
+filename = "libgcc-14-dev_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-14/libgcc-14-dev_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+sha256 = "055dfa5fa7448fe20ad2f3832df2edd2b0ffca7f8a6c5fbbc5576dc61b2eb8b7"
+
+[gcc.packages.libgcc_runtime]
+filename = "libgcc-s1_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-14/libgcc-s1_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+sha256 = "aa7fadbe33b78bcf99885318040601c550c208929565b179891d9a3cc2aa68cd"
+
+[gcc.packages.libstdcxx_dev]
+filename = "libstdc++-14-dev_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/libstdc++-14-dev_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+sha256 = "6d223262b8cbe6d5150435056d58dffa8159d8582fc0df47fb45ea550cd37424"
+
+[gcc.packages.libstdcxx_runtime]
+filename = "libstdc++6_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-14/libstdc++6_14.2.0-4ubuntu2~24.04.1_amd64.deb"
+sha256 = "a51f8de7829211db961a31f02158058ad1a95f92ac6d0a5dff6350e2821c54c0"
+
+[graphviz]
+version = "16.1.0"
+url = "https://gitlab.com/api/v4/projects/4207231/packages/generic/graphviz-releases/16.1.0/ubuntu_24.04_graphviz-16.1.0-cmake.deb"
+source = "https://graphviz.org/download/source/"
+sha256 = "fe344258d6171d4679bd6ed02fb8f41b3cb9a59ec35fef5f77684dd09512a7c8"
+format = "deb"
+resolved = "2026-10-07"
+scope = "upstream Ubuntu 24.04 amd64 package; project-local documentation diagrams"
+checked = "2026-10-07"
+
+[native_dependencies]
+libevent = "2.1.12-stable-9ubuntu2.2"
+ncurses = "6.4+20240113-1ubuntu2.2"
+source = "Ubuntu noble-updates"
+generators = "none in initial engine"
+
+[llvm_runtime]
+version = "70.1-2"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu70_70.1-2_amd64.deb"
+sha256 = "58a154f6307289813da2276f900498ef536ae7c0522d2cf31a3c3c5cf62dfd9a"
+source = "https://archive.ubuntu.com/ubuntu/dists/jammy/main/binary-amd64/Packages.xz"
+format = "deb"
+
+[googletest]
+version = "1.18.0"
+revision = "063de7e9578f82b369302001269680b4b1553359"
+url = "https://codeload.github.com/google/googletest/tar.gz/063de7e9578f82b369302001269680b4b1553359"
+source = "https://github.com/google/googletest/releases/tag/v1.18.0"
+sha256 = "623fe05d283020f37a579a8985ba338091ac7229da62b5591ff40acdf05b95e2"
+checked = "2026-10-07"
+
+[tmux_fixture]
+version = "3.4"
+package = "3.4-1ubuntu0.1"
+sha256 = "034b15c64035f783d43862f2775eb4828f61571ca62c8199796000b97d556ecd"
+source = "Ubuntu noble-updates tmux package"
+scope = "isolated unmodified test client; never a production backend"
+
+[clang_python]
+version = "23.1.3"
+source = "LLVM release Python bindings matched to the locked libclang"
+init_sha256 = "961d8ad419dc7aa10d8d7b75e5fcd624cc681403a55ce99ad14ae4fe4a7be749"
+init_url = "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-23.1.3/clang/bindings/python/clang/__init__.py"
+cindex_sha256 = "0d572be5704bd7065420166bbe5e5b3fb5943423bd73ba6e40e4f8e9253c3f08"
+cindex_url = "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-23.1.3/clang/bindings/python/clang/cindex.py"
+
+[stop_slop]
+revision = "8da1f030185bdfe8471220585162991eaeb970e9"
+url = "https://codeload.github.com/hardikpandya/stop-slop/tar.gz/8da1f030185bdfe8471220585162991eaeb970e9"
+sha256 = "356bf0eb8d5440f549fe7991a8b2515c3e96fa442de87a01e6cb46877b020308"
+source = "https://github.com/hardikpandya/stop-slop/blob/8da1f030185bdfe8471220585162991eaeb970e9/SKILL.md"
+scope = "third-party prose review policy; not an executable linter"
+checked = "2026-10-07"
+
+[modern_tmux_fixture]
+version = "3.7"
+revision = "81f88f8517c9fc5371b56cf117530c6b477c96ac"
+url = "https://codeload.github.com/tmux/tmux/tar.gz/81f88f8517c9fc5371b56cf117530c6b477c96ac"
+sha256 = "68e6ab145f4c9aebc39aafef5de7ec5067b9fbf4fa033341ccf656040c0fdb9c"
+scope = "unmodified upstream reference fixture; never a production backend"
+autoconf = "2.71"
+automake = "1.16.5"
+make = "4.3"
+compiler = "locked Clang 23, GNU C17; external reference fixture only"
+fallback = "The reference fixture uses host Ubuntu Autotools and Make; their observed versions are checked during explicit provisioning."
+
+[libvterm]
+version = "0.3.3"
+url = "https://www.leonerd.org.uk/code/libvterm/libvterm-0.3.3.tar.gz"
+sha256 = "09156f43dd2128bd347cbeebe50d9a571d32c64e0cf18d211197946aff7226e0"
+source = "https://www.leonerd.org.uk/code/libvterm/"
+license = "MIT"
+scope = "external C terminal parser; first-party terminal ownership and adapters remain C++23"
+checked = "2026-10-07"
+
+[libvterm.backports]
+utf8_continuation_source = "https://github.com/vim/vim/commit/b24a1d9291b2d7fe202237a5d531076a095887d6"
+utf8_original_sha256 = "8f6504f091a91194fa4e972a142d586fb96bd8e7a15b6d26747323f1fe48ff38"
+state_corrected_sha256 = "4503192bae1c2998070fff109fe600b2202dab35afdc4bd7b41bf0c7b89fa215"
+utf8_scope = "one streaming UTF-8 decoder plus post-decode GL character-set mapping in a generated external-library copy"
+combining_source = "https://github.com/neovim/neovim/commit/814f2629cbcf02b18ff08d394d15835419e563e4"
+combining_scope = "right-edge cursor predicate backported to libvterm's combining loop; preserve pending wrap until the next base glyph"
+control_width_source = "https://github.com/vim/vim/commit/54ffef7eb83f2592833f422b89bf5f30de6b4bb0"
+control_width_scope = "negative-width Unicode controls consume no terminal cells and cannot move the cursor outside the screen"
+repeat_source = "https://github.com/vim/vim/commit/785bb3e9b271eb377dbd4157ce281eac7f16a021"
+repeat_scope = "REP without a preceding graphic character is ignored before its zero-width loop"
+arithmetic_scope = "first-party C++ saturating addition keeps untrusted terminal counts representable until libvterm clamps screen geometry"
+csi_numeric_source = "https://github.com/vim/vim/commit/77e7a40af2cab8c0f89a33553af42428b20af233"
+csi_argument_source = "https://github.com/vim/vim/commit/fe05143f5d70c89e4a14cbf61fee091dc6ba791c"
+csi_original_sha256 = "237220e912ab95795f78c013d6734b88080b00595010dab87d11980c24d025af"
+csi_corrected_sha256 = "08ab071ef14f9b7632b608b3fe18450f399774dfa1aac13db278fde9d529c4c8"
+csi_scope = "unchanged upstream bounds for numeric CSI parsing and argument storage"
+osc_scope = "first-party C++ decimal accumulation keeps unsupported OSC command numbers from wrapping into recognized commands"
+
+[npm]
+version = "12.2.0"
+url = "https://registry.npmjs.org/npm/-/npm-12.2.0.tgz"
+sha256 = "6666b48816b39b86c3febac7b51a4ee4de6c5ca589c382ad8004b6b113f86677"
+node = "^22.22.2 || ^24.15.0 || >=26.0.0"
+resolved = "2026-10-07"

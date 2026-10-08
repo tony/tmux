@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "tmux-cxx": "file:_build/probes/node-package-g6yUQ9/packed/tmux-cxx-0.1.0-dev.0.tgz"
+  }
+}

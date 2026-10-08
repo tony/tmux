@@ -1,0 +1,106 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "dev",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/_build/dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "${sourceDir}/_build/tools/llvm/bin/clang++",
+        "CMAKE_MAKE_PROGRAM": "${sourceDir}/.venv/bin/ninja",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "Python_EXECUTABLE": "${sourceDir}/.venv/bin/python",
+        "TMUX_CXX_NODE_ROOT": "${sourceDir}/_build/tools/node_current",
+        "TMUX_CXX_STDLIB": "libstdc++"
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/_build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "sanitize",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/_build/sanitize",
+      "cacheVariables": {
+        "TMUX_CXX_SANITIZE": "ON"
+      }
+    },
+    {
+      "name": "gcc",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/_build/gcc",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "${sourceDir}/_build/tools/gcc/usr/bin/g++-14",
+        "TMUX_CXX_STDLIB": "libstdc++"
+      }
+    },
+    {
+      "name": "cxx26",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/_build/cxx26",
+      "cacheVariables": {
+        "TMUX_CXX_STANDARD": "26"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "jobs": 4
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "jobs": 4
+    },
+    {
+      "name": "sanitize",
+      "configurePreset": "sanitize",
+      "jobs": 4
+    },
+    {
+      "name": "gcc",
+      "configurePreset": "gcc",
+      "jobs": 4
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "sanitize",
+      "configurePreset": "sanitize",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "gcc",
+      "configurePreset": "gcc",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    }
+  ]
+}

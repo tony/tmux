@@ -1,0 +1,4 @@
+# Node 26.11.0 and 24.21.0 leak 24 OpenSSL initialization bytes without an addon.
+leak:ossl_load_builtin_compressions
+# Vitest 5.0.3 with Rolldown 1.2.12 leaks references without our addon; match only its external DSO.
+leak:rolldown-binding.linux-x64-gnu.node

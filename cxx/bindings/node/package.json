@@ -1,0 +1,42 @@
+{
+  "name": "tmux-cxx",
+  "version": "0.1.0-dev.0",
+  "description": "Native control for the independent C++ tmux server",
+  "files": [
+    "index.cjs",
+    "index.d.ts",
+    "session_event_stream.cjs",
+    "dist/tmux_cxx.node"
+  ],
+  "main": "index.cjs",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "require": "./index.cjs",
+      "default": "./index.cjs"
+    }
+  },
+  "scripts": {
+    "prepack": "node tools/stage-addon.cjs",
+    "test": "vitest run",
+    "lint": "oxlint -c .oxlintrc.json --max-warnings 0 index.cjs session_event_stream.cjs index.d.ts tests tools",
+    "format": "oxfmt -c .oxfmtrc.json index.cjs session_event_stream.cjs index.d.ts tests tools package.json tsconfig.json .oxlintrc.json .oxfmtrc.json",
+    "format-check": "oxfmt -c .oxfmtrc.json --check index.cjs session_event_stream.cjs index.d.ts tests tools package.json tsconfig.json .oxlintrc.json .oxfmtrc.json",
+    "lint-type-aware": "oxlint -c .oxlintrc.json --type-aware --tsconfig tsconfig.json --max-warnings 0 --report-unused-disable-directives-severity error index.cjs session_event_stream.cjs index.d.ts tests tools",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "node-addon-api": "8.9.2",
+    "oxc-parser": "0.153.0",
+    "oxfmt": "0.72.0",
+    "oxlint": "1.87.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

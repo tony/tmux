@@ -1,0 +1,447 @@
+schema = 3
+
+[[operations]]
+type = "CreateSession"
+header = "session/operations/create_session.hpp"
+method = "create_session"
+node = "createSession"
+id = 1
+identity = "session.create"
+result = "session"
+parameters = [{ name = "name", kind = "text" }, { name = "command", kind = "text", default = "/bin/sh" }]
+
+[[operations]]
+type = "ListSessions"
+header = "session/operations/list_sessions.hpp"
+method = "sessions"
+node = "sessions"
+id = 2
+identity = "session.list"
+result = "sessions"
+parameters = []
+
+[[operations]]
+type = "ObserveSessions"
+header = "session/operations/observe_sessions.hpp"
+method = "observe_sessions"
+node = "observeSessions"
+id = 25
+identity = "session.observe"
+result = "session_observation"
+parameters = []
+
+[[operations]]
+type = "ReadSessionEvents"
+header = "session/operations/read_session_events.hpp"
+method = "read_session_events"
+node = "readSessionEvents"
+id = 26
+identity = "session.read_events"
+result = "session_event_batch"
+parameters = [{ name = "cursor", kind = "session_event_cursor" }]
+
+[[operations]]
+type = "WaitSessionEvents"
+header = "session/operations/wait_session_events.hpp"
+method = "wait_session_events"
+node = "waitSessionEvents"
+id = 27
+identity = "session.wait_events"
+result = "session_event_batch"
+parameters = [{ name = "cursor", kind = "session_event_cursor" }, { name = "timeout_ms", node = "timeoutMs", kind = "milliseconds", default = "500" }]
+
+[[operations]]
+type = "RenameSession"
+header = "session/operations/rename_session.hpp"
+method = "rename_session"
+node = "renameSession"
+id = 3
+identity = "session.rename"
+result = "void"
+parameters = [{ name = "session", kind = "session_id" }, { name = "name", kind = "text" }]
+
+[[operations]]
+type = "KillSession"
+header = "session/operations/kill_session.hpp"
+method = "kill_session"
+node = "killSession"
+id = 4
+identity = "session.kill"
+result = "void"
+parameters = [{ name = "session", kind = "session_id" }]
+
+[[operations]]
+type = "SendPaneInput"
+header = "pane/operations/send_pane_input.hpp"
+method = "send_pane_input"
+node = "sendPaneInput"
+id = 5
+identity = "pane.send_input"
+result = "void"
+parameters = [{ name = "pane", kind = "pane_id" }, { name = "bytes", kind = "bytes" }]
+
+[[operations]]
+type = "ReadPaneOutput"
+header = "pane/operations/read_pane_output.hpp"
+method = "read_pane_output"
+node = "readPaneOutput"
+id = 6
+identity = "pane.read_output"
+result = "bytes"
+parameters = [{ name = "pane", kind = "pane_id" }]
+
+[[operations]]
+type = "WaitPaneOutput"
+header = "pane/operations/wait_pane_output.hpp"
+method = "wait_pane_output"
+node = "waitPaneOutput"
+id = 7
+identity = "pane.wait_output"
+result = "bytes"
+parameters = [{ name = "pane", kind = "pane_id" }, { name = "needle", kind = "bytes" }, { name = "timeout_ms", node = "timeoutMs", kind = "milliseconds", default = "500" }]
+
+[[operations]]
+type = "LinkWindow"
+header = "window_link/operations/link_window.hpp"
+method = "link_window"
+node = "linkWindow"
+id = 8
+identity = "window.link"
+result = "window_link"
+parameters = [{ name = "window", kind = "window_id" }, { name = "session", kind = "session_id" }, { name = "index", kind = "index" }]
+
+[[operations]]
+type = "UnlinkWindow"
+header = "window_link/operations/unlink_window.hpp"
+method = "unlink_window"
+node = "unlinkWindow"
+id = 9
+identity = "window.unlink"
+result = "void"
+parameters = [{ name = "window_link", node = "windowLink", kind = "window_link_id" }]
+
+[[operations]]
+type = "ListWindowLinks"
+header = "window_link/operations/list_window_links.hpp"
+method = "window_links"
+node = "windowLinks"
+id = 10
+identity = "window.list_links"
+result = "window_links"
+parameters = [{ name = "session", kind = "session_id" }]
+
+[[operations]]
+type = "ReadWindow"
+header = "window/operations/read_window.hpp"
+method = "window"
+node = "window"
+id = 11
+identity = "window.read"
+result = "window"
+parameters = [{ name = "window", kind = "window_id" }]
+
+[[snapshots]]
+type = "SessionSnapshot"
+header = "session/session_snapshot.hpp"
+prefix = "session"
+fields = [{ name = "id", kind = "session_id" }, { name = "window", kind = "window_id" }, { name = "link", kind = "window_link_id" }, { name = "pane", kind = "pane_id" }, { name = "name", kind = "text" }, { name = "revision", kind = "revision" }]
+
+[[snapshots]]
+type = "SessionEventCursor"
+header = "session/session_event.hpp"
+prefix = "session_event_cursor"
+fields = [{ name = "server_instance", node = "serverInstance", kind = "text" }, { name = "next_sequence", node = "nextSequence", kind = "revision" }]
+
+[[snapshots]]
+type = "SessionObservation"
+header = "session/session_observation.hpp"
+prefix = "session_observation"
+fields = [{ name = "sessions", kind = "sessions" }, { name = "next_event", node = "nextEvent", kind = "session_event_cursor" }]
+
+[[snapshots]]
+type = "SessionCreatedEvent"
+header = "session/session_event.hpp"
+prefix = "session_created_event"
+fields = [{ name = "session", kind = "session" }]
+
+[[snapshots]]
+type = "SessionRenamedEvent"
+header = "session/session_event.hpp"
+prefix = "session_renamed_event"
+fields = [{ name = "session", kind = "session_id" }, { name = "name", kind = "text" }, { name = "revision", kind = "revision" }]
+
+[[snapshots]]
+type = "SessionClosedEvent"
+header = "session/session_event.hpp"
+prefix = "session_closed_event"
+fields = [{ name = "session", kind = "session_id" }, { name = "name", kind = "text" }, { name = "revision", kind = "revision" }]
+
+[[snapshots]]
+type = "SessionEventRecord"
+header = "session/session_event.hpp"
+prefix = "session_event_record"
+fields = [{ name = "sequence", kind = "revision" }, { name = "event", kind = "session_event" }]
+
+[[snapshots]]
+type = "SessionEventBatch"
+header = "session/session_event.hpp"
+prefix = "session_event_batch"
+fields = [{ name = "records", kind = "session_event_records" }, { name = "next_cursor", node = "nextCursor", kind = "session_event_cursor" }]
+
+[[snapshots]]
+type = "SessionEventGap"
+header = "session/session_event_stream.hpp"
+prefix = "session_event_gap"
+fields = [{ name = "missed_from", node = "missedFrom", kind = "session_event_cursor" }, { name = "replacement", kind = "session_observation" }]
+
+[[variants]]
+type = "SessionEvent"
+header = "session/session_event.hpp"
+alternatives = [
+  { type = "SessionCreatedEvent", kind = "session_created" },
+  { type = "SessionRenamedEvent", kind = "session_renamed" },
+  { type = "SessionClosedEvent", kind = "session_closed" },
+]
+
+[[variants]]
+type = "SessionEventStreamItem"
+header = "session/session_event_stream.hpp"
+alternatives = [
+  { type = "SessionEventRecord", kind = "event" },
+  { type = "SessionEventGap", kind = "gap" },
+]
+
+[[streams]]
+type = "SessionEventStream"
+header = "session/session_event_stream.hpp"
+prefix = "session_event_stream"
+subscribe = "subscribe_sessions"
+node = "subscribeSessions"
+initial = "session_observation"
+item = "SessionEventStreamItem"
+
+[[operations]]
+type = "ReadPaneText"
+header = "pane/operations/read_pane_text.hpp"
+method = "read_pane_text"
+node = "readPaneText"
+id = 12
+identity = "pane.read_text"
+result = "pane_text"
+parameters = [{ name = "pane", kind = "pane_id" }]
+
+[[operations]]
+type = "ListClients"
+header = "client/operations/list_clients.hpp"
+method = "clients"
+node = "clients"
+id = 13
+identity = "client.list"
+result = "clients"
+parameters = []
+
+[[operations]]
+type = "AttachClient"
+header = "client/operations/attach_client.hpp"
+method = "attach_client"
+node = "attachClient"
+id = 14
+identity = "client.attach"
+result = "client"
+parameters = [{ name = "client", kind = "client_id" }, { name = "session", kind = "session_id" }]
+
+[[operations]]
+type = "DetachClient"
+header = "client/operations/detach_client.hpp"
+method = "detach_client"
+node = "detachClient"
+id = 15
+identity = "client.detach"
+result = "client"
+parameters = [{ name = "client", kind = "client_id" }]
+
+[[operations]]
+type = "ResizeClient"
+header = "client/operations/resize_client.hpp"
+method = "resize_client"
+node = "resizeClient"
+id = 16
+identity = "client.resize"
+result = "client"
+parameters = [{ name = "client", kind = "client_id" }]
+
+[[operations]]
+type = "ReadStockClientCompatibility"
+header = "client/operations/read_stock_client_compatibility.hpp"
+method = "stock_client_compatibility"
+node = "stockClientCompatibility"
+id = 17
+identity = "client.read_stock_compatibility"
+result = "stock_connection_compatibility"
+parameters = [{ name = "client", kind = "client_id" }]
+
+[[operations]]
+type = "SplitPane"
+header = "pane/operations/split_pane.hpp"
+method = "split_pane"
+node = "splitPane"
+id = 18
+identity = "pane.split"
+result = "pane"
+parameters = [{ name = "pane", kind = "pane_id" }, { name = "orientation", kind = "pane_split_orientation" }, { name = "command", kind = "text", default = "/bin/sh" }]
+
+[[operations]]
+type = "ListPanes"
+header = "pane/operations/list_panes.hpp"
+method = "panes"
+node = "panes"
+id = 19
+identity = "pane.list"
+result = "panes"
+parameters = [{ name = "window", kind = "window_id" }]
+
+[[operations]]
+type = "SelectPane"
+header = "pane/operations/select_pane.hpp"
+method = "select_pane"
+node = "selectPane"
+id = 20
+identity = "pane.select"
+result = "pane"
+parameters = [{ name = "pane", kind = "pane_id" }]
+
+[[operations]]
+type = "SetPasteBuffer"
+header = "paste_buffer/operations/set_paste_buffer.hpp"
+method = "set_paste_buffer"
+node = "setPasteBuffer"
+id = 21
+identity = "paste_buffer.set"
+result = "void"
+parameters = [{ name = "name", kind = "text" }, { name = "bytes", kind = "bytes" }]
+
+[[operations]]
+type = "ReadPasteBuffer"
+header = "paste_buffer/operations/read_paste_buffer.hpp"
+method = "read_paste_buffer"
+node = "readPasteBuffer"
+id = 22
+identity = "paste_buffer.read"
+result = "bytes"
+parameters = [{ name = "name", kind = "text" }]
+
+[[operations]]
+type = "DeletePasteBuffer"
+header = "paste_buffer/operations/delete_paste_buffer.hpp"
+method = "delete_paste_buffer"
+node = "deletePasteBuffer"
+id = 23
+identity = "paste_buffer.delete"
+result = "void"
+parameters = [{ name = "name", kind = "text" }]
+
+[[operations]]
+type = "PasteBufferIntoPane"
+header = "paste_buffer/operations/paste_buffer_into_pane.hpp"
+method = "paste_buffer_into_pane"
+node = "pasteBufferIntoPane"
+id = 24
+identity = "paste_buffer.paste_into_pane"
+result = "void"
+parameters = [{ name = "name", kind = "text" }, { name = "pane", kind = "pane_id" }]
+
+[[snapshots]]
+type = "PaneTextSnapshot"
+header = "pane/pane_text_snapshot.hpp"
+prefix = "pane_text"
+fields = [
+  { name = "server_instance", node = "serverInstance", kind = "text" },
+  { name = "pane", kind = "pane_id" },
+  { name = "revision", kind = "revision" },
+  { name = "rows", kind = "count" },
+  { name = "columns", kind = "count" },
+  { name = "cursor_row", node = "cursorRow", kind = "count" },
+  { name = "cursor_column", node = "cursorColumn", kind = "count" },
+  { name = "cursor_visible", node = "cursorVisible", kind = "boolean" },
+  { name = "alternate_screen", node = "alternateScreen", kind = "boolean" },
+  { name = "complete", kind = "boolean" },
+  { name = "lines", kind = "text_lines" },
+  { name = "history_lines", node = "historyLines", kind = "count" },
+  { name = "history_gap", node = "historyGap", kind = "boolean" },
+  { name = "input_open", node = "inputOpen", kind = "boolean" },
+  { name = "input_pending", node = "inputPending", kind = "boolean" },
+]
+
+[[snapshots]]
+type = "PaneSnapshot"
+header = "pane/pane_snapshot.hpp"
+prefix = "pane"
+fields = [
+  { name = "id", kind = "pane_id" },
+  { name = "window", kind = "window_id" },
+  { name = "top", kind = "count" },
+  { name = "left", kind = "count" },
+  { name = "rows", kind = "count" },
+  { name = "columns", kind = "count" },
+  { name = "active", kind = "boolean" },
+  { name = "revision", kind = "revision" },
+]
+
+[[snapshots]]
+type = "ClientSnapshot"
+header = "client/client_snapshot.hpp"
+prefix = "client"
+fields = [
+  { name = "id", kind = "client_id" },
+  { name = "session", kind = "optional_session_id" },
+  { name = "detached_from", node = "detachedFrom", kind = "text" },
+  { name = "identified", kind = "boolean" },
+  { name = "has_terminal", node = "hasTerminal", kind = "boolean" },
+  { name = "rows", kind = "count" },
+  { name = "columns", kind = "count" },
+  { name = "revision", kind = "revision" },
+]
+
+[[snapshots]]
+type = "StockConnectionCompatibility"
+header = "protocol/tmux/stock_connection_compatibility.hpp"
+prefix = "stock_connection_compatibility"
+fields = [
+  { name = "profile", kind = "text" },
+  { name = "release", kind = "text" },
+  { name = "release_uncertain", node = "releaseUncertain", kind = "boolean" },
+  { name = "direction", kind = "protocol_direction" },
+  { name = "mode", kind = "connection_mode" },
+  { name = "tier", kind = "support_tier" },
+  { name = "support", kind = "capability_support" },
+  { name = "verification", kind = "compatibility_verification" },
+  { name = "commands", kind = "text_lines" },
+  { name = "quirks", kind = "text_lines" },
+  { name = "evidence", kind = "text_lines" },
+  { name = "limitations", kind = "text_lines" },
+]
+
+[[snapshots]]
+type = "WindowSnapshot"
+header = "window/window_snapshot.hpp"
+prefix = "window"
+fields = [{ name = "id", kind = "window_id" }, { name = "pane", kind = "pane_id" }, { name = "name", kind = "text" }, { name = "rows", kind = "count" }, { name = "columns", kind = "count" }, { name = "revision", kind = "revision" }]
+
+[[snapshots]]
+type = "WindowLinkSnapshot"
+header = "window_link/window_link_snapshot.hpp"
+prefix = "window_link"
+fields = [{ name = "id", kind = "window_link_id" }, { name = "session", kind = "session_id" }, { name = "window", kind = "window_id" }, { name = "index", kind = "index" }, { name = "revision", kind = "revision" }]
+
+[[error_fields]]
+name = "code"
+kind = "error_code"
+
+[[error_fields]]
+name = "operation"
+kind = "text"
+
+[[error_fields]]
+name = "server_instance"
+node = "serverInstance"
+kind = "text"

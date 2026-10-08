@@ -1,0 +1,17 @@
+/_build/
+/.venv/
+/bindings/node/node_modules/
+/bindings/node/dist/
+/node_modules/
+/.ruff_cache/
+/.mypy_cache/
+/__pycache__/
+**/__pycache__/
+/.pytest_cache/
+
+# The upstream C implementation ignores executables and directories named
+# `tmux`; retain the C++ stock-protocol namespace directories explicitly.
+!src/protocol/tmux/
+!src/protocol/tmux/**
+!include/tmux_cxx/protocol/tmux/
+!include/tmux_cxx/protocol/tmux/**

@@ -1,0 +1,92 @@
+set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+set working-directory := "."
+
+python := ".venv/bin/python"
+cmake := ".venv/bin/cmake"
+npm := "_build/tools/node_current/bin/node _build/tools/npm/bin/npm-cli.js"
+
+# List the scoped build, test, lint, generation, and check entry points.
+default:
+    @{{just_executable()}} --list --justfile {{justfile()}}
+
+[group('build')]
+configure preset="dev":
+    {{cmake}} --preset {{preset}}
+
+[group('build')]
+build preset="dev":
+    {{cmake}} --build --preset {{preset}}
+
+[group('test')]
+test:
+    .venv/bin/ctest --preset dev --no-tests=error
+
+[group('test')]
+sanitizers:
+    {{python}} support/check.py sanitizers
+
+[group('test')]
+fuzz:
+    {{python}} support/check.py fuzzing
+
+[group('check')]
+check group="mid":
+    {{python}} support/check.py {{group}}
+
+[group('lint')]
+lint-python:
+    {{python}} support/check.py python
+
+[group('lint')]
+lint-node:
+    {{python}} support/check.py node
+
+[group('lint')]
+analyze:
+    {{python}} support/check.py analysis
+
+[group('generation')]
+generate:
+    {{cmake}} --build --preset dev --target python_stubs tmux_cxx_exposure node_declarations
+
+[group('generation')]
+generated-check:
+    {{python}} support/check.py generation
+
+[group('package')]
+package-python:
+    UV_NO_INDEX=1 UV_OFFLINE=1 .venv/bin/uv build --out-dir _build/packages/python
+
+[group('package')]
+package-node:
+    mkdir -p _build/packages/node
+    {{npm}} pack ./bindings/node --pack-destination _build/packages/node
+
+[group('package')]
+package-check:
+    {{python}} support/check.py packages
+
+[group('check')]
+standalone-check:
+    {{python}} support/check.py standalone
+
+[group('docs')]
+docs:
+    {{python}} support/check.py documentation
+
+[group('format')]
+format-native:
+    {{python}} support/check.py formatting --fix
+
+[group('format')]
+format-python:
+    {{python}} -m ruff check --fix support tests bindings/python
+    {{python}} -m ruff format support tests bindings/python
+
+[group('format')]
+format-node:
+    PATH="$PWD/_build/tools/node_current/bin:$PATH" {{npm}} --prefix bindings/node run format
+
+[group('bootstrap')]
+bootstrap:
+    python3 support/bootstrap.py --provision --python --node --modern-fixture

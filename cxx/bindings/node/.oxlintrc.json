@@ -1,0 +1,14 @@
+{
+  "plugins": ["typescript", "oxc", "import", "jsdoc", "vitest"],
+  "categories": { "correctness": "error", "suspicious": "error", "perf": "error" },
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/await-thenable": "error"
+  },
+  "ignorePatterns": ["tests/types-negative.cts", "node_modules/**", "dist/**"]
+}
