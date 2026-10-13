@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import subprocess
 import time
+from contextlib import suppress
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -31,24 +33,32 @@ def run(
     diagnostics: tuple[str, ...] = (),
     report: Path | None = None,
 ) -> None:
-    """Require the expected exit status and diagnostics; save requested output."""
+    """Verify status and diagnostics, save output, and terminate the owned group on abort."""
     remaining = DEADLINE - time.perf_counter()
     if remaining <= 0:
         raise RuntimeError("the complete check command exhausted its time budget")
-    completed = subprocess.run(
+    with subprocess.Popen(
         arguments,
         cwd=cwd,
         env=ENVIRONMENT,
         text=True,
-        capture_output=True,
-        timeout=remaining,
-    )
-    output = completed.stdout + completed.stderr
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=remaining)
+        except BaseException:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+            raise
+    output = stdout + stderr
     if report is not None:
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(output)
     expected = 1 if diagnostics else 0
-    if completed.returncode != expected or any(item not in output for item in diagnostics):
+    if process.returncode != expected or any(item not in output for item in diagnostics):
         print(output, end="")
         raise RuntimeError(f"check failed: {' '.join(arguments)}")
 

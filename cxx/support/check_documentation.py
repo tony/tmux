@@ -11,6 +11,8 @@ import shlex
 import subprocess
 import sys
 import tomllib
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import get_context
 from pathlib import Path
 
 from documentation import brief_text, check, prose, python_contracts, self_test
@@ -152,10 +154,10 @@ def qualified_name(cursor: Cursor) -> str:
     return "::".join(reversed(names))
 
 
-def inventory(
-    records: list[dict[str, str]], *, probe: Path | None = None
-) -> list[dict[str, object]]:
-    """Collect explicit C++ functions, private helpers, operators, templates, and lambdas."""
+def translation_unit_inventory(
+    record: dict[str, str], probe: Path | None = None
+) -> tuple[list[dict[str, object]], set[Path]]:
+    """Parse every authored callable and included file using one translation unit's actual flags."""
     if not Config.loaded:
         Config.set_library_file(str(LIBCLANG))
     index = Index.create()
@@ -227,19 +229,43 @@ def inventory(
         for child in cursor.get_children():
             visit(child)
 
-    for record in records:
-        unit = index.parse(record["file"], args=compiler_arguments(record))
-        covered.add(Path(record["file"]).resolve())
-        for included in unit.get_includes():
-            filename = str(included.include)
-            if filename.startswith(str(ROOT) + os.sep):
-                if filename not in paths:
-                    paths[filename] = Path(filename).resolve()
-                covered.add(paths[filename])
-        failures = [str(d) for d in unit.diagnostics if d.severity >= Diagnostic.Error]
-        if failures:
-            raise RuntimeError("compiler inventory cannot parse source:\n" + "\n".join(failures))
-        visit(unit.cursor)
+    unit = index.parse(record["file"], args=compiler_arguments(record))
+    covered.add(Path(record["file"]).resolve())
+    for included in unit.get_includes():
+        filename = str(included.include)
+        if filename.startswith(str(ROOT) + os.sep):
+            if filename not in paths:
+                paths[filename] = Path(filename).resolve()
+            covered.add(paths[filename])
+    failures = [str(d) for d in unit.diagnostics if d.severity >= Diagnostic.Error]
+    if failures:
+        raise RuntimeError("compiler inventory cannot parse source:\n" + "\n".join(failures))
+    visit(unit.cursor)
+    return list(callables.values()), covered
+
+
+def inventory(
+    records: list[dict[str, str]], *, probe: Path | None = None
+) -> list[dict[str, object]]:
+    """Collect complete callable coverage with bounded workers and deterministic ordering."""
+    callables: dict[str, dict[str, object]] = {}
+    covered: set[Path] = set()
+
+    def merge(result: tuple[list[dict[str, object]], set[Path]]) -> None:
+        """Merge documented redeclarations in compile order and accumulate compiled files."""
+        entries, files = result
+        covered.update(files)
+        for entry in entries:
+            key = str(entry["key"])
+            if key not in callables or entry["documentation"]:
+                callables[key] = entry
+
+    if len(records) == 1:
+        merge(translation_unit_inventory(records[0], probe))
+    else:
+        with ProcessPoolExecutor(max_workers=4, mp_context=get_context("spawn")) as workers:
+            for result in workers.map(translation_unit_inventory, records, [probe] * len(records)):
+                merge(result)
     if not callables:
         raise RuntimeError("compiler callable inventory is unexpectedly empty")
     if probe is None:
