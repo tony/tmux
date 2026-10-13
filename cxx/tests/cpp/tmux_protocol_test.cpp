@@ -209,8 +209,13 @@ TEST(TmuxProtocol, CompatibilitySeparatesEvidenceFromReleaseClaims) {
         "syntax is unsupported"));
     EXPECT_TRUE(std::ranges::contains(
         report.limitations,
-        "set-option supports only -g and exact -t session assignments for prefix and prefix2; "
-        "unset and implicit current-session assignment are unsupported"));
+        "set-option supports -g or exact -t assignments for session prefix/prefix2 and window "
+        "mode-keys; -w forces window scope; unset and implicit targets are unsupported"));
+    EXPECT_TRUE(std::ranges::contains(
+        report.limitations,
+        "set-window-option/setw supports mode-keys emacs/vi through global defaults or exact "
+        "session:index targets; grouped flags are accepted when -t ends the group; stock "
+        "show-options, other window options, and copy mode remain unsupported"));
     EXPECT_TRUE(std::ranges::contains(
         report.limitations,
         "the prefix table contains C-b send-prefix, quote and percent split, d detach, "

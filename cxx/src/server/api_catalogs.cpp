@@ -4,6 +4,7 @@
 #include "client/register_key_bindings.hpp"
 #include "client/register_operations.hpp"
 #include "commands/command_registry.hpp"
+#include "commands/register_option_commands.hpp"
 #include "key_table/key_binding_registry.hpp"
 #include "pane/register_commands.hpp"
 #include "pane/register_key_bindings.hpp"
@@ -50,6 +51,9 @@ Result<ServerApiCatalogs> build_server_api_catalogs() {
         return std::unexpected(native_operations.error());
     }
     commands::CommandRegistry command_registry;
+    if (auto registration = register_option_commands(command_registry); !registration) {
+        return std::unexpected(registration.error());
+    }
     if (auto registration = register_session_commands(command_registry); !registration) {
         return std::unexpected(registration.error());
     }

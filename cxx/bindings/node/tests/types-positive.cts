@@ -8,6 +8,7 @@ import {
   type SessionSnapshot,
   type StockConnectionCompatibility,
   type WindowSnapshot,
+  type WindowOptionsSnapshot,
 } from "tmux-cxx";
 
 /** Exercise promise results, byte arrays, bigint identities, and session values. */
@@ -36,6 +37,16 @@ async function consumer(client: ServerConnection): Promise<SessionSnapshot> {
     "main-horizontal-mirrored",
   );
   void arranged;
+  await client.setWindowOption(null, "mode-keys", "vi");
+  await client.setWindowOption(session.window, "mode-keys", "emacs");
+  const windowOptions: WindowOptionsSnapshot = await client.windowOptions(session.window);
+  const modeKeys: "emacs" | "vi" = windowOptions.modeKeys;
+  const optionWindow: bigint | null = windowOptions.window;
+  const optionRevision: bigint = windowOptions.revision;
+  void modeKeys;
+  void optionWindow;
+  void optionRevision;
+  await client.windowOptions(null);
   const nextWindow: SessionSnapshot = await client.nextWindow(session.id);
   const previousWindow: SessionSnapshot = await client.previousWindow(session.id);
   const resized: PaneSnapshot = await client.resizePane(pane, "right");

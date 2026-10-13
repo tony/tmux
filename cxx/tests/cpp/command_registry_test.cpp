@@ -2,6 +2,7 @@
 #include "client/register_operations.hpp"
 #include "client/stock_client_lifecycle.hpp"
 #include "commands/command_registry.hpp"
+#include "commands/set_option_command.hpp"
 #include "pane/register_commands.hpp"
 #include "pane/register_operations.hpp"
 #include "paste_buffer/register_commands.hpp"
@@ -19,6 +20,77 @@
 #include <gtest/gtest.h>
 
 namespace tmux_cxx {
+/** @brief Scope-selecting option commands require both concrete assignment operations at startup.
+ */
+TEST(CommandRegistry, SetOptionRequiresBothScopedOperations) {
+    for (const bool session_only : {true, false}) {
+        protocol::native::OperationRegistry operations;
+        if (session_only) {
+            ASSERT_TRUE(operations.add<SetSessionOption>());
+        } else {
+            ASSERT_TRUE(operations.add<SetWindowOption>());
+        }
+        auto catalog = std::move(operations).freeze();
+        ASSERT_TRUE(catalog);
+        commands::CommandRegistry commands;
+        ASSERT_TRUE(commands.add<SetOptionCommand>());
+        EXPECT_FALSE(std::move(commands).freeze(*catalog));
+    }
+}
+
+/** @brief Typed assignment parsing rejects malformed flags and cross-scope names before mutation.
+ */
+TEST(CommandRegistry, OptionAssignmentFlagsPreserveOwnersAndRevisions) {
+    auto catalogs = build_server_api_catalogs();
+    ASSERT_TRUE(catalogs);
+    Server server;
+    ASSERT_TRUE(server.set_window_option(GlobalWindowOptions{}, "mode-keys", "emacs"));
+    const auto session = server.create_session("option-command", "/bin/cat");
+    ASSERT_TRUE(session);
+    const auto client = StockClientLifecycle::accept(server);
+    ASSERT_TRUE(client);
+    commands::CommandInvocation invocation{server, *client};
+    const std::vector<std::string> combined{"set", "-gw", "mode-keys", "vi"};
+    ASSERT_TRUE(catalogs->stock_commands.invoke(invocation, combined));
+    EXPECT_EQ(server.window_options(GlobalWindowOptions{})->mode_keys, WindowModeKeys::vi);
+    EXPECT_EQ(server.window_mode_keys(session->window), WindowModeKeys::vi);
+    const std::vector<std::string> local{"set-option", "-wt", "option-command:0", "mode-keys",
+                                         "emacs"};
+    ASSERT_TRUE(catalogs->stock_commands.invoke(invocation, local));
+    EXPECT_EQ(server.window_mode_keys(session->window), WindowModeKeys::emacs);
+    EXPECT_EQ(server.window_options(GlobalWindowOptions{})->mode_keys, WindowModeKeys::vi);
+    const std::vector<std::string> separated{"setw", "-t",        "option-command:0",
+                                             "--",   "mode-keys", "vi"};
+    ASSERT_TRUE(catalogs->stock_commands.invoke(invocation, separated));
+    EXPECT_EQ(server.window_mode_keys(session->window), WindowModeKeys::vi);
+    const auto revision = server.window(session->window)->revision;
+    const auto defaults = server.window_options(GlobalWindowOptions{});
+    ASSERT_TRUE(defaults);
+    for (const auto &arguments : std::vector<std::vector<std::string>>{
+             {"set", "-g", "-t", "option-command", "prefix", "C-x"},
+             {"set", "-gg", "prefix", "C-x"},
+             {"set", "-gww", "mode-keys", "vi"},
+             {"set", "-t", "option-command:0", "-t", "option-command:0", "mode-keys", "vi"},
+             {"set", "-tw", "option-command:0", "mode-keys", "vi"},
+             {"set", "-wt", "option-command", "mode-keys", "vi"},
+             {"set", "-gw", "prefix", "C-x"},
+             {"setw", "-g", "prefix", "C-x"},
+             {"set", "-g", "mode-keys", "unknown"},
+             {"set", "-u", "-g", "mode-keys"},
+             {"set", "-t"},
+             {"set", "-g", "mode-keys"},
+             {"set", "-g", "--", "mode-keys", "emacs", "extra"}}) {
+        EXPECT_FALSE(catalogs->stock_commands.invoke(invocation, arguments));
+        EXPECT_EQ(server.window(session->window)->revision, revision);
+        EXPECT_EQ(server.window_mode_keys(session->window), WindowModeKeys::vi);
+        EXPECT_EQ(server.session_prefix_keys(session->id)->prefix, key_table::control_key('b'));
+        const auto after = server.window_options(GlobalWindowOptions{});
+        ASSERT_TRUE(after);
+        EXPECT_EQ(after->mode_keys, defaults->mode_keys);
+        EXPECT_EQ(after->revision, defaults->revision);
+    }
+}
+
 /** @brief A composed command cannot start without every operation it may invoke. */
 TEST(CommandRegistry, NewWindowRequiresCreationAndSelection) {
     protocol::native::OperationRegistry operations;

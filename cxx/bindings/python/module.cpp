@@ -34,6 +34,11 @@ void unwrap(tmux_cxx::Result<void> result) {
         throw PythonTmuxError(result.error());
     }
 }
+/** @brief Translate None to global defaults or retain one exact shared-window identity. */
+tmux_cxx::WindowOptionTarget window_option_target(std::optional<std::uint64_t> window) {
+    return window ? tmux_cxx::WindowOptionTarget{tmux_cxx::WindowId{*window}}
+                  : tmux_cxx::WindowOptionTarget{tmux_cxx::GlobalWindowOptions{}};
+}
 } // namespace
 
 /** @brief Export native values and connection operations without starting or connecting a server.
@@ -63,6 +68,8 @@ NB_MODULE(_native, module) {
     using tmux_cxx::StockConnectionCompatibility;
     using tmux_cxx::WindowLayoutPreset;
     using tmux_cxx::WindowLinkSnapshot;
+    using tmux_cxx::WindowModeKeys;
+    using tmux_cxx::WindowOptionsSnapshot;
     using tmux_cxx::WindowSnapshot;
     nb::enum_<PaneSplitOrientation>(module, "PaneSplitOrientation")
         .value("LEFT_RIGHT", PaneSplitOrientation::left_right)
@@ -80,6 +87,9 @@ NB_MODULE(_native, module) {
         .value("MAIN_VERTICAL", WindowLayoutPreset::main_vertical)
         .value("MAIN_VERTICAL_MIRRORED", WindowLayoutPreset::main_vertical_mirrored)
         .value("TILED", WindowLayoutPreset::tiled);
+    nb::enum_<WindowModeKeys>(module, "WindowModeKeys")
+        .value("EMACS", WindowModeKeys::emacs)
+        .value("VI", WindowModeKeys::vi);
     auto tmux_error_type = nb::exception<PythonTmuxError>(module, "TmuxError", PyExc_RuntimeError);
     nb::register_exception_translator(
         /** @brief Attach the native error classification and operation while holding the GIL. */
@@ -176,6 +186,18 @@ NB_MODULE(_native, module) {
         .def_ro("byte_count", &PasteBufferSnapshot::byte_count, docs::paste_buffer_byte_count)
         .def_ro("automatic", &PasteBufferSnapshot::automatic, docs::paste_buffer_automatic)
         .def_ro("revision", &PasteBufferSnapshot::revision, docs::paste_buffer_revision);
+    nb::class_<WindowOptionsSnapshot>(module, "WindowOptionsSnapshot", docs::window_options_type)
+        .def_ro("server_instance", &WindowOptionsSnapshot::server_instance,
+                docs::window_options_server_instance)
+        .def_prop_ro(
+            "window", /** @brief Copy the observed window identity, preserving None for global
+                         defaults. */
+            [](const WindowOptionsSnapshot &snapshot) -> std::optional<std::uint64_t> {
+                return snapshot.window ? std::optional{snapshot.window->value} : std::nullopt;
+            },
+            docs::window_options_window)
+        .def_ro("mode_keys", &WindowOptionsSnapshot::mode_keys, docs::window_options_mode_keys)
+        .def_ro("revision", &WindowOptionsSnapshot::revision, docs::window_options_revision);
     nb::class_<WindowSnapshot>(module, "WindowSnapshot", docs::window_type)
         .def_prop_ro(
             "id", /** @brief Expose this snapshot's shared window identity as an exact Python
@@ -426,6 +448,22 @@ NB_MODULE(_native, module) {
                 return unwrap(self.select_layout(tmux_cxx::WindowId{window}, preset));
             },
             nb::arg("window"), nb::arg("preset"), docs::select_layout,
+            nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "set_window_option", /** @copybrief tmux_cxx::ServerConnection::set_window_option */
+            [](ServerConnection &self, std::optional<std::uint64_t> target, std::string name,
+               std::string value) {
+                unwrap(self.set_window_option(window_option_target(target), std::move(name),
+                                              std::move(value)));
+            },
+            nb::arg("target").none(), nb::arg("name"), nb::arg("value"), docs::set_window_option,
+            nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "window_options", /** @copybrief tmux_cxx::ServerConnection::window_options */
+            [](ServerConnection &self, std::optional<std::uint64_t> target) {
+                return unwrap(self.window_options(window_option_target(target)));
+            },
+            nb::arg("target").none(), docs::window_options,
             nb::call_guard<nb::gil_scoped_release>())
         .def(
             "create_window", /** @copybrief tmux_cxx::ServerConnection::create_window */

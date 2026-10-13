@@ -12,6 +12,8 @@
 #include <tmux_cxx/terminal/terminal_snapshot.hpp>
 #include <tmux_cxx/tmux_error.hpp>
 #include <tmux_cxx/window/layout_preset.hpp>
+#include <tmux_cxx/window/operations/set_window_option.hpp>
+#include <tmux_cxx/window/window_options_snapshot.hpp>
 #include <tmux_cxx/window/window_snapshot.hpp>
 #include <tmux_cxx/window_link/window_link_snapshot.hpp>
 
@@ -86,6 +88,14 @@ class Server {
     Result<std::vector<WindowLinkSnapshot>> window_links(SessionId session) const;
     /** @brief Materialize a shared window's name, selected pane, and mutation revision. */
     Result<WindowSnapshot> window(WindowId window) const;
+    /** @brief Assign a validated window option to global defaults or one shared window's local
+     * overrides. */
+    Result<void> set_window_option(WindowOptionTarget target, std::string_view name,
+                                   std::string_view value);
+    /** @brief Copy effective window options from global defaults or one live shared window. */
+    Result<WindowOptionsSnapshot> window_options(WindowOptionTarget target) const;
+    /** @brief Resolve one live shared window's effective copy-mode key convention. */
+    Result<WindowModeKeys> window_mode_keys(WindowId window) const;
     /** @copybrief tmux_cxx::ServerConnection::rename_window
      *
      * An unchanged name preserves the revision. Name constraints match create_window. */

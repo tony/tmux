@@ -22,7 +22,18 @@ def installed_provenance(prefix: Path) -> None:
 def create_session(socket: str, record: Path) -> None:
     """Create three persistent shells, arrange their shared window, and close local admission."""
     with tmux_cxx.ServerConnection(socket) as connection:
+        defaults = connection.window_options(None)
+        assert defaults.window is None and defaults.mode_keys == tmux_cxx.WindowModeKeys.EMACS
+        assert defaults.revision == 0
+        connection.set_window_option(None, "mode-keys", "vi")
         session = connection.create_session("installed", "/bin/sh")
+        inherited = connection.window_options(session.window)
+        assert inherited.mode_keys == tmux_cxx.WindowModeKeys.VI
+        assert (
+            inherited.window == session.window
+            and inherited.server_instance == defaults.server_instance
+        )
+        connection.set_window_option(session.window, "mode-keys", "emacs")
         connection.rename_session(session.id, "installed-python")
         second = connection.split_pane(session.pane, tmux_cxx.PaneSplitOrientation.LEFT_RIGHT)
         third = connection.split_pane(second.id, tmux_cxx.PaneSplitOrientation.TOP_BOTTOM)
@@ -64,6 +75,10 @@ def observe_session(socket: str, record: Path) -> None:
         assert observation.sessions[0].name == "installed-node"
         assert observation.sessions[0].pane == pane_id
         window = observation.sessions[0].window
+        assert observer.window_options(None).mode_keys == tmux_cxx.WindowModeKeys.VI
+        options = observer.window_options(window)
+        assert options.window == window and options.server_instance == owner
+        assert options.mode_keys == tmux_cxx.WindowModeKeys.EMACS and options.revision > 0
         panes = observer.panes(window)
         assert len(panes) == 3
         assert panes[0].id == pane_id

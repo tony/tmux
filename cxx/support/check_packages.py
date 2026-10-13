@@ -359,12 +359,16 @@ def check_installed_runtime(workspace: Path, python: InstalledPython, node: Path
         timeout_seconds=0.9,
     )
     require_installed_addon(node, environment)
+    daemon_environment = dict(environment)
+    # The owned runtime fixture starts from emacs independently of the caller's editor.
+    daemon_environment.pop("VISUAL", None)
+    daemon_environment.pop("EDITOR", None)
     read_fd, write_fd = os.pipe()
     try:
         daemon = subprocess.Popen(
             [str(python.daemon), "serve", "--socket", str(socket), "--ready-fd", str(write_fd)],
             cwd=workspace,
-            env=environment,
+            env=daemon_environment,
             pass_fds=(write_fd,),
         )
     except BaseException:

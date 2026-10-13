@@ -16,7 +16,8 @@ const OptionDefinition *OptionCatalog::find(std::string_view name) const {
 Result<ParsedOption> OptionCatalog::parse(std::string_view name, std::string_view value) const {
     const auto *definition = find(name);
     if (definition == nullptr) {
-        return std::unexpected(TmuxError{TmuxErrorCode::invalid_argument, "unsupported option"});
+        return std::unexpected(
+            TmuxError{TmuxErrorCode::invalid_argument, "unsupported option: " + std::string(name)});
     }
     switch (definition->type) {
     case OptionValueType::key: {
@@ -29,8 +30,17 @@ Result<ParsedOption> OptionCatalog::parse(std::string_view name, std::string_vie
         }
         return ParsedOption{definition, std::monostate{}};
     }
+    case OptionValueType::mode_keys: {
+        const auto choice =
+            std::ranges::find(window_mode_keys, value, &WindowModeKeysDescription::name);
+        if (choice == window_mode_keys.end()) {
+            return std::unexpected(
+                TmuxError{TmuxErrorCode::invalid_argument, "mode-keys requires emacs or vi"});
+        }
+        return ParsedOption{definition, choice->mode_keys};
+    }
     }
     return std::unexpected(
-        TmuxError{TmuxErrorCode::invalid_argument, "unsupported session option type"});
+        TmuxError{TmuxErrorCode::invalid_argument, "unsupported option value type"});
 }
 } // namespace tmux_cxx::options

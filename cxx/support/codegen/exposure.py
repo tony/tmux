@@ -14,6 +14,9 @@ KINDS = {
     "bytes": ("std::string", "Buffer"),
     "session_id": ("SessionId", "bigint"),
     "window_id": ("WindowId", "bigint"),
+    "optional_window_id": ("std::optional<WindowId>", "bigint | null"),
+    "window_option_target": ("WindowOptionTarget", "bigint | null"),
+    "window_mode_keys": ("WindowModeKeys", '"emacs" | "vi"'),
     "window_link_id": ("WindowLinkId", "bigint"),
     "pane_id": ("PaneId", "bigint"),
     "pane_split_orientation": (
@@ -41,6 +44,7 @@ KINDS = {
     "window_link": ("WindowLinkSnapshot", "WindowLinkSnapshot"),
     "window_links": ("std::vector<WindowLinkSnapshot>", "WindowLinkSnapshot[]"),
     "window": ("WindowSnapshot", "WindowSnapshot"),
+    "window_options": ("WindowOptionsSnapshot", "WindowOptionsSnapshot"),
     "void": ("void", "void"),
     "error_code": ("TmuxErrorCode", "string"),
     "pane_text": ("PaneTextSnapshot", "PaneTextSnapshot"),
@@ -356,7 +360,7 @@ def binding_documentation(exposure: Exposure) -> str:
 
 
 def compiled_contract(exposure: Exposure) -> str:
-    """Compile-check operation identities, fields, preset names, and connection signatures."""
+    """Compile-check operation identities, fields, choice names, and connection signatures."""
     lines = ["// Generated from api/exposure.toml; change the contract, not this file."]
     lines += [f"#include <tmux_cxx/{op.header}>" for op in exposure.operations]
     lines += [f"#include <tmux_cxx/{variant.header}>" for variant in exposure.variants]
@@ -401,6 +405,17 @@ def compiled_contract(exposure: Exposure) -> str:
                 f"static_assert(std::is_same_v<decltype({snapshot.type}::{value.name}), "
                 f"{KINDS[value.kind][0]}>);"
             )
+    if any(
+        value.kind == "window_mode_keys"
+        for snapshot in exposure.snapshots
+        for value in snapshot.fields
+    ):
+        mode_names = re.findall(r'"([^"]+)"', KINDS["window_mode_keys"][1])
+        lines.append(f"static_assert(window_mode_keys.size() == {len(mode_names)});")
+        lines += [
+            f"static_assert(window_mode_keys[{index}].name == {json.dumps(name)});"
+            for index, name in enumerate(mode_names)
+        ]
     for variant in exposure.variants:
         for index, alternative in enumerate(variant.alternatives):
             lines.append(

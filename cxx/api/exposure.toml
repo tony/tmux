@@ -461,6 +461,37 @@ fields = [
   { name = "revision", kind = "revision" },
 ]
 
+[[operations]]
+type = "SetWindowOption"
+header = "window/operations/set_window_option.hpp"
+method = "set_window_option"
+node = "setWindowOption"
+id = 39
+identity = "window.set_option"
+result = "void"
+parameters = [{ name = "target", kind = "window_option_target" }, { name = "name", kind = "text" }, { name = "value", kind = "text" }]
+
+[[operations]]
+type = "ReadWindowOptions"
+header = "window/operations/read_window_options.hpp"
+method = "window_options"
+node = "windowOptions"
+id = 40
+identity = "window.options"
+result = "window_options"
+parameters = [{ name = "target", kind = "window_option_target" }]
+
+[[snapshots]]
+type = "WindowOptionsSnapshot"
+header = "window/window_options_snapshot.hpp"
+prefix = "window_options"
+fields = [
+  { name = "server_instance", node = "serverInstance", kind = "text" },
+  { name = "window", kind = "optional_window_id" },
+  { name = "mode_keys", node = "modeKeys", kind = "window_mode_keys" },
+  { name = "revision", kind = "revision" },
+]
+
 [[snapshots]]
 type = "PaneTextSnapshot"
 header = "pane/pane_text_snapshot.hpp"

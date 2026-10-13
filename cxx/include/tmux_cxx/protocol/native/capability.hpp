@@ -20,6 +20,7 @@ enum class Capability : std::uint64_t {
     session_options = 4096,
     window_lifecycle = 8192,
     window_names = 16384,
+    window_options = 32768,
 };
 /** @brief Convert a declared native capability to its stable wire bit. */
 constexpr std::uint64_t capability_mask(Capability capability) {

@@ -29,6 +29,11 @@ class WindowLayoutPreset(enum.Enum):
 
     TILED = 6
 
+class WindowModeKeys(enum.Enum):
+    EMACS = 0
+
+    VI = 1
+
 class TmuxError(RuntimeError):
     code: str
     operation: str
@@ -216,6 +221,29 @@ class PasteBufferSnapshot:
     @property
     def revision(self) -> int:
         """Server mutation revision at the buffer's last replacement."""
+
+class WindowOptionsSnapshot:
+    """
+    Copy effective window options with their server owner and mutation revision.
+    """
+
+    @property
+    def server_instance(self) -> str:
+        """Server lifetime owning these options."""
+
+    @property
+    def window(self) -> int | None:
+        """Shared window identity, absent for server-wide window defaults."""
+
+    @property
+    def mode_keys(self) -> WindowModeKeys:
+        """Effective emacs or vi copy-mode key convention."""
+
+    @property
+    def revision(self) -> int:
+        """
+        Window metadata revision, or current server metadata revision for global defaults.
+        """
 
 class WindowSnapshot:
     """
@@ -560,6 +588,16 @@ class ServerConnection:
     def select_layout(self, window: int, preset: WindowLayoutPreset) -> WindowSnapshot:
         """
         Arrange a shared window using a named tmux preset, preserving pane order and selection.
+        """
+
+    def set_window_option(self, target: int | None, name: str, value: str) -> None:
+        """
+        Assign a global window default or one shared window's explicit option override.
+        """
+
+    def window_options(self, target: int | None) -> WindowOptionsSnapshot:
+        """
+        Copy owner-qualified effective window options or their global defaults.
         """
 
     def create_window(

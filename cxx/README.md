@@ -243,12 +243,32 @@ with tmux_cxx.ServerConnection(os.environ["TMUX_CXX_SOCKET"]) as connection:
     membership = connection.create_window(session.id, 1, "build")
     window = connection.rename_window(membership.window, "build:test")
     selected = connection.select_window(membership.id)
+    connection.set_window_option(None, "mode-keys", "vi")
+    connection.set_window_option(window.id, "mode-keys", "emacs")
+    options = connection.window_options(window.id)
     print(window.name, selected.window, selected.pane)
+    print(options.mode_keys)
 ```
 
 Window names are nonempty UTF-8, use at most 128 bytes, and contain no ASCII controls or DEL. Colons and periods are allowed. Renaming changes the shared window; its memberships and session selections retain their identities. Stock `new-window [-d] -t session[:index] -n literal-name [command]` composes creation and selection; an omitted index chooses the first free index from zero. A selection failure leaves the created window and program available. Stock `select-window -t session:index` and `rename-window -t session:index literal-name` resolve memberships at execution. Implicit targets, automatic naming, formats, broader flags, hooks, window-selection and rename notifications, and interactive creation and rename prompts remain open.
 
 Session names must be valid UTF-8 and satisfy the documented name bounds. Shared server validation rejects malformed names before creation or rename effects. Program commands and raw pane traffic retain their byte representation.
+
+`mode-keys` belongs to the shared window. Existing and newly created windows
+inherit live global defaults until a local assignment pins their value;
+linked sessions observe the same override. `window_options(None)` reads
+global defaults; a window identity reads its effective values. Snapshots
+include server ownership and metadata revision. Python returns
+`WindowModeKeys.EMACS` or `VI`; Node returns `"emacs"` or `"vi"` from
+`windowOptions`, and `setWindowOption` returns a promise. Startup defaults
+follow tmux's `VISUAL`, then `EDITOR`, basename matching.
+
+Stock `set-option`/`set` selects the option's declared scope. `-w` forces
+window scope; `set-window-option`/`setw` also requires window definitions.
+Assignments require `-g` or one explicit `-t` target. Window targets use
+`session:index`; grouped flags place `-t` last and supply its target next.
+Only session `prefix`/`prefix2` and window `mode-keys` are implemented.
+Unset, implicit targets, stock option listing, and copy mode remain open.
 
 ## Compatibility evidence
 

@@ -2,6 +2,7 @@
 
 #include <tmux_cxx/key_table/key_code.hpp>
 #include <tmux_cxx/tmux_error.hpp>
+#include <tmux_cxx/window/mode_keys.hpp>
 
 #include <array>
 #include <cstddef>
@@ -14,10 +15,10 @@ namespace tmux_cxx::options {
 enum class OptionScope { server, session, window, pane };
 
 /** @brief Identify the value contract used to parse and store an option. */
-enum class OptionValueType { key };
+enum class OptionValueType { key, mode_keys };
 
 /** @brief Hold one value from the currently implemented tmux option types. */
-using OptionValue = std::variant<std::monostate, key_table::KeyCode>;
+using OptionValue = std::variant<std::monostate, key_table::KeyCode, WindowModeKeys>;
 
 /** @brief Describe one immutable tmux option and its default value. */
 struct OptionDefinition {
@@ -33,6 +34,9 @@ constexpr bool option_value_matches(const OptionDefinition &definition, const Op
     case OptionValueType::key:
         return std::holds_alternative<std::monostate>(value) ||
                std::holds_alternative<key_table::KeyCode>(value);
+    case OptionValueType::mode_keys:
+        return std::holds_alternative<WindowModeKeys>(value) &&
+               valid_window_mode_keys(std::get<WindowModeKeys>(value));
     }
     return false;
 }

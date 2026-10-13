@@ -20,6 +20,8 @@ from ._native import StockConnectionCompatibility as StockConnectionCompatibilit
 from ._native import TmuxError as TmuxError
 from ._native import WindowLayoutPreset as WindowLayoutPreset
 from ._native import WindowLinkSnapshot as WindowLinkSnapshot
+from ._native import WindowModeKeys as WindowModeKeys
+from ._native import WindowOptionsSnapshot as WindowOptionsSnapshot
 from ._native import WindowSnapshot as WindowSnapshot
 from .server_connection import ServerConnection as ServerConnection
 from .session_event_stream import AsyncSessionEventStream as AsyncSessionEventStream
@@ -49,5 +51,7 @@ __all__ = [
     "TmuxError",
     "WindowLayoutPreset",
     "WindowLinkSnapshot",
+    "WindowModeKeys",
+    "WindowOptionsSnapshot",
     "WindowSnapshot",
 ]

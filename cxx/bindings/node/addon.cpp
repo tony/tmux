@@ -66,7 +66,7 @@ using NodeOperationValue = std::variant<
     std::vector<tmux_cxx::WindowLinkSnapshot>, tmux_cxx::PaneSnapshot,
     std::vector<tmux_cxx::PaneSnapshot>, tmux_cxx::PaneTextSnapshot, tmux_cxx::SessionEventBatch,
     std::optional<tmux_cxx::PasteBufferSnapshot>, std::vector<tmux_cxx::PasteBufferSnapshot>,
-    std::shared_ptr<tmux_cxx::SessionEventStream>, std::string>;
+    tmux_cxx::WindowOptionsSnapshot, std::shared_ptr<tmux_cxx::SessionEventStream>, std::string>;
 /** @brief Move-owned native work that never captures JavaScript handles. */
 using NodeOperation =
     std::move_only_function<tmux_cxx::Result<NodeOperationValue>(tmux_cxx::ServerConnection &)>;
@@ -251,6 +251,24 @@ Napi::Object paste_buffer_object(Napi::Env env, const tmux_cxx::PasteBufferSnaps
     object.Set("revision", Napi::BigInt::New(env, buffer.revision));
     return object;
 }
+/** @brief Materialize owner-qualified options with cataloged mode names and exact identities. */
+Napi::Object window_options_object(Napi::Env env, const tmux_cxx::WindowOptionsSnapshot &options) {
+    const auto mode = std::ranges::find(tmux_cxx::window_mode_keys, options.mode_keys,
+                                        &tmux_cxx::WindowModeKeysDescription::mode_keys);
+    if (mode == tmux_cxx::window_mode_keys.end()) {
+        throw Napi::Error::New(env, "native window options contain an unknown mode-key value");
+    }
+    auto object = Napi::Object::New(env);
+    object.Set("serverInstance", options.server_instance);
+    if (options.window) {
+        object.Set("window", Napi::BigInt::New(env, options.window->value));
+    } else {
+        object.Set("window", env.Null());
+    }
+    object.Set("modeKeys", std::string(mode->name));
+    object.Set("revision", Napi::BigInt::New(env, options.revision));
+    return object;
+}
 /** @brief Materialize one pane's window-owned geometry and active selection. */
 Napi::Object pane_object(Napi::Env env, const tmux_cxx::PaneSnapshot &pane) {
     auto object = Napi::Object::New(env);
@@ -369,6 +387,9 @@ Napi::Value to_javascript(Napi::Env env, const NodeOperationValue &operation_val
         }
         return array;
     }
+    if (auto options = std::get_if<tmux_cxx::WindowOptionsSnapshot>(&operation_value)) {
+        return window_options_object(env, *options);
+    }
     return env.Undefined();
 }
 /** @brief Move successful native values without discarding structured failures. */
@@ -463,6 +484,14 @@ std::uint64_t id_arg(const Napi::CallbackInfo &info, std::size_t index) {
         throw Napi::RangeError::New(info.Env(), "identity must be an unsigned 64-bit value");
     }
     return identity;
+}
+/** @brief Translate explicit null to global defaults or validate one shared-window bigint. */
+tmux_cxx::WindowOptionTarget window_option_target_arg(const Napi::CallbackInfo &info,
+                                                      std::size_t index) {
+    if (index < info.Length() && info[index].IsNull()) {
+        return tmux_cxx::GlobalWindowOptions{};
+    }
+    return tmux_cxx::WindowId{id_arg(info, index)};
 }
 /** @brief Copy and validate one owner-qualified event cursor before admitting worker execution. */
 tmux_cxx::SessionEventCursor session_event_cursor_arg(const Napi::CallbackInfo &info,
@@ -726,6 +755,8 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
                     InstanceMethod("window", &NodeServerConnection::window),
                     InstanceMethod("renameWindow", &NodeServerConnection::rename_window),
                     InstanceMethod("selectLayout", &NodeServerConnection::select_layout),
+                    InstanceMethod("setWindowOption", &NodeServerConnection::set_window_option),
+                    InstanceMethod("windowOptions", &NodeServerConnection::window_options),
                     InstanceMethod("createWindow", &NodeServerConnection::create_window),
                     InstanceMethod("selectWindow", &NodeServerConnection::select_window),
                     InstanceMethod("nextWindow", &NodeServerConnection::next_window),
@@ -925,6 +956,26 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
         return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::select_layout */
                                [window, preset](tmux_cxx::ServerConnection &connection) {
                                    return to_node_result(connection.select_layout(window, preset));
+                               });
+    }
+    /** @brief Own option arguments before queuing a global or shared-window assignment. */
+    Napi::Value set_window_option(const Napi::CallbackInfo &info) {
+        const auto target = window_option_target_arg(info, 0);
+        auto name = string_arg(info, 1);
+        auto value = string_arg(info, 2);
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::set_window_option */
+                               [target, name = std::move(name), value = std::move(value)](
+                                   tmux_cxx::ServerConnection &connection) mutable {
+                                   return to_node_result(connection.set_window_option(
+                                       target, std::move(name), std::move(value)));
+                               });
+    }
+    /** @brief Queue owner-qualified effective options for explicit global or window scope. */
+    Napi::Value window_options(const Napi::CallbackInfo &info) {
+        const auto target = window_option_target_arg(info, 0);
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::window_options */
+                               [target](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(connection.window_options(target));
                                });
     }
     /** @brief Copy creation arguments before queuing a PTY-backed window at an explicit session

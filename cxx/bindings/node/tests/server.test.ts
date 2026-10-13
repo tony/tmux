@@ -100,6 +100,9 @@ async function serverOperations(): Promise<void> {
   });
   await awaitServerReady(process);
   const client = new ServerConnection(socket);
+  const initialOptions = await client.windowOptions(null);
+  expect(initialOptions).toMatchObject({ window: null, modeKeys: "emacs", revision: 0n });
+  expect(initialOptions.serverInstance).toMatch(/^[0-9a-f]{32}$/);
   const session = await client.createSession("node", "/bin/sh");
   expect(typeof session.id).toBe("bigint");
   const observation = await client.observeSessions();
@@ -110,6 +113,35 @@ async function serverOperations(): Promise<void> {
     ),
   ).toEqual([session.id]);
   expect(observation.nextEvent.serverInstance).toMatch(/^[0-9a-f]{32}$/);
+  expect(initialOptions.serverInstance).toBe(observation.nextEvent.serverInstance);
+  await client.setWindowOption(null, "mode-keys", "vi");
+  expect(await client.windowOptions(session.window)).toMatchObject({
+    window: session.window,
+    modeKeys: "vi",
+    serverInstance: initialOptions.serverInstance,
+  });
+  await client.setWindowOption(session.window, "mode-keys", "emacs");
+  const overriddenOptions = await client.windowOptions(session.window);
+  await client.setWindowOption(session.window, "mode-keys", "emacs");
+  expect((await client.windowOptions(session.window)).revision).toBe(overriddenOptions.revision);
+  await expect(
+    client.setWindowOption(session.window, "mode-keys", "invalid"),
+  ).rejects.toMatchObject({
+    code: "invalid_argument",
+    operation: "window.set_option",
+  });
+  await expect(client.windowOptions(0n)).rejects.toMatchObject({ code: "invalid_argument" });
+  await expect(client.windowOptions(99999n)).rejects.toMatchObject({
+    code: "not_found",
+    operation: "window.options",
+  });
+  await expect(client.setWindowOption(99999n, "mode-keys", "vi")).rejects.toMatchObject({
+    code: "not_found",
+    operation: "window.set_option",
+  });
+  await expect(client.setWindowOption(session.window, "prefix", "C-a")).rejects.toMatchObject({
+    code: "invalid_argument",
+  });
   expect(observation.nextEvent.nextSequence).toBeGreaterThanOrEqual(1n);
   await client.renameSession(session.id, "renamed");
   const changes = await client.readSessionEvents(observation.nextEvent);
@@ -329,6 +361,7 @@ async function serverOperations(): Promise<void> {
   }
   expect(await client.readPasteBuffer(automaticBinary.name)).toEqual(pasteBytes);
   const shared = await client.createSession("shared", "/bin/cat");
+  expect((await client.windowOptions(shared.window)).modeKeys).toBe("vi");
   await expect(client.linkWindow(session.window, shared.id, 2147483648)).rejects.toMatchObject({
     code: "invalid_argument",
     operation: "window.link",
@@ -392,6 +425,11 @@ async function serverOperations(): Promise<void> {
   });
   const observer = new ServerConnection(socket);
   expect((await observer.sessions())[0].id).toBe(session.id);
+  expect((await observer.windowOptions(session.window)).modeKeys).toBe("emacs");
+  const retainedOptions = await observer.windowOptions(session.window);
+  await observer.setWindowOption(null, "mode-keys", "emacs");
+  expect((await observer.windowOptions(shared.window)).modeKeys).toBe("emacs");
+  expect((await observer.windowOptions(session.window)).revision).toBe(retainedOptions.revision);
   await observer.killSession(session.id);
   expect((await observer.window(session.window)).pane).toBe(session.pane);
   await observer.unlinkWindow(shared.link);
@@ -403,9 +441,11 @@ async function serverOperations(): Promise<void> {
   ).toBe(session.pane);
   await observer.unlinkWindow(link.id);
   await expect(observer.window(session.window)).rejects.toMatchObject({ code: "not_found" });
+  await expect(observer.windowOptions(session.window)).rejects.toMatchObject({ code: "not_found" });
   await expect(observer.renameSession(session.id, "deleted")).rejects.toThrow(
     "session no longer exists",
   );
   observer.close();
+  await expect(observer.windowOptions(null)).rejects.toMatchObject({ code: "closed" });
 }
 test("Node controls real PTY state and disposing preserves the session", serverOperations);

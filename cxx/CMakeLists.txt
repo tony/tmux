@@ -165,6 +165,8 @@ add_library(tmux_cxx_connection STATIC
   src/window/operations/create_window_native_adapter.cpp
   src/window/operations/rename_window_native_adapter.cpp
   src/window/operations/select_layout_native_adapter.cpp
+  src/window/operations/set_window_option_native_adapter.cpp
+  src/window/operations/read_window_options_native_adapter.cpp
   src/window_link/operations/select_window_native_adapter.cpp
   src/window_link/operations/next_window_native_adapter.cpp
   src/window_link/operations/previous_window_native_adapter.cpp
@@ -229,6 +231,7 @@ add_library(tmux_cxx_server STATIC
   src/protocol/native/server_request.cpp
   src/commands/command_catalog.cpp src/commands/command_registry.cpp
   src/commands/session_target.cpp src/commands/session_format.cpp
+  src/commands/register_option_commands.cpp src/commands/set_option_command.cpp
   src/key_table/single_byte_key_parser.cpp
   src/key_table/key_table_catalog.cpp src/key_table/key_binding_registry.cpp
   src/option/option_catalog.cpp src/option/option_table.cpp
@@ -236,7 +239,7 @@ add_library(tmux_cxx_server STATIC
   src/session/register_commands.cpp
   src/session/session_options.cpp
   src/session/operations/create_session_command.cpp src/session/operations/list_sessions_command.cpp
-  src/session/operations/rename_session_command.cpp src/session/operations/set_option_command.cpp
+  src/session/operations/rename_session_command.cpp
   src/session/operations/create_session.cpp src/session/operations/list_sessions.cpp
   src/session/operations/observe_sessions.cpp
   src/session/operations/rename_session.cpp src/session/operations/kill_session.cpp
@@ -278,6 +281,9 @@ add_library(tmux_cxx_server STATIC
   src/window/layout.cpp src/window/layout_presets.cpp src/window/window_size.cpp
   src/window/window_name.cpp
   src/window/operations/read_window.cpp
+  src/window/window_options.cpp
+  src/window/operations/set_window_option.cpp src/window/operations/read_window_options.cpp
+  src/window/operations/set_window_option_command.cpp
   src/window/operations/create_window.cpp
   src/window/operations/rename_window.cpp src/window/operations/rename_window_command.cpp
   src/window/operations/select_layout.cpp src/window/operations/select_layout_command.cpp
@@ -330,6 +336,8 @@ if(TMUX_CXX_BUILD_PYTHON_BINDING)
       include/tmux_cxx/pane/pane_snapshot.hpp
       include/tmux_cxx/pane/pane_text_snapshot.hpp
       include/tmux_cxx/paste_buffer/paste_buffer_snapshot.hpp
+      include/tmux_cxx/window/window_options_snapshot.hpp
+      include/tmux_cxx/window/mode_keys.hpp
     VERBATIM)
   add_custom_target(binding_documentation_header ALL DEPENDS "${binding_documentation}")
 endif()
@@ -348,6 +356,8 @@ if(TMUX_CXX_BUILD_NODE_BINDING)
       include/tmux_cxx/pane/pane_snapshot.hpp
       include/tmux_cxx/pane/pane_text_snapshot.hpp
       include/tmux_cxx/paste_buffer/paste_buffer_snapshot.hpp
+      include/tmux_cxx/window/window_options_snapshot.hpp
+      include/tmux_cxx/window/mode_keys.hpp
     VERBATIM)
   add_custom_target(node_declarations ALL
     DEPENDS "${CMAKE_SOURCE_DIR}/bindings/node/index.d.ts")

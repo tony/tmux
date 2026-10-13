@@ -12,6 +12,8 @@ from tmux_cxx import (
     SessionSnapshot,
     StockConnectionCompatibility,
     WindowLayoutPreset,
+    WindowModeKeys,
+    WindowOptionsSnapshot,
     WindowSnapshot,
 )
 
@@ -45,6 +47,13 @@ def consumer(client: ServerConnection) -> SessionSnapshot:
     assert renamed_window.name
     arranged: WindowSnapshot = client.select_layout(created.window, WindowLayoutPreset.TILED)
     assert arranged.pane == pane
+    client.set_window_option(None, "mode-keys", "vi")
+    client.set_window_option(created.window, "mode-keys", "emacs")
+    window_options: WindowOptionsSnapshot = client.window_options(created.window)
+    mode_keys: WindowModeKeys = window_options.mode_keys
+    window_id: int | None = window_options.window
+    assert mode_keys == WindowModeKeys.EMACS and window_id == created.window
+    assert client.window_options(None).server_instance
     next_window: SessionSnapshot = client.next_window(created.id)
     previous_window: SessionSnapshot = client.previous_window(created.id)
     assert next_window.id == previous_window.id

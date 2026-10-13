@@ -219,6 +219,28 @@ ownership, and splitting after a mirror. Expose the same operation through
 Python and Node. Configurable main sizes, layout cycling, custom layouts,
 border options, hooks, and notifications remain subsequent work.
 
+## Window mode-key options
+
+`SetWindowOption` and `ReadWindowOptions` provide typed global-or-window
+targets through one mutation and one query identity. `Window` owns local
+overrides, and server-owned global defaults remain live parents. Copied
+snapshots include the server owner, optional window, effective enum, and
+metadata revision. Both native bindings use the same connection operations.
+
+The cross-scope `set-option` adapter belongs under `commands/`. Immutable
+option definitions select session or window assignment variants; flags have
+their own immutable description table. `set-window-option` shares parsing
+but forces window scope. Resolve membership targets when executing.
+Only `prefix`, `prefix2`, and `mode-keys` are available; unset, listing,
+implicit targets, and further option types remain open.
+
+Critical cases cover live defaults before and after window creation,
+explicit equal-value pins, linked ownership, unchanged assignments,
+editor-derived startup, malformed requests/replies, and rejected flags
+without state changes. Real tmux 3.4/3.7 commands compare effective values
+with their own reference servers. Installed Python and Node Current/LTS
+must mutate and observe the same packaged window options.
+
 ## Basic copy-mode slice
 
 Keep this milestone open until a real attached client enters copy mode,
@@ -239,23 +261,23 @@ EOF. Prepare all mode reflows before notifying live programs; preserve the
 original mode if preparation fails. Delivered program effects cannot be
 rolled back by restoring dimensions.
 
-`mode-keys` belongs to the shared `Window`. Reuse `OptionTable` inheritance
+`mode-keys` belongs to the shared `Window`. Its existing `OptionTable` inherits
 from server-owned global window defaults, with typed `WindowModeKeys`
 values in a window-local immutable option catalog. `SetWindowOption` owns
 the typed global-or-window target and one wire identity. Linked sessions
 observe the same override. Assigning the inherited value still creates an
-override; repeated local assignment is a no-op. Keep session prefix options
-separate and expose the new operation through both bindings.
-Global changes invalidate affected inherited displays without changing
+override; repeated local assignment is a no-op. Session prefix options
+remain separate; both bindings expose window assignment and effective reads.
+Global changes advance affected inherited windows' revisions and preserve
 explicit overrides. Unknown names, cross-scope assignments, malformed
-values, and stale targets must fail before changing values or revisions.
+values, and stale targets fail before changing values or revisions.
 
 Read effective mode keys for the current key table, cursor movement, and
 selection extraction. Capture the upstream selection-highlight keys on
 mode entry; changing the window option must preserve backing and selection.
 Entry accepts only the pane target, with no separate key-style override.
-tmux also derives its startup default from `VISUAL` or `EDITOR`; implement
-that behavior or declare a deterministic-emacs limitation.
+The window option defaults already follow tmux's `VISUAL` or `EDITOR`
+startup rule. Copy-mode interpretation and highlight caching remain open.
 
 `TerminalHistorySnapshot` supplies chronological owned rows at their original
 widths, continuation-from-previous flags, cursor, parser revision,

@@ -32,8 +32,19 @@ are not production inputs.
 Named paste-buffer storage and default paste delivery were checked against the
 surrounding read-only `paste.c`, `cmd-set-buffer.c`, `cmd-delete-buffer.c`, and
 `cmd-paste-buffer.c` at the recorded parent revision. The C++ implementation is
-independent and intentionally exposes only the documented explicit-name
-subset. No upstream C file or object enters the production build.
+independent and owns named and automatic buffers with documented paste
+fidelity limits. Automatic storage and default paste also follow the pinned
+tmux 3.4 and 3.7 sources. No upstream C file or object enters the production
+build.
+
+Window `mode-keys` ownership and inheritance were checked against
+`options-table.c`, `window.c`, and `cmd-set-option.c` at tmux 3.7's recorded
+revision. `src/window/window_options.cpp` translates the editor-derived
+startup choice from `tmux.c` and retains its copyright and permission
+notice. Its selection of present `VISUAL` before `EDITOR`, basename
+matching, and case-sensitive `vi` substring also match the pinned 3.4
+source. Independent C++ option tables retain live global defaults and
+shared-window overrides; upstream files remain read-only references.
 
 Pane border movement in `src/window/layout.cpp` follows `layout_resize_pane`,
 `layout_resize_pane_grow`, and `layout_resize_pane_shrink` in `layout.c` at the

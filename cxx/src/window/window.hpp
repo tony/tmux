@@ -1,5 +1,6 @@
 #pragma once
 
+#include "option/option_table.hpp"
 #include "window/layout.hpp"
 #include "window/window_size.hpp"
 
@@ -21,5 +22,6 @@ struct Window {
     terminal::CellSize size;        ///< Shared program dimensions selected by the size policy.
     WindowSizePolicy size_policy;   ///< Declared policy for competing attached-client dimensions.
     std::uint64_t revision;         ///< Most recent shared-window mutation.
+    options::OptionTable options{}; ///< Local window overrides inheriting server-wide defaults.
 };
 } // namespace tmux_cxx

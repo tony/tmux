@@ -13,6 +13,8 @@
 #include <tmux_cxx/session/session_snapshot.hpp>
 #include <tmux_cxx/tmux_error.hpp>
 #include <tmux_cxx/window/layout_preset.hpp>
+#include <tmux_cxx/window/operations/set_window_option.hpp>
+#include <tmux_cxx/window/window_options_snapshot.hpp>
 #include <tmux_cxx/window/window_snapshot.hpp>
 #include <tmux_cxx/window_link/window_link_snapshot.hpp>
 
@@ -93,6 +95,10 @@ class ServerConnection {
      *
      * Main layouts use default sizes; configurable sizes and custom layouts are unsupported. */
     Result<WindowSnapshot> select_layout(WindowId window, WindowLayoutPreset preset);
+    /** @brief Assign a global window default or one shared window's explicit option override. */
+    Result<void> set_window_option(WindowOptionTarget target, std::string name, std::string value);
+    /** @brief Copy owner-qualified effective window options or their global defaults. */
+    Result<WindowOptionsSnapshot> window_options(WindowOptionTarget target);
     /** @brief Split one pane, start its command, and materialize the selected new pane. */
     Result<PaneSnapshot> split_pane(PaneId pane, PaneSplitOrientation orientation,
                                     std::string command = "/bin/sh");

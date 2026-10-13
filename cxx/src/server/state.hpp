@@ -8,6 +8,7 @@
 #include "session/session_event_journal.hpp"
 #include "session/session_options.hpp"
 #include "window/window.hpp"
+#include "window/window_options.hpp"
 #include "window_link/window_link.hpp"
 #include <tmux_cxx/server/server.hpp>
 
@@ -28,6 +29,9 @@ struct Server::State {
     std::uint64_t revision = 0; ///< Server mutation sequence shared by entity snapshots.
     options::OptionTable global_session_options =
         session_options::global_defaults(); ///< Defaults and global values inherited by sessions.
+    options::OptionTable global_window_options =
+        window_options::global_defaults(); ///< Defaults and global values inherited by shared
+                                           ///< windows.
     std::map<SessionId, Session>
         sessions;                       ///< Persistent session entities indexed by stable identity.
     std::map<WindowId, Window> windows; ///< Shared windows independent of session membership.

@@ -80,6 +80,62 @@ def test_duplicate_rejection_preserves_state(server: str) -> None:
         assert [s.id for s in connection.sessions()] == [session.id]
 
 
+def test_window_mode_keys_are_inherited_and_shared(server: str) -> None:
+    """Global defaults and window overrides remain shared across memberships and connections."""
+    with (
+        tmux_cxx.ServerConnection(server) as creator,
+        tmux_cxx.ServerConnection(server) as observer,
+    ):
+        initial = creator.window_options(None)
+        assert initial.window is None and initial.revision == 0
+        assert initial.mode_keys == tmux_cxx.WindowModeKeys.EMACS
+        assert re.fullmatch(r"[0-9a-f]{32}", initial.server_instance)
+        first = creator.create_session("window-options", "/bin/cat")
+        second = creator.create_session("window-options-linked", "/bin/cat")
+        creator.link_window(first.window, second.id, 4)
+        creator.set_window_option(None, "mode-keys", "vi")
+        inherited = observer.window_options(first.window)
+        assert inherited.window == first.window
+        assert inherited.server_instance == initial.server_instance
+        assert inherited.mode_keys == tmux_cxx.WindowModeKeys.VI and inherited.revision > 0
+        assert observer.window_options(second.window).mode_keys == tmux_cxx.WindowModeKeys.VI
+        creator.set_window_option(first.window, "mode-keys", "emacs")
+        overridden = observer.window_options(first.window)
+        assert overridden.mode_keys == tmux_cxx.WindowModeKeys.EMACS
+        creator.set_window_option(first.window, "mode-keys", "emacs")
+        assert observer.window_options(first.window).revision == overridden.revision
+        creator.set_window_option(None, "mode-keys", "emacs")
+        assert observer.window_options(first.window).revision == overridden.revision
+        assert observer.window_options(second.window).mode_keys == tmux_cxx.WindowModeKeys.EMACS
+        with pytest.raises(tmux_cxx.TmuxError) as invalid:
+            creator.set_window_option(first.window, "mode-keys", "invalid")
+        assert invalid.value.code == "invalid_argument"
+        assert invalid.value.operation == "window.set_option"
+        assert observer.window_options(first.window).revision == overridden.revision
+        with pytest.raises(tmux_cxx.TmuxError) as unknown:
+            creator.set_window_option(first.window, "prefix", "C-a")
+        assert unknown.value.code == "invalid_argument"
+        with pytest.raises(tmux_cxx.TmuxError) as zero:
+            creator.window_options(0)
+        assert zero.value.code == "invalid_argument"
+        with pytest.raises(tmux_cxx.TmuxError) as missing:
+            creator.window_options(99999)
+        assert missing.value.code == "not_found" and missing.value.operation == "window.options"
+        creator.kill_session(first.id)
+        observer.kill_session(second.id)
+        with pytest.raises(tmux_cxx.TmuxError) as stale:
+            creator.window_options(first.window)
+        assert stale.value.code == "not_found"
+        with pytest.raises(tmux_cxx.TmuxError) as stale_set:
+            creator.set_window_option(first.window, "mode-keys", "vi")
+        assert stale_set.value.code == "not_found"
+        assert stale_set.value.operation == "window.set_option"
+    with pytest.raises(tmux_cxx.TmuxError) as closed:
+        creator.set_window_option(None, "mode-keys", "vi")
+    assert closed.value.code == "closed"
+    assert closed.value.operation == "window.set_option"
+
+
 def test_session_observation_carries_its_next_event_cursor(server: str) -> None:
     """A materialized session catalog carries its owner-qualified following event position."""
     with tmux_cxx.ServerConnection(server) as connection:

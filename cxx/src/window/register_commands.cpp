@@ -2,6 +2,7 @@
 #include "window/operations/new_window_command.hpp"
 #include "window/operations/rename_window_command.hpp"
 #include "window/operations/select_layout_command.hpp"
+#include "window/operations/set_window_option_command.hpp"
 
 namespace tmux_cxx {
 Result<void> register_window_commands(commands::CommandRegistry &registry) {
@@ -11,6 +12,9 @@ Result<void> register_window_commands(commands::CommandRegistry &registry) {
     if (auto registration = registry.add<RenameWindowCommand>(); !registration) {
         return registration;
     }
-    return registry.add<SelectLayoutCommand>();
+    if (auto registration = registry.add<SelectLayoutCommand>(); !registration) {
+        return registration;
+    }
+    return registry.add<SetWindowOptionCommand>();
 }
 } // namespace tmux_cxx

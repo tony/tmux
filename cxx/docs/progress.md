@@ -1422,3 +1422,49 @@ of reporting its operation error while preserving attachment. Broader
 commands, configuration, protocol coverage, lifetimes, discovery, platform
 evidence, and the complete objective remain unfinished. No changes were
 pushed.
+
+## Window mode keys and scoped option commands
+
+`Window` now owns typed `mode-keys` overrides and inherits live global
+window defaults. Existing windows follow changed defaults; assigning an
+inherited value pins it locally. Linked sessions share the same setting.
+Global assignments prepare changed values and affected windows before
+mutation. Effective snapshots retain server ownership and window freshness.
+
+Entity-local assignment and read operations serve C++, Python, and Node.
+The shared `set-option` command selects session or window assignments from
+their option catalogs. `set-window-option` aliases force window scope.
+Grouped flags and explicit targets are declared; unsupported forms fail
+before effects. Real tmux 3.4 and 3.7 references verify the supported subset.
+
+| Gate | Result | Whole-command wall time |
+|---|---|---:|
+| Configured mid loop | PASS; 122 native cases | 9.11 s |
+| Clang build and complete CTest suites | PASS; 133 tests | 12.58 s |
+| GCC 15 build and complete CTest suites | PASS; 133 tests | 114.61 s |
+| C++26 build and complete CTest suites | PASS; 133 tests | 73.10 s |
+| ASan/UBSan/LeakSanitizer and controlled negatives | PASS | 21.59 s |
+| Bounded native, tmux, and terminal fuzz replay | PASS | 3.22 s |
+| Documentation inventories and controlled negatives | PASS; 1,163 C++ callables | 94.42 s |
+| clang-tidy and fatal negative probe | PASS | 233.16 s |
+| Installed Python and Node Current/LTS consumers | PASS | 65.67 s |
+| Fresh standalone build/install and native consumer | PASS | 80.48 s |
+
+Stock command and layout checks now have separate gates. Every original
+test body and five-second bound remains; controlled failures prove all new
+gates reject defects. Layout reference matrices are tagged for the outer
+loop. The installed fixture clears editor defaults only for its owned
+daemon; package checks also pass with host editor variables selecting vi.
+
+Sequential compiler inventory exceeded the documentation budget. Four
+isolated workers preserve deterministic ordering and complete coverage;
+comparison with the original checker matched every translation unit.
+Timeout cleanup terminates the owned verification process group. A
+controlled descendant test failed with the old helper and passed with the
+new helper. Malformed enum tests use explicit byte representations without
+suppressing analyzer diagnostics or removing invalid-value assertions.
+
+Basic copy mode, key decoding, reflow, broader commands and configuration,
+protocol coverage, lifetimes, discovery, platform evidence, benchmarks,
+and the complete objective remain open. This checkpoint is local; no
+changes were pushed.

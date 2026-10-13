@@ -95,6 +95,18 @@ export interface PasteBufferSnapshot {
   readonly revision: bigint;
 }
 
+/** Copy effective window options with their server owner and mutation revision. */
+export interface WindowOptionsSnapshot {
+  /** Server lifetime owning these options. */
+  readonly serverInstance: string;
+  /** Shared window identity, absent for server-wide window defaults. */
+  readonly window: bigint | null;
+  /** Effective emacs or vi copy-mode key convention. */
+  readonly modeKeys: "emacs" | "vi";
+  /** Window metadata revision, or current server metadata revision for global defaults. */
+  readonly revision: bigint;
+}
+
 /** Own interpreted pane text and freshness independently of raw bytes and client rendering. */
 export interface PaneTextSnapshot {
   /** Server instance owning this text observation. */
@@ -367,6 +379,10 @@ export class ServerConnection {
   pasteBuffers(): Promise<PasteBufferSnapshot[]>;
   /** Queue the newest automatic buffer for a live pane; an empty automatic store adds no input. */
   pasteTopBuffer(pane: bigint): Promise<void>;
+  /** Assign a global window default or one shared window's explicit option override. */
+  setWindowOption(target: bigint | null, name: string, value: string): Promise<void>;
+  /** Copy owner-qualified effective window options or their global defaults. */
+  windowOptions(target: bigint | null): Promise<WindowOptionsSnapshot>;
   /** Establish an atomic session baseline and an independently cancellable event stream. */
   subscribeSessions(): Promise<SessionEventStream>;
   /** Stop admission for this connection and streams sharing its native channel. */

@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 import tmux_cxx
@@ -104,6 +105,87 @@ def test_registered_stock_command_subset(server: str, fixture: str) -> None:
         capture_output=True,
         timeout=0.9,
     )
+
+
+@pytest.mark.parametrize("fixture", ["TMUX_CXX_STOCK_CLIENT", "TMUX_CXX_MODERN_STOCK_CLIENT"])
+def test_stock_window_options_match_owned_reference(server: str, fixture: str) -> None:
+    """Both stock releases assign inherited and shared window options against owned references."""
+    binary = os.environ[fixture]
+    environment = stock_fixture_environment(binary)
+    reference_socket = Path(server).with_name("options-reference")
+    reference = [binary, "-f", "/dev/null", "-S", str(reference_socket)]
+    client = [binary, "-N", "-f", "/dev/null", "-S", server]
+    assert not reference_socket.exists()
+
+    def run(endpoint: list[str], *arguments: str) -> bytes:
+        """Run one bounded command on the selected owned endpoint."""
+        return subprocess.run(
+            [*endpoint, *arguments],
+            env=environment,
+            check=True,
+            capture_output=True,
+            timeout=0.9,
+        ).stdout
+
+    with tmux_cxx.ServerConnection(server) as observer:
+        source = observer.create_session("options-source", "/bin/cat")
+        other = observer.create_session("options-other", "/bin/cat")
+        observer.link_window(source.window, other.id, 3)
+        server_instance = observer.window_options(None).server_instance
+        try:
+            run(reference, "new-session", "-d", "-s", "options-source", "/bin/cat")
+            run(reference, "new-session", "-d", "-s", "options-other", "/bin/cat")
+            run(reference, "link-window", "-s", "options-source:0", "-t", "options-other:3")
+            for arguments in (
+                ("set-option", "-g", "mode-keys", "vi"),
+                ("setw", "-t", "options-other:3", "mode-keys", "emacs"),
+                ("set", "-gw", "mode-keys", "emacs"),
+                ("set-option", "-w", "-t", "options-source:0", "mode-keys", "vi"),
+                ("setw", "-t", "options-source:0", "--", "mode-keys", "emacs"),
+            ):
+                run(client, *arguments)
+                run(reference, *arguments)
+                for window, target in (
+                    (source.window, "options-source:0"),
+                    (other.window, "options-other:0"),
+                ):
+                    actual = observer.window_options(window)
+                    expected = run(
+                        reference, "show-options", "-w", "-A", "-v", "-t", target, "mode-keys"
+                    )
+                    assert actual.server_instance == server_instance
+                    assert actual.window == window
+                    assert actual.mode_keys.name.lower() == expected.decode().strip()
+                assert (
+                    observer.window_options(None).mode_keys.name.lower()
+                    == run(reference, "show-window-options", "-g", "-v", "mode-keys")
+                    .decode()
+                    .strip()
+                )
+
+            before = observer.window_options(source.window)
+            for arguments in (
+                ("set-option", "-gw", "prefix", "C-x"),
+                ("set-window-option", "-t", "options-source:0", "mode-keys", "unknown"),
+                ("set-window-option", "-t", "options-source:999", "mode-keys", "emacs"),
+                ("set-option", "-u", "-g", "mode-keys"),
+            ):
+                rejected = subprocess.run(
+                    [*client, *arguments], env=environment, capture_output=True, timeout=0.9
+                )
+                assert rejected.returncode != 0
+                after = observer.window_options(source.window)
+                assert after.mode_keys == before.mode_keys
+                assert after.revision == before.revision
+        finally:
+            subprocess.run(
+                [*reference, "kill-server"],
+                env=environment,
+                check=False,
+                capture_output=True,
+                timeout=0.9,
+            )
+            reference_socket.unlink(missing_ok=True)
 
 
 @pytest.mark.parametrize("fixture", ["TMUX_CXX_STOCK_CLIENT", "TMUX_CXX_MODERN_STOCK_CLIENT"])

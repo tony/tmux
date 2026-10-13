@@ -68,8 +68,12 @@ StockConnectionCompatibility TmuxCompatibilityPolicy::assess(const TmuxProtocolP
         "the newest automatic buffer; delete-after, custom separators, raw "
         "paste, and bracketed paste are unsupported");
     report.limitations.push_back(
-        "set-option supports only -g and exact -t session assignments for prefix and prefix2; "
-        "unset and implicit current-session assignment are unsupported");
+        "set-option supports -g or exact -t assignments for session prefix/prefix2 and window "
+        "mode-keys; -w forces window scope; unset and implicit targets are unsupported");
+    report.limitations.push_back(
+        "set-window-option/setw supports mode-keys emacs/vi through global defaults or exact "
+        "session:index targets; grouped flags are accepted when -t ends the group; stock "
+        "show-options, other window options, and copy mode remain unsupported");
     report.limitations.push_back(
         "prefix and prefix2 accept None, one ASCII byte, or C-a through C-z; broader tmux key "
         "syntax is unsupported");

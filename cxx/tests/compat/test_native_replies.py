@@ -18,6 +18,16 @@ def paste_buffer_metadata(name: bytes, automatic: int, revision: int, count: int
     return native_bytes(name) + struct.pack("<IHQ", count, automatic, revision)
 
 
+def window_options_metadata(
+    owner: bytes, window: int | None = 1, mode_keys: int = 0, revision: int = 1
+) -> bytes:
+    """Encode owner-qualified options for controlled target and enum corruption."""
+    target = struct.pack("<H", window is not None)
+    if window is not None:
+        target += struct.pack("<Q", window)
+    return native_bytes(owner) + target + struct.pack("<IQ", mode_keys, revision)
+
+
 def read_native_frame(peer: socket.socket) -> tuple[int, bytes]:
     """Receive one complete bounded frame under the socket's declared timeout."""
     request = bytearray()
@@ -216,6 +226,15 @@ def test_native_reply_rejects_untrusted_envelope(
             + paste_buffer_metadata(b"new", 0, 2),
         ),
         (38, "paste_buffer.paste_top", 2, 1032, b"extra"),
+        (39, "window.set_option", 1, 32768, b"extra"),
+        (40, "window.options", 0, 32768, native_bytes(b"2" * 32) + struct.pack("<H", 2)),
+        (40, "window.options", 0, 32768, window_options_metadata(b"3" * 32)),
+        (40, "window.options", 0, 32768, window_options_metadata(b"2" * 32, None)),
+        (40, "window.options", 0, 32768, window_options_metadata(b"2" * 32, 0)),
+        (40, "window.options", 0, 32768, window_options_metadata(b"2" * 32, 2)),
+        (40, "window.options", 0, 32768, window_options_metadata(b"2" * 32, mode_keys=2)),
+        (40, "window.options", 0, 32768, window_options_metadata(b"2" * 32, revision=0)),
+        (40, "window.options", 0, 32768, window_options_metadata(b"2" * 32) + b"extra"),
     ],
     ids=[
         "create-invalid-utf8",
@@ -241,6 +260,15 @@ def test_native_reply_rejects_untrusted_envelope(
         "buffer-list-excess-automatic-count",
         "buffer-list-wrong-revision-order",
         "default-paste-excess",
+        "window-option-set-excess",
+        "window-options-invalid-optional",
+        "window-options-wrong-owner",
+        "window-options-missing-target",
+        "window-options-zero-target",
+        "window-options-wrong-target",
+        "window-options-unknown-mode",
+        "window-options-zero-window-revision",
+        "window-options-excess",
     ],
 )
 def test_native_success_payload_rejection_retains_context(
@@ -251,6 +279,7 @@ def test_native_success_payload_rejection_retains_context(
     capability: int,
     malformed: bytes,
     input_bytes: bytes = b"input",
+    window_target: int | None = 1,
 ) -> None:
     """Reject malformed operation payloads with protocol errors and accepted ownership context."""
     endpoint = tmp_path_factory.mktemp("native_payload") / "sock"
@@ -317,6 +346,10 @@ def test_native_success_payload_rejection_retains_context(
                             connection.paste_buffers()
                         case "paste_buffer.paste_top":
                             connection.paste_top_buffer(1)
+                        case "window.set_option":
+                            connection.set_window_option(window_target, "mode-keys", "vi")
+                        case "window.options":
+                            connection.window_options(window_target)
                         case _:
                             raise AssertionError("unknown controlled operation fixture")
                 assert failure.value.code == "protocol"
@@ -337,4 +370,19 @@ def test_native_empty_automatic_input_rejects_created_metadata(
         1024,
         struct.pack("<H", 1) + paste_buffer_metadata(b"buffer0", 1, 1),
         input_bytes=b"",
+    )
+
+
+def test_native_global_window_options_reject_window_target(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    """A global options observation cannot accept metadata for one window."""
+    test_native_success_payload_rejection_retains_context(
+        tmp_path_factory,
+        40,
+        "window.options",
+        0,
+        32768,
+        window_options_metadata(b"2" * 32),
+        window_target=None,
     )
