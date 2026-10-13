@@ -10,11 +10,12 @@ namespace tmux_cxx {
 class Server;
 /** @brief Describe borrowed terminal readiness routes for one attached ordinary tmux client. */
 struct ClientTerminalRoute {
-    ClientId client_id;    ///< Connection-lifetime client owning both descriptors.
-    int input_descriptor;  ///< Nonblocking outer-terminal input descriptor.
-    int output_descriptor; ///< Nonblocking outer-terminal output descriptor.
-    bool input_enabled;    ///< Bounded client input storage can accept another terminal read.
-    bool output_pending;   ///< Composed view bytes require writable readiness.
+    ClientId client_id;        ///< Connection-lifetime client owning both descriptors.
+    int input_descriptor;      ///< Nonblocking outer-terminal input descriptor.
+    int output_descriptor;     ///< Nonblocking outer-terminal output descriptor.
+    bool input_enabled;        ///< Bounded client input storage can accept another terminal read.
+    bool output_pending;       ///< Composed view bytes require writable readiness.
+    bool key_routing_deferred; ///< Queued keys can resume in another turn without descriptor I/O.
 };
 
 /** @brief Classify one captured route after concurrent lifecycle mutations in the event turn. */
@@ -29,7 +30,7 @@ class ClientTerminalRouting {
   public:
     /** @brief Capture attached client descriptors until the next client lifecycle mutation. */
     static std::vector<ClientTerminalRoute> capture(const Server &server);
-    /** @brief Route ready terminal input and output through the client's active pane. */
+    /** @brief Route terminal I/O with one shared key allowance across target changes. */
     static ClientTerminalRouteOutcome route_ready_io(Server &server, ClientId client_id,
                                                      const key_table::KeyTableCatalog &key_tables,
                                                      short input_events, short output_events);

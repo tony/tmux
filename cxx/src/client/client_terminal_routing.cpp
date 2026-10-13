@@ -14,10 +14,10 @@ std::vector<ClientTerminalRoute> ClientTerminalRouting::capture(const Server &se
     std::vector<ClientTerminalRoute> routes;
     for (const auto &[client_id, client] : server.state_->clients) {
         if (client->session && client->terminal && client->terminal->active()) {
-            routes.push_back({client_id, client->terminal->input_descriptor(),
-                              client->terminal->output_descriptor(),
-                              client->key_input.read_capacity() != 0,
-                              client->terminal->output_pending()});
+            routes.push_back(
+                {client_id, client->terminal->input_descriptor(),
+                 client->terminal->output_descriptor(), client->key_input.read_capacity() != 0,
+                 client->terminal->output_pending(), client->key_input.routing_deferred()});
         }
     }
     return routes;
@@ -45,6 +45,7 @@ ClientTerminalRouting::route_ready_io(Server &server, ClientId client_id,
             return ClientTerminalRouteOutcome::failed;
         }
     }
+    client.key_input.begin_routing_turn();
     while (true) {
         if (!client.session) {
             return ClientTerminalRouteOutcome::routed;

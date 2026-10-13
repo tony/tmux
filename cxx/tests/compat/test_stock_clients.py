@@ -398,7 +398,7 @@ def test_stock_attach_routes_terminal_and_preserves_session(server: str, fixture
             assert observer.sessions()[0].link == membership.id
             observer.wait_pane_output(next_pane, b"digit-window-input", 500)
             discard_terminal_output(master)
-            os.write(master, b"\x029missing-index-input\n")
+            os.write(master, b"\x029" * 200 + b"missing-index-input\n")
             assert b"missing-index-input" in read_terminal_until(master, b"missing-index-input")
             assert observer.sessions()[0].link == membership.id
             assert client.poll() is None

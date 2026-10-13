@@ -140,6 +140,7 @@ TEST(ClientKeyInput, BindingBackpressurePreservesPrefixTable) {
     ASSERT_TRUE(deferred);
     EXPECT_EQ(*deferred, KeyBindingEffect::client_selection_unchanged);
     EXPECT_EQ(retryable_binding_calls, 1);
+    EXPECT_FALSE(input.routing_deferred());
 
     const auto retried = input.route_pending(
         server, ClientId{1}, {SessionId{1}, WindowLinkId{1}, WindowId{1}, PaneId{1}},
@@ -185,6 +186,43 @@ TEST(ClientKeyInput, DefaultSplitBindingsUseTypedPaneOperation) {
     ASSERT_TRUE(panes);
     EXPECT_EQ(panes->size(), 3U);
     EXPECT_EQ(std::ranges::count(*panes, true, &PaneSnapshot::active), 1);
+}
+
+/** @brief A large batch of harmless window keys leaves ordered input for another routing turn. */
+TEST(ClientKeyInput, LargeKeyBatchYieldsBeforeInputIsExhausted) {
+    Server server;
+    const auto session = server.create_session("key-burst", "/bin/cat");
+    ASSERT_TRUE(session);
+    const auto catalogs = build_server_api_catalogs();
+    ASSERT_TRUE(catalogs);
+    ClientKeyInput input;
+    const auto empty_capacity = input.read_capacity();
+    std::string burst;
+    for (unsigned int index = 0; index < 200; ++index) {
+        burst.append("\x02"
+                     "9");
+    }
+    ASSERT_TRUE(input.append(burst));
+    const auto buffered_capacity = input.read_capacity();
+
+    const auto effect = input.route_pending(
+        server, ClientId{1}, {session->id, session->link, session->window, session->pane},
+        default_prefixes, 262144, catalogs->key_tables);
+
+    ASSERT_TRUE(effect);
+    EXPECT_EQ(*effect, KeyBindingEffect::client_selection_unchanged);
+    EXPECT_GT(input.read_capacity(), buffered_capacity);
+    EXPECT_LT(input.read_capacity(), empty_capacity);
+    EXPECT_TRUE(input.routing_deferred());
+    for (unsigned int turn = 0; turn < 16 && input.routing_deferred(); ++turn) {
+        input.begin_routing_turn();
+        ASSERT_TRUE(input.route_pending(
+            server, ClientId{1}, {session->id, session->link, session->window, session->pane},
+            default_prefixes, 262144, catalogs->key_tables));
+    }
+    EXPECT_EQ(input.read_capacity(), empty_capacity);
+    EXPECT_FALSE(input.routing_deferred());
+    EXPECT_FALSE(server.pane_pty_write_pending(session->pane));
 }
 
 /** @brief Window navigation cannot publish a key catalog without its selection operation. */

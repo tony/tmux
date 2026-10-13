@@ -19,7 +19,13 @@ class ClientKeyInput {
     std::size_t read_capacity() const;
     /** @brief Append terminal bytes without discarding earlier input when the buffer is full. */
     Result<void> append(std::string_view bytes);
-    /** @brief Route pending bytes until the client's selection changes or attachment ends. */
+    /** @brief Reset the per-turn allowance while retaining queued bytes and key-table state. */
+    void begin_routing_turn();
+    /** @brief Report queued input deferred by the exhausted allowance, excluding program
+     * backpressure. */
+    bool routing_deferred() const;
+    /** @brief Route queued bytes within this turn's allowance until selection changes or
+     * attachment ends. */
     Result<key_table::KeyBindingEffect> route_pending(Server &server, ClientId client,
                                                       ClientSelection selection,
                                                       const SessionPrefixKeys &prefix_keys,
@@ -28,9 +34,11 @@ class ClientKeyInput {
 
   private:
     static constexpr std::size_t maximum_pending_bytes = 65536; ///< Per-client input bound.
-    static constexpr std::string_view root_table = "root";      ///< Default passthrough table.
-    static constexpr std::string_view prefix_table = "prefix";  ///< One-shot command table.
+    static constexpr std::size_t maximum_routing_steps = 64; ///< Decisions per client daemon turn.
+    static constexpr std::string_view root_table = "root";   ///< Default passthrough table.
+    static constexpr std::string_view prefix_table = "prefix"; ///< One-shot command table.
     std::string active_table_{root_table}; ///< Table used by the next normalized key.
     std::string pending_bytes_;            ///< Ordered bytes not yet consumed or admitted.
+    std::size_t remaining_routing_steps_ = maximum_routing_steps; ///< Shared across target changes.
 };
 } // namespace tmux_cxx

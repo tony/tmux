@@ -18,6 +18,12 @@ Result<void> ClientKeyInput::append(std::string_view bytes) {
     return {};
 }
 
+void ClientKeyInput::begin_routing_turn() { remaining_routing_steps_ = maximum_routing_steps; }
+
+bool ClientKeyInput::routing_deferred() const {
+    return remaining_routing_steps_ == 0 && !pending_bytes_.empty();
+}
+
 Result<key_table::KeyBindingEffect>
 ClientKeyInput::route_pending(Server &server, ClientId client, ClientSelection selection,
                               const SessionPrefixKeys &prefix_keys,
@@ -25,9 +31,13 @@ ClientKeyInput::route_pending(Server &server, ClientId client, ClientSelection s
                               const key_table::KeyTableCatalog &key_tables) {
     key_table::KeyBindingInvocation invocation{server, client, selection, prefix_keys.prefix};
     while (!pending_bytes_.empty()) {
+        if (remaining_routing_steps_ == 0) {
+            return key_table::KeyBindingEffect::client_selection_unchanged;
+        }
         const auto key = key_table::KeyCode{
             static_cast<std::uint32_t>(static_cast<unsigned char>(pending_bytes_.front()))};
         if (active_table_ == root_table && prefix_keys.contains(key)) {
+            --remaining_routing_steps_;
             pending_bytes_.erase(0, 1);
             active_table_ = prefix_table;
             continue;
@@ -57,6 +67,7 @@ ClientKeyInput::route_pending(Server &server, ClientId client, ClientSelection s
             }
         }
         if (*binding) {
+            --remaining_routing_steps_;
             pending_bytes_.erase(0, 1);
             if (**binding == key_table::KeyBindingEffect::client_detached) {
                 pending_bytes_.clear();
@@ -68,6 +79,7 @@ ClientKeyInput::route_pending(Server &server, ClientId client, ClientSelection s
             continue;
         }
         if (selected_non_root_table) {
+            --remaining_routing_steps_;
             pending_bytes_.erase(0, 1);
             continue;
         }
@@ -90,6 +102,7 @@ ClientKeyInput::route_pending(Server &server, ClientId client, ClientSelection s
         if (!admitted) {
             return std::unexpected(admitted.error());
         }
+        --remaining_routing_steps_;
         pending_bytes_.erase(0, admitted_bytes);
         program_input_capacity -= admitted_bytes;
     }

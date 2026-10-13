@@ -368,7 +368,7 @@ TEST(ClientKeyInput, RootAndPrefixTablesRouteAcrossReadBoundaries) {
     EXPECT_TRUE(same_terminal_mode(restored, original));
 }
 
-/** @brief The default prefix-o binding selects the next pane through the typed pane operation. */
+/** @brief Pane selection refreshes input targets and shares one allowance across a key burst. */
 TEST(ClientKeyInput, SelectNextPaneBindingResolvesItsTargetAtExecution) {
     int master = -1;
     int slave = -1;
@@ -406,6 +406,38 @@ TEST(ClientKeyInput, SelectNextPaneBindingResolvesItsTargetAtExecution) {
     ASSERT_TRUE(selected_window);
     EXPECT_EQ(selected_window->pane, session->pane);
     EXPECT_FALSE(server.pane_pty_write_pending(second->id));
+    EXPECT_TRUE(server.pane_pty_write_pending(session->pane));
+
+    server.advance_pane_pty_io(session->pane);
+    ASSERT_FALSE(server.pane_pty_write_pending(session->pane));
+    constexpr unsigned int switches = 200;
+    std::string burst;
+    for (unsigned int index = 0; index < switches; ++index) {
+        burst.append("\x02o");
+    }
+    burst.push_back('q');
+    ASSERT_EQ(::write(master_owner.get(), burst.data(), burst.size()),
+              static_cast<ssize_t>(burst.size()));
+    const auto before = server.window(session->window)->revision;
+    ASSERT_EQ(
+        ClientTerminalRouting::route_ready_io(server, *client, api_catalogs->key_tables, POLLIN, 0),
+        ClientTerminalRouteOutcome::routed);
+    const auto after = server.window(session->window)->revision;
+    EXPECT_GT(after, before);
+    EXPECT_LT(after - before, switches);
+    EXPECT_FALSE(server.pane_pty_write_pending(session->pane));
+    auto routes = ClientTerminalRouting::capture(server);
+    ASSERT_EQ(routes.size(), 1U);
+    EXPECT_TRUE(routes.front().key_routing_deferred);
+    for (unsigned int turn = 0; turn < 16 && routes.front().key_routing_deferred; ++turn) {
+        ASSERT_EQ(
+            ClientTerminalRouting::route_ready_io(server, *client, api_catalogs->key_tables, 0, 0),
+            ClientTerminalRouteOutcome::routed);
+        routes = ClientTerminalRouting::capture(server);
+        ASSERT_EQ(routes.size(), 1U);
+    }
+    EXPECT_FALSE(routes.front().key_routing_deferred);
+    EXPECT_EQ(server.window(session->window)->pane, session->pane);
     EXPECT_TRUE(server.pane_pty_write_pending(session->pane));
 }
 

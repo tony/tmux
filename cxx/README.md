@@ -116,6 +116,9 @@ the current selection and attachment; status feedback, prefix-`c`, and
 configurable key tables remain unfinished. Window switches route subsequent
 input to the new pane, including bytes received with the command key.
 
+Large key batches yield between daemon turns. Retained keys resume without
+another keystroke; program backpressure waits for queue capacity to return.
+
 ## Session event streams
 
 Set `TMUX_CXX_SOCKET` to a running C++ server. Python offers the same synchronous stream as C++ plus an asyncio adapter whose cancellation closes only that observer.

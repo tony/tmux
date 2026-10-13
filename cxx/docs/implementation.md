@@ -129,6 +129,18 @@ Prove sparse-index wrapping, independent selections for linked sessions,
 missing-index preservation, and same-read input redirection. Exercise real
 tmux 3.4 and 3.7 attachments and restoration, then run configured gates.
 
+## Client input fairness slice
+
+Bound one client's key-routing work across selection changes in a daemon
+turn. Retain the active table and unconsumed bytes when that allowance ends.
+Expose deferred routing through the captured client route so the daemon
+continues it on its next turn without waiting for more terminal bytes.
+Effect-free program backpressure must still wait for useful readiness.
+
+Prove that a large key batch yields, that selection changes cannot reset
+the allowance, and that later turns finish ordered input without another
+write. Use real tmux 3.4 and 3.7 attachments to test the poll continuation.
+
 ## Architecture progress
 
 Named server/session/window/pane components, entity-local operation descriptions, and validated immutable native lookup now replace the generic domain module and operation switch. The public facade is `ServerConnection`, snapshots are values, and recoverable failures are `TmuxError`. Session/window membership and pane-program cleanup have real ownership models.

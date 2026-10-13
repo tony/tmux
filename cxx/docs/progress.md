@@ -1119,3 +1119,36 @@ status feedback, window-selection notifications, and the broader objective
 remain open. The bounded byte queue alone does not establish a bounded
 number of key operations per event-loop turn; that fairness boundary still
 needs a focused test and continuation policy.
+
+## 2026-10-13: Client input fairness
+
+`ClientKeyInput` now shares a 64-decision allowance across all target changes
+in one client servicing turn. Consumed prefix transitions, bindings, and
+passthrough segments use that allowance. Exhaustion retains table state and
+ordered bytes; `ClientTerminalRoute::key_routing_deferred` schedules another
+daemon turn without requiring fresh terminal input. Rejected program input
+waits for useful PTY progress instead of requesting that continuation.
+
+Native tests first consumed all 200 commands in one call, including across
+pane changes. They now prove partial progress and completion in later turns
+without new input. Omitting the daemon continuation stalled both real tmux
+3.4 and 3.7 clients before trailing text reached the pane. The restored
+continuation passes that same batch test, attachment, and restoration.
+
+| Gate | Result | Whole-command wall time |
+|---|---|---:|
+| Clang native and both binding CTest suites | PASS; 94 tests | 2.80 s |
+| Configured mid loop | PASS; 89 native cases | 8.96 s |
+| GCC 15 native and both binding CTest suites | PASS; 94 tests | 3.91 s |
+| C++26 native and both binding CTest suites | PASS; 94 tests | 9.00 s |
+| ASan/UBSan/LeakSanitizer and controlled negatives | PASS | 31.71 s |
+| Bounded native, tmux, and terminal fuzz replay | PASS; 6,000 runs | 3.51 s |
+| Doxygen/compiler/language documentation and negatives | PASS | 208.16 s |
+| clang-tidy and fatal negative probe | PASS | 120.70 s |
+| Offline wheel/sdist/npm consumers | PASS | 56.98 s |
+| Standalone source, install, adapters, and native consumer | PASS | 87.23 s |
+
+This bounds routing decisions, not an individual operation's duration.
+Global fairness, command queues, broader interactive behavior, and the
+remaining full objective stay open. Further commits remain local under the
+current no-push instruction.

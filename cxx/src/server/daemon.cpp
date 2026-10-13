@@ -441,6 +441,10 @@ int run_server(const std::string &stock_socket_path, int readiness_descriptor) {
         }
         const auto client_routes = ClientTerminalRouting::capture(server);
         for (const auto &client_route : client_routes) {
+            if (client_route.key_routing_deferred) {
+                // Resume retained keys in another turn without requiring new terminal bytes.
+                poll_timeout_ms = 0;
+            }
             poll_descriptors.push_back({client_route.input_descriptor,
                                         static_cast<short>(client_route.input_enabled ? POLLIN : 0),
                                         0});
