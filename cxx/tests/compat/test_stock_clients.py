@@ -19,9 +19,11 @@ from tests.conftest import stock_fixture_environment
 
 
 def identify_command_peer(
-    peer: socket.socket, identification_flags: tuple[int, int] | None = None
+    peer: socket.socket,
+    identification_flags: tuple[int, int] | None = None,
+    initial_command: bytes = b"",
 ) -> None:
-    """Pass command descriptors and optional flags, then finish legacy identification."""
+    """Pass descriptors and flags, then send identification completion with any startup command."""
     with open(os.devnull, "r+b") as terminal:
         for kind in (104, 110):
             frame = struct.pack("<IIII", kind, 16 | 0x10000, 8, os.getpid())
@@ -37,7 +39,7 @@ def identify_command_peer(
         peer.sendall(
             struct.pack("<IIII", message_type, 16 + len(payload), 8, os.getpid()) + payload
         )
-    peer.sendall(struct.pack("<IIII", 106, 16, 8, os.getpid()))
+    peer.sendall(struct.pack("<IIII", 106, 16, 8, os.getpid()) + initial_command)
 
 
 def identify_terminal_peer(peer: socket.socket, terminal: int) -> None:
@@ -692,8 +694,11 @@ def test_unsupported_stock_control_flags_close_before_effects(
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
         peer.settimeout(0.7)
         peer.connect(server)
-        identify_command_peer(peer, (flags_message_type, client_flags))
-        peer.sendall(command_frame([b"new-session", b"-d", b"-s", b"forbidden", b"/bin/cat"]))
+        identify_command_peer(
+            peer,
+            (flags_message_type, client_flags),
+            command_frame([b"new-session", b"-d", b"-s", b"forbidden", b"/bin/cat"]),
+        )
         with suppress(ConnectionResetError):
             assert peer.recv(1) == b""
     with tmux_cxx.ServerConnection(server) as observer:
