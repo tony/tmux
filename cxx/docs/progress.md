@@ -1370,3 +1370,55 @@ Configurable layout sizes, cycling, previous/custom layouts, border options,
 hooks, notifications, absolute pane sizes, copy mode, daemon discovery,
 broader protocol and binding contracts, platform evidence, and the full
 objective remain open. This checkpoint remains local; nothing is pushed.
+
+## History captures, pane display, and automatic paste buffers
+
+Terminal history captures now own chronological rows at their original
+widths and preserve continuation boundaries through scrolling and resize.
+Alternate-screen capture excludes hidden primary history. Hash-checked
+external call sites preserve metadata before libvterm moves it; bounded
+C++ callbacks own that metadata and cannot throw across the C boundary.
+The terminal fuzzer compares fragmented and whole history captures.
+
+Client composition consumes `PaneScreenSnapshot`, leaving parser/history
+facts separate from the pane's chosen display. Automatic buffers have
+their own 50-entry bound, collision-free names, and oldest-entry eviction.
+Named buffers retain their separate bound. Registered native operations,
+Python, Node, stock commands, and prefix-`]` share creation, enumeration,
+and default paste behavior. Default paste skips named entries. tmux 3.7's
+unsafe-byte escaping remains an explicit fidelity limit.
+
+Input-producing bindings yield before processing their retained suffix so
+routing resolves capacity again. Permanently closed program input drops
+unbound spans while preserving later controls; temporary backpressure
+retains them. Both paths preserve the shared 64-decision allowance.
+Focused tests failed before these fixes and pass with real PTY EOF.
+
+| Gate | Result | Whole-command wall time |
+|---|---|---:|
+| Configured mid loop | PASS; 114 native cases | 7.12 s |
+| Clang build and complete CTest suites | PASS; 120 tests | 5.39 s |
+| GCC 15 build and complete CTest suites | PASS; 120 tests | 5.29 s |
+| C++26 build and complete CTest suites | PASS; 120 tests | 5.26 s |
+| ASan/UBSan/LeakSanitizer and controlled negatives | PASS | 15.60 s |
+| Bounded native, tmux, and terminal fuzz replay | PASS; 6,000 runs | 3.15 s |
+| Documentation inventories and controlled negatives | PASS | 203.03 s |
+| clang-tidy and fatal negative probe | PASS | 145.11 s |
+| Installed Python and Node Current/LTS shared-daemon consumers | PASS | 62.13 s |
+| Fresh standalone build/install and native consumer | PASS | 62.76 s |
+
+The combined protocol gate exceeded five seconds under instrumentation.
+Separate native-reply and stock-client gates retain every case and the
+original deadlines. Deliberate assertions proved each gate rejects failure.
+Short basetemps keep reference sockets within the UNIX path bound; the
+longer initial stock basetemp failed with an overlong socket name.
+Independent reviews found no blocking issue in these foundations.
+
+Basic copy mode remains open. Its backing grid, cursor, selection, reflow,
+persistent key tables, and incremental terminal-key decoding are planned
+in `implementation.md`. An inherited limitation also remains: a binding
+that sends program input after EOF can close the client transport instead
+of reporting its operation error while preserving attachment. Broader
+commands, configuration, protocol coverage, lifetimes, discovery, platform
+evidence, and the complete objective remain unfinished. No changes were
+pushed.

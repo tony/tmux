@@ -219,6 +219,99 @@ ownership, and splitting after a mirror. Expose the same operation through
 Python and Node. Configurable main sizes, layout cycling, custom layouts,
 border options, hooks, and notifications remain subsequent work.
 
+## Basic copy-mode slice
+
+Keep this milestone open until a real attached client enters copy mode,
+navigates retained history, selects and copies bytes, leaves the mode, and
+pastes into its persistent program. Python, Node, and stock commands must
+reach the same typed operations.
+
+`Pane` owns the optional `CopyMode`; the mode owns copied backing rows,
+cursor, selection, viewport, and display freshness. tmux 3.4 and 3.7 copy
+their backing grid on entry. Program parsing, raw retention, query replies,
+and child lifecycle continue behind the frozen display. Cancellation selects
+the current program screen without replaying raw output. Re-entry preserves
+the existing mode and selection. Detaching a client preserves pane mode.
+Resizing reflows the mode-owned backing, remaps its cursor, clears selection,
+and advances display freshness; program-terminal resize remains separate.
+Mode entry, cancellation, and retained-display resize must work after PTY
+EOF. Prepare all mode reflows before notifying live programs; preserve the
+original mode if preparation fails. Delivered program effects cannot be
+rolled back by restoring dimensions.
+
+`mode-keys` belongs to the shared `Window`. Reuse `OptionTable` inheritance
+from server-owned global window defaults, with typed `WindowModeKeys`
+values in a window-local immutable option catalog. `SetWindowOption` owns
+the typed global-or-window target and one wire identity. Linked sessions
+observe the same override. Assigning the inherited value still creates an
+override; repeated local assignment is a no-op. Keep session prefix options
+separate and expose the new operation through both bindings.
+Global changes invalidate affected inherited displays without changing
+explicit overrides. Unknown names, cross-scope assignments, malformed
+values, and stale targets must fail before changing values or revisions.
+
+Read effective mode keys for the current key table, cursor movement, and
+selection extraction. Capture the upstream selection-highlight keys on
+mode entry; changing the window option must preserve backing and selection.
+Entry accepts only the pane target, with no separate key-style override.
+tmux also derives its startup default from `VISUAL` or `EDITOR`; implement
+that behavior or declare a deterministic-emacs limitation.
+
+`TerminalHistorySnapshot` supplies chronological owned rows at their original
+widths, continuation-from-previous flags, cursor, parser revision,
+completeness, and discarded-prefix evidence. Alternate-screen capture excludes
+hidden primary history. `PaneScreenSnapshot` supplies only the pane's chosen
+display; client composition tracks display freshness independently of parser
+facts. Mode entry, navigation, resize, and exit must invalidate that baseline
+even when the parser has not advanced.
+
+Use entity-local `EnterCopyMode`, `MoveCopyCursor`, `ScrollCopyMode`,
+`BeginCopySelection`, `ClearCopySelection`, `CopySelection`, `CancelCopyMode`,
+and `ReadCopyMode` descriptions. Register `send-keys -X` names in an immutable
+copy-mode command catalog. Persistent `copy-mode` and `copy-mode-vi` key tables
+consume unbound mode input; the prefix table keeps precedence. `CopySelection`
+adds bytes through the existing automatic paste-buffer operation and changes
+selection only after successful storage.
+
+The incremental terminal key decoder retains raw spans separately from
+normalized keys. Bound CSI/SS3 and UTF-8 parsing; pass unmatched program input
+through unchanged. Hold an incomplete Escape token against one monotonic
+deadline without extending it as fragments arrive. The readiness loop folds
+that deadline into its existing poll timeout. Backpressure preserves complete
+tokens and prefix state; mode entry or exit causes routing to resolve the pane
+again before processing the next key.
+
+Prove source-defined emacs half-open and vi inclusive selections, reverse
+selection, wide/combining glyphs, soft-wrap joining, hard newlines, and empty
+selection. Real-client cases must cover frozen display while program/query
+state advances, two clients sharing one pane mode, resize, eviction after
+entry, split input encodings, cancellation with following input, prefix
+precedence, and unknown keys reaching no PTY. Automatic-buffer capacity or
+input backpressure must preserve selection or queued input before effects.
+
+The initial cursor rule follows tmux 3.7; declare 3.4's permitted one-past-end
+vi position separately. Vi Escape clears selection and stays in mode;
+emacs Escape cancels. The default vi copy key is Enter, without a `y`
+binding. Vi extraction includes the terminal cell, emacs excludes it, and
+only complete Unicode cells are copied. Preserve hard newlines and join
+soft rows only when selection reaches their original end. Vi retains the
+final newline only when its extraction endpoint passes the trimmed final
+row; an empty selected row can yield a newline. Original tab
+reconstruction needs parser provenance that the current terminal model
+does not retain. Clipboard and copy-pipe effects remain explicit limits.
+
+Source contracts use [tmux 3.7 copy mode][copy-37],
+[tmux 3.4 copy mode][copy-34], [window option ownership][window-37],
+and [default key bindings][keys-37] at pinned revisions. The current parser
+history has reflow disabled; the mode-owned backing still requires its own
+reflow implementation. The incremental key decoder and every mode operation
+remain unfinished.
+
+[copy-37]: https://github.com/tmux/tmux/blob/81f88f8517c9fc5371b56cf117530c6b477c96ac/window-copy.c
+[copy-34]: https://github.com/tmux/tmux/blob/9ae69c3795ab5ef6b4d760f6398cd9281151f632/window-copy.c
+[window-37]: https://github.com/tmux/tmux/blob/81f88f8517c9fc5371b56cf117530c6b477c96ac/window.c
+[keys-37]: https://github.com/tmux/tmux/blob/81f88f8517c9fc5371b56cf117530c6b477c96ac/key-bindings.c
+
 ## Architecture progress
 
 Named server/session/window/pane components, entity-local operation descriptions, and validated immutable native lookup now replace the generic domain module and operation switch. The public facade is `ServerConnection`, snapshots are values, and recoverable failures are `TmuxError`. Session/window membership and pane-program cleanup have real ownership models.
