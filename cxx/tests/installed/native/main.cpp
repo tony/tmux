@@ -25,5 +25,11 @@ int main() {
         text->rows != 24 || text->columns != 80 || !text->complete) {
         return 2;
     }
+    const auto split =
+        server.split_pane(session->pane, tmux_cxx::PaneSplitOrientation::left_right, "/bin/cat");
+    const auto resized = server.resize_pane(session->pane, tmux_cxx::PaneResizeDirection::right, 5);
+    if (!split || !resized || resized->columns != 45 || resized->active) {
+        return 7;
+    }
     return server.kill_session(session->id) && server.shutdown() ? 0 : 3;
 }

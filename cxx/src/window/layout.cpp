@@ -1,3 +1,21 @@
+/*
+ * Pane border resizing follows tmux layout.c at d1fedcc9a0e98dba.
+ * Copyright (c) 2009 Nicholas Marriott <nicholas.marriott@gmail.com>
+ * Copyright (c) 2016 Stephen Kent <smkent@smkent.net>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF MIND, USE, DATA OR PROFITS, WHETHER
+ * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
+ * OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
 #include "window/layout.hpp"
 
 #include <algorithm>
@@ -170,7 +188,7 @@ terminal::CellSize minimum_size(const WindowLayout::Cell &cell) {
     return minimum;
 }
 
-/** @brief Select the row or column extent changed by a whole-window resize. */
+/** @brief Select the row or column extent changed by a resize. */
 enum class LayoutAxis { rows, columns };
 
 /** @brief Read one cell extent without conflating rows and columns. */
@@ -191,6 +209,57 @@ void set_extent(WindowLayout::Cell &cell, LayoutAxis axis, std::uint16_t value) 
 bool partitions_axis(const WindowLayout::Cell &cell, LayoutAxis axis) {
     return (axis == LayoutAxis::rows && cell.kind == CellKind::top_bottom) ||
            (axis == LayoutAxis::columns && cell.kind == CellKind::left_right);
+}
+
+/** @brief Borrow a sibling boundary only for the lifetime of its candidate layout. */
+struct PaneBorder {
+    WindowLayout::Cell *parent; ///< Container partitioning the requested axis.
+    std::size_t before;         ///< Child preceding the movable border.
+};
+/** @brief Distinguish a missing pane from one with no border along the requested axis. */
+struct PaneBorderSearch {
+    bool found;                       ///< Target leaf belongs to this layout.
+    std::optional<PaneBorder> border; ///< Nearest ancestor partition, if any.
+};
+/** @brief Locate the closest matching ancestor and use the preceding border for a final child. */
+PaneBorderSearch pane_border(WindowLayout::Cell &cell, PaneId pane, LayoutAxis axis) {
+    if (cell.kind == CellKind::leaf) {
+        return {cell.pane == pane, std::nullopt};
+    }
+    for (std::size_t index = 0; index < cell.children.size(); ++index) {
+        auto target = pane_border(*cell.children[index], pane, axis);
+        if (target.found) {
+            if (!target.border && partitions_axis(cell, axis)) {
+                target.border =
+                    PaneBorder{&cell, index + 1 == cell.children.size() ? index - 1 : index};
+            }
+            return target;
+        }
+    }
+    return {false, std::nullopt};
+}
+/** @brief Count removable cells without violating any descendant's one-cell minimum. */
+std::uint32_t spare_extent(const WindowLayout::Cell &cell, LayoutAxis axis) {
+    const auto minimum = minimum_size(cell);
+    return extent(cell, axis) - (axis == LayoutAxis::rows ? minimum.rows : minimum.columns);
+}
+/** @brief Choose tmux's ordered donor: following then preceding for growth, preceding for shrink.
+ */
+std::optional<std::size_t> border_donor(const PaneBorder &border, LayoutAxis axis, bool grow) {
+    const auto &children = border.parent->children;
+    if (grow) {
+        for (std::size_t index = border.before + 1; index < children.size(); ++index) {
+            if (spare_extent(*children[index], axis) != 0) {
+                return index;
+            }
+        }
+    }
+    for (std::size_t end = border.before + (grow ? 0 : 1); end != 0; --end) {
+        if (spare_extent(*children[end - 1], axis) != 0) {
+            return end - 1;
+        }
+    }
+    return std::nullopt;
 }
 
 /** @brief Apply one axis delta using tmux's ordered round-robin subtree distribution. */
@@ -315,6 +384,52 @@ std::vector<PaneGeometry> WindowLayout::panes() const {
     result.reserve(leaf_count(*root_));
     collect_panes(*root_, result);
     return result;
+}
+
+Result<bool> WindowLayout::resize_pane(PaneId pane, PaneResizeDirection direction,
+                                       std::uint32_t cells) {
+    if (direction != PaneResizeDirection::left && direction != PaneResizeDirection::right &&
+        direction != PaneResizeDirection::up && direction != PaneResizeDirection::down) {
+        return std::unexpected(
+            TmuxError{TmuxErrorCode::invalid_argument, "invalid pane resize direction"});
+    }
+    const auto axis =
+        direction == PaneResizeDirection::left || direction == PaneResizeDirection::right
+            ? LayoutAxis::columns
+            : LayoutAxis::rows;
+    auto candidate = clone_cell(*root_);
+    const auto target = pane_border(*candidate, pane, axis);
+    if (!target.found) {
+        return std::unexpected(TmuxError{TmuxErrorCode::not_found, "pane no longer exists"});
+    }
+    if (!target.border || cells == 0) {
+        return false;
+    }
+    const auto &border = *target.border;
+    const auto grow =
+        direction == PaneResizeDirection::right || direction == PaneResizeDirection::down;
+    auto &receiver = *border.parent->children[border.before + (grow ? 0 : 1)];
+    const auto requested = cells;
+    while (cells != 0) {
+        const auto donor_index = border_donor(border, axis, grow);
+        if (!donor_index) {
+            break;
+        }
+        auto &donor = *border.parent->children[*donor_index];
+        const auto transferred = std::min(cells, spare_extent(donor, axis));
+        const auto change = static_cast<std::int32_t>(transferred);
+        if (!resize_axis(receiver, axis, change) || !resize_axis(donor, axis, -change)) {
+            return std::unexpected(TmuxError{TmuxErrorCode::protocol,
+                                             "pane resize could not preserve subtree minima"});
+        }
+        cells -= transferred;
+    }
+    if (cells == requested) {
+        return false;
+    }
+    derive_offsets(*candidate, 0, 0);
+    root_ = std::move(candidate);
+    return true;
 }
 
 std::optional<PaneGeometry> WindowLayout::pane(PaneId pane_id) const {

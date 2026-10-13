@@ -14,6 +14,15 @@ A `Session` owns indexed memberships and its selected membership. A `WindowLink`
 
 `WindowLayout` owns left-right and top-bottom partition cells with one-cell borders and derived `PaneGeometry` leaves. Split and resize algorithms operate on a candidate tree before the window adopts it. Resizing preserves recursive pane minima and distributes same-axis cells in stable round-robin order. The selected size may clamp above a smaller client offer. `LatestClientWindowSize` applies the declared `latest` policy to the complete layout, resizes every pane PTY and terminal, and invalidates every attached client viewing that window. Other tmux size policies remain open.
 
+`ResizePane` moves the nearest border along the requested axis without changing
+the outer window size or active pane. A final child uses its preceding border.
+Ordered sibling donors clamp movement at recursive minima. Zero movement,
+an absent border, and exhausted donors preserve the revision. Splitting,
+client-driven sizing, and manual resizing share validation of all affected
+terminal states before changing sizes. A later failure attempts every prior
+PTY/model size and reports failed restoration; terminal-state changes,
+SIGWINCH, and program redraws that already occurred remain observable.
+
 A pane owns its PTY, program-input queue, terminal state, and raw-output retention. `PaneProgram` owns its direct child and pidfd separately. Pane removal closes the PTY and requests HUP. The server keeps child ownership until nonblocking reaping completes, escalating to KILL after 250 milliseconds. Explicit shutdown has a 700-millisecond bound and reports a child that outlives it. A child also receives KILL if its owning daemon dies. External collection relinquishes child ownership without inventing an exit status. Callers must leave child reaping and process-group signaling to the server.
 
 A `PasteBuffer` owns an explicit name, arbitrary bytes, and the server revision that stored them. It is server-global and outlives any pane or client until deletion or server shutdown. Names are valid UTF-8 without control bytes and use at most 128 bytes. The current bounded store retains at most 50 names with 256 KiB per buffer. Pasting retains the buffer, maps line feeds to carriage returns, and atomically admits the resulting bytes through the destination pane's existing program-input queue.

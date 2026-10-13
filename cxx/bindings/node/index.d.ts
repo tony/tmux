@@ -321,6 +321,12 @@ export class ServerConnection {
   ): Promise<PaneSnapshot>;
   /** Materialize a shared window's panes in layout order. */
   panes(window: bigint): Promise<PaneSnapshot[]>;
+  /** Move a pane border by cells, preserving window size and selection. */
+  resizePane(
+    pane: bigint,
+    direction: "left" | "right" | "up" | "down",
+    cells?: number,
+  ): Promise<PaneSnapshot>;
   /** Select one live pane in its shared window and materialize the result. */
   selectPane(pane: bigint): Promise<PaneSnapshot>;
   /** Store up to 256 KiB under an explicit server-global paste-buffer name. */

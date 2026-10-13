@@ -1,5 +1,6 @@
 import {
   ServerConnection,
+  type PaneSnapshot,
   type PaneTextSnapshot,
   type SessionEventStream,
   type SessionEventStreamItem,
@@ -31,6 +32,8 @@ async function consumer(client: ServerConnection): Promise<SessionSnapshot> {
   void renamedWindow;
   const nextWindow: SessionSnapshot = await client.nextWindow(session.id);
   const previousWindow: SessionSnapshot = await client.previousWindow(session.id);
+  const resized: PaneSnapshot = await client.resizePane(pane, "right");
+  void resized;
   void nextWindow;
   void previousWindow;
   void event;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <tmux_cxx/identity.hpp>
+#include <tmux_cxx/pane/resize_direction.hpp>
 #include <tmux_cxx/pane/split_orientation.hpp>
 #include <tmux_cxx/terminal/terminal_snapshot.hpp>
 #include <tmux_cxx/tmux_error.hpp>
@@ -39,6 +40,9 @@ class WindowLayout {
     Result<void> split(PaneId target, PaneId new_pane, PaneSplitOrientation orientation);
     /** @brief Refit the tree to bounded window dimensions while preserving every leaf minimum. */
     Result<terminal::CellSize> resize(terminal::CellSize requested);
+    /** @brief Move the nearest matching pane border, clamp at subtree minima, and report changed
+     * geometry. */
+    Result<bool> resize_pane(PaneId pane, PaneResizeDirection direction, std::uint32_t cells);
     /** @brief Copy leaf geometry in pane-list order. */
     std::vector<PaneGeometry> panes() const;
     /** @brief Copy one pane's geometry when that pane belongs to this layout. */

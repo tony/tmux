@@ -487,6 +487,26 @@ tmux_cxx::PaneSplitOrientation pane_split_orientation_arg(const Napi::CallbackIn
                                 "pane split orientation must be left_right or top_bottom");
 }
 
+/** @brief Translate the four border directions before admitting asynchronous layout mutation. */
+tmux_cxx::PaneResizeDirection pane_resize_direction_arg(const Napi::CallbackInfo &info,
+                                                        std::size_t index) {
+    const auto direction = string_arg(info, index);
+    if (direction == "left") {
+        return tmux_cxx::PaneResizeDirection::left;
+    }
+    if (direction == "right") {
+        return tmux_cxx::PaneResizeDirection::right;
+    }
+    if (direction == "up") {
+        return tmux_cxx::PaneResizeDirection::up;
+    }
+    if (direction == "down") {
+        return tmux_cxx::PaneResizeDirection::down;
+    }
+    throw Napi::RangeError::New(info.Env(),
+                                "pane resize direction must be left, right, up, or down");
+}
+
 /** @brief Copy a byte array on the JavaScript thread before admitting asynchronous work. */
 std::string bytes_arg(const Napi::CallbackInfo &info, std::size_t index) {
     if (index >= info.Length() || !info[index].IsTypedArray()) {
@@ -673,6 +693,7 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
                     InstanceMethod("nextWindow", &NodeServerConnection::next_window),
                     InstanceMethod("previousWindow", &NodeServerConnection::previous_window),
                     InstanceMethod("splitPane", &NodeServerConnection::split_pane),
+                    InstanceMethod("resizePane", &NodeServerConnection::resize_pane),
                     InstanceMethod("selectPane", &NodeServerConnection::select_pane),
                     InstanceMethod("panes", &NodeServerConnection::panes),
                     InstanceMethod("setPasteBuffer", &NodeServerConnection::set_paste_buffer),
@@ -906,6 +927,17 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
             [pane, orientation, command](tmux_cxx::ServerConnection &connection) {
                 return to_node_result(connection.split_pane(pane, orientation, command));
             });
+    }
+    /** @brief Validate border direction and count before queuing shared-window pane resizing. */
+    Napi::Value resize_pane(const Napi::CallbackInfo &info) {
+        const auto pane = tmux_cxx::PaneId{id_arg(info, 0)};
+        const auto direction = pane_resize_direction_arg(info, 1);
+        const auto cells = info.Length() > 2 ? uint32_arg(info, 2) : 1;
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::resize_pane */
+                               [pane, direction, cells](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(
+                                       connection.resize_pane(pane, direction, cells));
+                               });
     }
     /** @brief Queue shared-window pane selection for a validated pane identity. */
     Napi::Value select_pane(const Napi::CallbackInfo &info) {

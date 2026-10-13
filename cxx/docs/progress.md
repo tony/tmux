@@ -1227,3 +1227,50 @@ These operations complete this navigation slice. Broader commands, copy
 mode, configuration, notifications, protocol subsets, binding lifetimes,
 platform verification, and the full objective remain open. This checkpoint
 remains local under the no-push instruction.
+
+## Pane border resizing verified locally
+
+`ResizePane` moves the nearest matching border in a shared window without
+changing its outer dimensions or active pane. It follows tmux's preceding
+border rule for the final child, ordered sibling donors, and recursive
+one-cell minima. An absent border, zero movement, or exhausted donors
+preserves the window revision. Native operation `pane.resize` has identity
+34; Python and Node expose `resize_pane` and `resizePane`.
+
+Registered `resize-pane`/`resizep` accepts one direction, an exact pane
+target, and an optional count in `1..2147483647`. Real tmux 3.4 and 3.7
+fixtures reject zero counts; the native API retains zero as a no-op.
+Compatibility reports state the supported grammar and remaining limits.
+
+Splitting, client-driven window sizing, and manual resizing share terminal
+validation and size recovery. A controlled missing-restoration case fails
+on both the retained terminal width and the kernel's accepted PTY width.
+Restoration makes those checks pass while preserving the layout revision.
+Dimensions can be restored; terminal-state and program effects remain
+observable. Fixed enum storage permits validating malformed representations
+before wire narrowing; no analyzer warnings are disabled.
+
+Native cases prove nested ancestry, donor ordering, minimum clamping,
+linked-window ownership, preserved selection, and malformed-before-effects
+behavior. Differential cases compare every pane against both owned stock
+servers. A real pane program reports the resulting 22-by-78 terminal.
+Ordinary-client cases also prove redraw after manual resizing. Every new
+callable has a brief compiler- or language-AST-checked description.
+
+| Gate | Result | Whole-command wall time |
+|---|---|---:|
+| Focused native layout, pane, and command cases | PASS | 0.01 s |
+| Configured mid loop | PASS; 92 native cases | 5.72 s |
+| GCC 15 native and both binding CTest suites | PASS; 97 tests | 3.65 s |
+| C++26 native and both binding CTest suites | PASS; 97 tests | 3.54 s |
+| ASan/UBSan/LeakSanitizer and controlled negatives | PASS | 66.52 s |
+| Bounded native, tmux, and terminal fuzz replay | PASS; 6,000 runs | 2.57 s |
+| Doxygen/compiler/language documentation and negatives | PASS | 240.57 s |
+| clang-tidy and fatal negative probe | PASS | 148.08 s |
+| Offline wheel/sdist/npm import and type consumers | PASS | 56.78 s |
+| Fresh source build/install and native resize consumer | PASS | 65.98 s |
+
+Absolute sizes, zoom, mouse resizing, resize keys, and layout notifications
+remain open. Copy mode, broader command/configuration support, protocol
+subsets, binding lifetimes, installed binding behavior, platform evidence,
+and the full objective also remain unfinished. This checkpoint stays local.

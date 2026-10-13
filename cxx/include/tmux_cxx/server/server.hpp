@@ -3,6 +3,7 @@
 #include <tmux_cxx/client/client_snapshot.hpp>
 #include <tmux_cxx/pane/pane_snapshot.hpp>
 #include <tmux_cxx/pane/pane_text_snapshot.hpp>
+#include <tmux_cxx/pane/resize_direction.hpp>
 #include <tmux_cxx/pane/split_orientation.hpp>
 #include <tmux_cxx/protocol/tmux/stock_connection_compatibility.hpp>
 #include <tmux_cxx/session/session_prefix_keys.hpp>
@@ -102,6 +103,11 @@ class Server {
     /** @brief Split one pane, start its owned program, and select the materialized new pane. */
     Result<PaneSnapshot> split_pane(PaneId pane, PaneSplitOrientation orientation,
                                     std::string command = "/bin/sh");
+    /** @copybrief tmux_cxx::ServerConnection::resize_pane
+     *
+     * Zero movement and minimum-clamped borders preserve the window revision. */
+    Result<PaneSnapshot> resize_pane(PaneId pane, PaneResizeDirection direction,
+                                     std::uint32_t cells = 1);
     /** @brief Select one live pane in its shared window without changing layout geometry. */
     Result<PaneSnapshot> select_pane(PaneId pane);
     /** @brief Materialize one window's panes in layout order. */

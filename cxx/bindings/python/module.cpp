@@ -42,6 +42,7 @@ NB_MODULE(_native, module) {
     using tmux_cxx::ClientId;
     using tmux_cxx::ClientSnapshot;
     using tmux_cxx::PaneId;
+    using tmux_cxx::PaneResizeDirection;
     using tmux_cxx::PaneSnapshot;
     using tmux_cxx::PaneSplitOrientation;
     using tmux_cxx::PaneTextSnapshot;
@@ -63,6 +64,11 @@ NB_MODULE(_native, module) {
     nb::enum_<PaneSplitOrientation>(module, "PaneSplitOrientation")
         .value("LEFT_RIGHT", PaneSplitOrientation::left_right)
         .value("TOP_BOTTOM", PaneSplitOrientation::top_bottom);
+    nb::enum_<PaneResizeDirection>(module, "PaneResizeDirection")
+        .value("LEFT", PaneResizeDirection::left)
+        .value("RIGHT", PaneResizeDirection::right)
+        .value("UP", PaneResizeDirection::up)
+        .value("DOWN", PaneResizeDirection::down);
     auto tmux_error_type = nb::exception<PythonTmuxError>(module, "TmuxError", PyExc_RuntimeError);
     nb::register_exception_translator(
         /** @brief Attach the native error classification and operation while holding the GIL. */
@@ -433,6 +439,14 @@ NB_MODULE(_native, module) {
             },
             nb::arg("pane"), nb::arg("orientation"), nb::arg("command") = "/bin/sh",
             docs::split_pane, nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "resize_pane", /** @copybrief tmux_cxx::ServerConnection::resize_pane */
+            [](ServerConnection &self, std::uint64_t pane, PaneResizeDirection direction,
+               std::uint32_t cells) {
+                return unwrap(self.resize_pane(PaneId{pane}, direction, cells));
+            },
+            nb::arg("pane"), nb::arg("direction"), nb::arg("cells") = 1, docs::resize_pane,
+            nb::call_guard<nb::gil_scoped_release>())
         .def(
             "select_pane", /** @copybrief tmux_cxx::ServerConnection::select_pane */
             [](ServerConnection &self, std::uint64_t pane) {

@@ -331,6 +331,14 @@ def test_split_pane_exposes_layout_and_both_programs(server: str) -> None:
         ]
         assert all((pane.top, pane.rows, pane.window) == (0, 24, session.window) for pane in panes)
         assert b"right-ready" in connection.wait_pane_output(split.id, b"right-ready", 500)
+        resized = connection.resize_pane(split.id, tmux_cxx.PaneResizeDirection.LEFT, 5)
+        assert (resized.columns, resized.left, resized.active) == (44, 36, True)
+        assert connection.resize_pane(split.id, tmux_cxx.PaneResizeDirection.LEFT, 0).revision == (
+            resized.revision
+        )
+        with pytest.raises(TypeError):
+            connection.resize_pane(split.id, tmux_cxx.PaneResizeDirection.LEFT, -1)
+        assert connection.window(session.window).revision == resized.revision
         selected = connection.select_pane(session.pane)
         assert (selected.id, selected.active) == (session.pane, True)
         assert [pane.active for pane in connection.panes(session.window)] == [True, False]

@@ -20,6 +20,7 @@ KINDS = {
         "PaneSplitOrientation",
         '"left_right" | "top_bottom"',
     ),
+    "pane_resize_direction": ("PaneResizeDirection", '"left" | "right" | "up" | "down"'),
     "client_id": ("ClientId", "bigint"),
     "optional_session_id": ("std::optional<SessionId>", "bigint | null"),
     "revision": ("std::uint64_t", "bigint"),

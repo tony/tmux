@@ -45,6 +45,10 @@ StockConnectionCompatibility TmuxCompatibilityPolicy::assess(const TmuxProtocolP
         "next-window and previous-window require explicit -t session targets; alerts, "
         "last-window, implicit targets, hooks, and selection notifications are unsupported");
     report.limitations.push_back(
+        "resize-pane requires one of -L/-R/-U/-D, exact -t %pane, and a count in 1..2147483647; "
+        "absolute sizes, zoom, mouse resizing, implicit targets, and layout notifications are "
+        "unsupported");
+    report.limitations.push_back(
         "window names require nonempty UTF-8, at most 128 bytes, and no ASCII controls or DEL; "
         "hooks and window-selection notifications remain unsupported");
     report.limitations.push_back(

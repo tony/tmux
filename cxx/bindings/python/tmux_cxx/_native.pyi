@@ -5,6 +5,15 @@ class PaneSplitOrientation(enum.Enum):
 
     TOP_BOTTOM = 1
 
+class PaneResizeDirection(enum.Enum):
+    LEFT = 0
+
+    RIGHT = 1
+
+    UP = 2
+
+    DOWN = 3
+
 class TmuxError(RuntimeError):
     code: str
     operation: str
@@ -538,6 +547,11 @@ class ServerConnection:
         """
         Split one pane, start its command, and materialize the selected new pane.
         """
+
+    def resize_pane(
+        self, pane: int, direction: PaneResizeDirection, cells: int = 1
+    ) -> PaneSnapshot:
+        """Move a pane border by cells, preserving window size and selection."""
 
     def select_pane(self, pane: int) -> PaneSnapshot:
         """Select one live pane in its shared window and materialize the result."""

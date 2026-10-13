@@ -172,6 +172,7 @@ add_library(tmux_cxx_connection STATIC
   src/pane/operations/read_pane_text_native_adapter.cpp
   src/pane/operations/wait_pane_output_native_adapter.cpp
   src/pane/operations/split_pane_native_adapter.cpp
+  src/pane/operations/resize_pane_native_adapter.cpp
   src/pane/operations/select_pane_native_adapter.cpp
   src/pane/operations/list_panes_native_adapter.cpp
   src/paste_buffer/operations/set_paste_buffer_native_adapter.cpp
@@ -241,11 +242,13 @@ add_library(tmux_cxx_server STATIC
   src/pane/operations/select_next_pane_key_binding.cpp
   src/pane/register_commands.cpp src/pane/operations/split_window_command.cpp
   src/pane/operations/select_pane_command.cpp src/pane/pane_target.cpp
+  src/pane/operations/resize_pane_command.cpp
   src/pane/program.cpp src/pane/pane_output_buffer.cpp src/pane/pane_output_reader.cpp
   src/pane/pane_program_input.cpp src/pane/pty_io.cpp src/pane/terminal_resize.cpp
   src/pane/spawn_pane.cpp
   src/pane/terminal_geometry.cpp
   src/pane/operations/split_pane.cpp src/pane/operations/select_pane.cpp
+  src/pane/operations/resize_pane.cpp
   src/pane/operations/list_panes.cpp
   src/pane/operations/send_pane_input.cpp src/pane/operations/read_pane_output.cpp
   src/pane/operations/read_pane_text.cpp

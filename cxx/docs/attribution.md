@@ -35,6 +35,14 @@ surrounding read-only `paste.c`, `cmd-set-buffer.c`, `cmd-delete-buffer.c`, and
 independent and intentionally exposes only the documented explicit-name
 subset. No upstream C file or object enters the production build.
 
+Pane border movement in `src/window/layout.cpp` follows `layout_resize_pane`,
+`layout_resize_pane_grow`, and `layout_resize_pane_shrink` in `layout.c` at the
+recorded parent revision. Its closest-ancestor selection, preceding border for
+the final child, and ordered donor rules retain tmux behavior. The translated
+C++ algorithm preserves upstream's copyright and permission notice in that
+file. Owned tmux 3.4 and 3.7 fixtures verify the supported resizing subset;
+neither fixture is a production dependency.
+
 `terminal/` adapts the external C99 [libvterm 0.3.3 library](https://www.leonerd.org.uk/code/libvterm/). Its canonical source archive has SHA-256 `09156f43dd2128bd347cbeebe50d9a571d32c64e0cf18d211197946aff7226e0`. The archive is retained under `third_party/libvterm/`; CMake verifies its digest, extracts it into the selected build tree, and compiles its named C sources with that build's compiler and sanitizer configuration. The C++ terminal component owns parser lifetimes, callback failure containment, retained history, and copied values. Installed native products include libvterm's original MIT license. libvterm does not introduce a dependency on upstream tmux.
 
 The build backports [Vim's UTF-8 continuation correction](https://github.com/vim/vim/commit/b24a1d9291b2d7fe202237a5d531076a095887d6) into a generated `state.c`. One decoder owns UTF-8 continuation, then designated GL character sets map decoded ASCII. This project extension prevents callback batching around malformed UTF-8 from changing character-set selection. The build also adapts [Neovim's right-edge combining predicate](https://github.com/neovim/neovim/commit/814f2629cbcf02b18ff08d394d15835419e563e4) to libvterm's combining loop: a combining mark updates the previous glyph without consuming pending wrap. [Vim's control-width correction](https://github.com/vim/vim/commit/54ffef7eb83f2592833f422b89bf5f30de6b4bb0) prevents encoded C1 controls from moving the cursor before the screen. [Vim's REP correction](https://github.com/vim/vim/commit/785bb3e9b271eb377dbd4157ce281eac7f16a021) ignores repetition before any graphic character exists. Native regressions and retained fuzz inputs reproduce the original failures.

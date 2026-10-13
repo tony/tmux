@@ -1,6 +1,7 @@
 """Native control of the persistent C++ tmux server. Importing this module has no server effects."""
 
 from ._native import ClientSnapshot as ClientSnapshot
+from ._native import PaneResizeDirection as PaneResizeDirection
 from ._native import PaneSnapshot as PaneSnapshot
 from ._native import PaneSplitOrientation as PaneSplitOrientation
 from ._native import PaneTextSnapshot as PaneTextSnapshot
@@ -25,6 +26,7 @@ from .session_event_stream import SessionEventStreamItem as SessionEventStreamIt
 __all__ = [
     "AsyncSessionEventStream",
     "ClientSnapshot",
+    "PaneResizeDirection",
     "PaneSnapshot",
     "PaneSplitOrientation",
     "PaneTextSnapshot",

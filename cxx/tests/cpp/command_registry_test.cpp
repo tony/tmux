@@ -163,6 +163,23 @@ TEST(CommandRegistry, SplitWindowUsesTypedPaneOperation) {
     EXPECT_FALSE(command_catalog->invoke(invocation, invalid_select));
     EXPECT_EQ(server.panes(server.sessions().front().window)->size(), 2);
     EXPECT_EQ(server.window(server.sessions().front().window)->pane, PaneId{1});
+    const std::vector<std::string> resize{"resizep", "-L", "-t", "%2", "5"};
+    const auto resized = command_catalog->invoke(invocation, resize);
+    ASSERT_TRUE(resized) << (resized ? "" : resized.error().message);
+    EXPECT_EQ(server.panes(server.sessions().front().window)->at(1).columns, 44);
+    EXPECT_EQ(server.window(server.sessions().front().window)->pane, PaneId{1});
+    const auto revision = server.window(server.sessions().front().window)->revision;
+    for (const auto &arguments :
+         std::vector<std::vector<std::string>>{{"resize-pane", "-R", "-Z", "-t", "%1"},
+                                               {"resize-pane", "-R", "-L", "-t", "%1"},
+                                               {"resize-pane", "-R", "-t", "%1", "4294967296"},
+                                               {"resize-pane", "-R", "-t", "%1", "2147483648"},
+                                               {"resize-pane", "-R", "-t", "%1", "0"},
+                                               {"resize-pane", "-R", "-t", "%1", "-1"},
+                                               {"resize-pane", "-R", "-t", "%1", "5oops"}}) {
+        EXPECT_FALSE(command_catalog->invoke(invocation, arguments));
+        EXPECT_EQ(server.window(server.sessions().front().window)->revision, revision);
+    }
 }
 
 /** @brief Named buffer commands share typed storage and reject unsupported flags before effects. */

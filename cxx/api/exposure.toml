@@ -351,6 +351,16 @@ result = "panes"
 parameters = [{ name = "window", kind = "window_id" }]
 
 [[operations]]
+type = "ResizePane"
+header = "pane/operations/resize_pane.hpp"
+method = "resize_pane"
+node = "resizePane"
+id = 34
+identity = "pane.resize"
+result = "pane"
+parameters = [{ name = "pane", kind = "pane_id" }, { name = "direction", kind = "pane_resize_direction" }, { name = "cells", kind = "count", default = "1" }]
+
+[[operations]]
 type = "SelectPane"
 header = "pane/operations/select_pane.hpp"
 method = "select_pane"

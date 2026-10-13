@@ -1,7 +1,10 @@
+#include <tmux_cxx/connection/server_connection.hpp>
+#include <tmux_cxx/pane/operations/resize_pane.hpp>
 #include <tmux_cxx/pane/pane_snapshot.hpp>
 #include <tmux_cxx/pane/split_orientation.hpp>
 #include <tmux_cxx/server/server.hpp>
 
+#include "platform/posix/owned_fd.hpp"
 #include "protocol/native/framing.hpp"
 #include "server/api_catalogs.hpp"
 #include "session/session_event_journal.hpp"
@@ -10,8 +13,12 @@
 #include <tmux_cxx/window/operations/create_window.hpp>
 #include <tmux_cxx/window/operations/rename_window.hpp>
 
+#include <algorithm>
 #include <array>
+#include <bit>
+#include <fcntl.h>
 #include <gtest/gtest.h>
+#include <sys/ioctl.h>
 
 namespace tmux_cxx {
 /** @brief Reject invalid UTF-8 session names before entity creation or rename effects. */
@@ -360,6 +367,133 @@ TEST(ServerPanes, TopBottomSplitOwnsGeometry) {
     EXPECT_EQ(split->left, 0);
     EXPECT_EQ(split->rows, 11);
     EXPECT_EQ(split->columns, 80);
+}
+
+/** @brief Shared-window resizing preserves selection and committed geometry through invalid traffic
+ * and terminal failures. */
+TEST(ServerPanes, ResizePreservesSharedSelectionAndRejectsInvalidTraffic) {
+    Server server;
+    const auto session = server.create_session("resize", "/bin/cat");
+    const auto other = server.create_session("linked", "/bin/cat");
+    ASSERT_TRUE(session);
+    ASSERT_TRUE(other);
+    const auto split =
+        server.split_pane(session->pane, PaneSplitOrientation::left_right, "/bin/cat");
+    ASSERT_TRUE(split);
+    const auto shared = server.link_window(session->window, other->id, 7);
+    ASSERT_TRUE(shared);
+    ASSERT_TRUE(server.select_window(shared->id));
+    const auto resized = server.resize_pane(session->pane, PaneResizeDirection::right, 5);
+    ASSERT_TRUE(resized);
+    EXPECT_EQ(resized->columns, 45);
+    EXPECT_FALSE(resized->active);
+    EXPECT_GT(resized->revision, split->revision);
+    EXPECT_EQ(server.window(session->window)->pane, split->id);
+    EXPECT_EQ(server.sessions().back().pane, split->id);
+    EXPECT_EQ(server.read_pane_text(session->pane)->columns, 45);
+    EXPECT_EQ(server.read_pane_text(split->id)->columns, 34);
+    EXPECT_EQ(server.resize_pane(session->pane, PaneResizeDirection::right, 0)->revision,
+              resized->revision);
+    EXPECT_EQ(server.resize_pane(session->pane, PaneResizeDirection::up, 5)->revision,
+              resized->revision);
+    const auto invalid =
+        server.resize_pane(session->pane, std::bit_cast<PaneResizeDirection>(std::uint32_t{4}), 1);
+    ASSERT_FALSE(invalid);
+    EXPECT_EQ(invalid.error().code, TmuxErrorCode::invalid_argument);
+    const auto stale = server.resize_pane(PaneId{999}, PaneResizeDirection::left, 1);
+    ASSERT_FALSE(stale);
+    EXPECT_EQ(stale.error().code, TmuxErrorCode::not_found);
+
+    ServerConnection connection("_build/pane-resize-unreachable");
+    const auto invalid_wire_direction = connection.resize_pane(
+        session->pane, std::bit_cast<PaneResizeDirection>(std::uint32_t{65536}), 1);
+    ASSERT_FALSE(invalid_wire_direction);
+    EXPECT_EQ(invalid_wire_direction.error().code, TmuxErrorCode::invalid_argument);
+
+    auto catalogs = build_server_api_catalogs();
+    ASSERT_TRUE(catalogs);
+    for (const auto direction : {std::uint16_t{4}, std::uint16_t{1}}) {
+        protocol::native::NativePayloadWriter request;
+        request.u64(session->pane.value);
+        request.u16(direction);
+        request.u32(5);
+        if (direction == 1) {
+            request.bytes.push_back(0);
+        }
+        const auto rejected =
+            catalogs->native_operations.invoke(ResizePane::description.id, server, request.bytes);
+        ASSERT_FALSE(rejected);
+        EXPECT_EQ(rejected.error().code, TmuxErrorCode::protocol);
+        EXPECT_EQ(server.window(session->window)->revision, resized->revision);
+        EXPECT_EQ(server.panes(session->window)->front().columns, 45);
+    }
+
+    const auto descriptors = server.pane_pty_descriptors();
+    const auto target_descriptor =
+        std::ranges::find(descriptors, split->id, &std::pair<PaneId, int>::first);
+    ASSERT_NE(target_descriptor, descriptors.end());
+    posix::OwnedFd saved{::dup(target_descriptor->second)};
+    posix::OwnedFd non_terminal{::open("/dev/null", O_RDWR | O_CLOEXEC)};
+    ASSERT_GE(saved.get(), 0);
+    ASSERT_GE(non_terminal.get(), 0);
+    ASSERT_EQ(::dup3(non_terminal.get(), target_descriptor->second, O_CLOEXEC),
+              target_descriptor->second);
+    const auto failed = server.resize_pane(session->pane, PaneResizeDirection::right, 5);
+    EXPECT_EQ(::dup3(saved.get(), target_descriptor->second, O_CLOEXEC), target_descriptor->second);
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, TmuxErrorCode::io);
+    EXPECT_EQ(server.window(session->window)->revision, resized->revision);
+    EXPECT_EQ(server.read_pane_text(session->pane)->columns, 45);
+    EXPECT_EQ(server.read_pane_text(split->id)->columns, 34);
+    const auto first_descriptor =
+        std::ranges::find(descriptors, session->pane, &std::pair<PaneId, int>::first);
+    ASSERT_NE(first_descriptor, descriptors.end());
+    winsize accepted{};
+    ASSERT_EQ(::ioctl(first_descriptor->second, TIOCGWINSZ, &accepted), 0);
+    EXPECT_EQ(accepted.ws_col, 45);
+}
+
+/** @brief Border movement follows nested ancestors and ordered donors without resizing the window.
+ */
+TEST(WindowLayout, PaneBordersPreserveNestedMinimumsAndDonorOrder) {
+    WindowLayout layout(PaneId{1}, {24, 80});
+    ASSERT_TRUE(layout.split(PaneId{1}, PaneId{2}, PaneSplitOrientation::left_right));
+    ASSERT_TRUE(layout.split(PaneId{1}, PaneId{3}, PaneSplitOrientation::top_bottom));
+    auto changed = layout.resize_pane(PaneId{3}, PaneResizeDirection::right, 5);
+    ASSERT_TRUE(changed);
+    ASSERT_TRUE(*changed);
+    EXPECT_EQ(layout.pane(PaneId{1})->size.columns, 45);
+    EXPECT_EQ(layout.pane(PaneId{3})->size.columns, 45);
+    EXPECT_EQ(layout.pane(PaneId{2})->left, 46U);
+    ASSERT_TRUE(layout.resize_pane(PaneId{2}, PaneResizeDirection::left, 7));
+    EXPECT_EQ(layout.pane(PaneId{2})->size.columns, 41);
+    ASSERT_TRUE(layout.resize_pane(PaneId{3}, PaneResizeDirection::up, 3));
+    EXPECT_EQ(layout.pane(PaneId{1})->size.rows, 9);
+    EXPECT_EQ(layout.pane(PaneId{3})->size.rows, 14);
+    EXPECT_EQ(layout.pane(PaneId{3})->top, 10U);
+    ASSERT_TRUE(layout.resize_pane(PaneId{3}, PaneResizeDirection::right, UINT32_MAX));
+    EXPECT_EQ(layout.pane(PaneId{2})->size.columns, 1);
+    ASSERT_TRUE(layout.resize_pane(PaneId{3}, PaneResizeDirection::up, UINT32_MAX));
+    EXPECT_EQ(layout.pane(PaneId{1})->size.rows, 1);
+    EXPECT_EQ(layout.pane(PaneId{3})->size.rows, 22);
+    EXPECT_EQ(layout.size(), (terminal::CellSize{24, 80}));
+    EXPECT_EQ(layout.resize_pane(PaneId{3}, PaneResizeDirection::up, 1), false);
+    EXPECT_EQ(layout.resize_pane(PaneId{3}, PaneResizeDirection::down, 0), false);
+
+    WindowLayout siblings(PaneId{1}, {24, 80});
+    ASSERT_TRUE(siblings.split(PaneId{1}, PaneId{2}, PaneSplitOrientation::left_right));
+    ASSERT_TRUE(siblings.split(PaneId{2}, PaneId{3}, PaneSplitOrientation::left_right));
+    ASSERT_TRUE(siblings.resize_pane(PaneId{2}, PaneResizeDirection::right, UINT32_MAX));
+    EXPECT_EQ(siblings.pane(PaneId{1})->size.columns, 1);
+    EXPECT_EQ(siblings.pane(PaneId{2})->size.columns, 76);
+    EXPECT_EQ(siblings.pane(PaneId{3})->size.columns, 1);
+    ASSERT_TRUE(siblings.resize_pane(PaneId{3}, PaneResizeDirection::left, UINT32_MAX));
+    EXPECT_EQ(siblings.pane(PaneId{2})->size.columns, 1);
+    EXPECT_EQ(siblings.pane(PaneId{3})->size.columns, 76);
+    EXPECT_EQ(siblings.resize_pane(PaneId{2}, PaneResizeDirection::up, 7), false);
+    EXPECT_FALSE(siblings.resize_pane(PaneId{999}, PaneResizeDirection::right, 1));
+    EXPECT_FALSE(
+        siblings.resize_pane(PaneId{2}, std::bit_cast<PaneResizeDirection>(std::uint32_t{4}), 1));
 }
 
 /** @brief Whole-window shrink retains recursive pane minima and derives every nested offset. */

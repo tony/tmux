@@ -230,6 +230,14 @@ async function serverOperations(): Promise<void> {
       (pane) => pane.active,
     ),
   ).toEqual([true, false]);
+  const resized = await client.resizePane(split.id, "left", 5);
+  expect(resized).toMatchObject({ id: split.id, left: 36, columns: 44, active: false });
+  expect((await client.resizePane(split.id, "left", 0)).revision).toBe(resized.revision);
+  expect(
+    /** Reject a nonintegral count before admitting a resize operation. */
+    () => client.resizePane(split.id, "right", Number.NaN),
+  ).toThrow(RangeError);
+  expect((await client.window(splitSession.window)).revision).toBe(resized.revision);
   const pasteBytes = Buffer.from([0x62, 0x00, 0xff]);
   await client.setPasteBuffer("node-binary", pasteBytes);
   expect(await client.readPasteBuffer("node-binary")).toEqual(pasteBytes);

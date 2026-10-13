@@ -3,6 +3,7 @@
 #include <tmux_cxx/pane/operations/list_panes.hpp>
 #include <tmux_cxx/pane/operations/read_pane_output.hpp>
 #include <tmux_cxx/pane/operations/read_pane_text.hpp>
+#include <tmux_cxx/pane/operations/resize_pane.hpp>
 #include <tmux_cxx/pane/operations/select_pane.hpp>
 #include <tmux_cxx/pane/operations/send_pane_input.hpp>
 #include <tmux_cxx/pane/operations/split_pane.hpp>
@@ -28,6 +29,9 @@ Result<void> register_pane_operations(protocol::native::OperationRegistry &regis
     if (auto registration = registry.add<SelectPane>(); !registration) {
         return registration;
     }
-    return registry.add<ListPanes>();
+    if (auto registration = registry.add<ListPanes>(); !registration) {
+        return registration;
+    }
+    return registry.add<ResizePane>();
 }
 } // namespace tmux_cxx

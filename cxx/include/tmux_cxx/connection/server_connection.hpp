@@ -3,6 +3,7 @@
 #include <tmux_cxx/client/client_snapshot.hpp>
 #include <tmux_cxx/pane/pane_snapshot.hpp>
 #include <tmux_cxx/pane/pane_text_snapshot.hpp>
+#include <tmux_cxx/pane/resize_direction.hpp>
 #include <tmux_cxx/pane/split_orientation.hpp>
 #include <tmux_cxx/protocol/tmux/stock_connection_compatibility.hpp>
 #include <tmux_cxx/session/session_event.hpp>
@@ -88,6 +89,11 @@ class ServerConnection {
     /** @brief Split one pane, start its command, and materialize the selected new pane. */
     Result<PaneSnapshot> split_pane(PaneId pane, PaneSplitOrientation orientation,
                                     std::string command = "/bin/sh");
+    /** @brief Move a pane border by cells, preserving window size and selection.
+     *
+     * Movement clamps at subtree minima; the final child uses its preceding border. */
+    Result<PaneSnapshot> resize_pane(PaneId pane, PaneResizeDirection direction,
+                                     std::uint32_t cells = 1);
     /** @brief Select one live pane in its shared window and materialize the result. */
     Result<PaneSnapshot> select_pane(PaneId pane);
     /** @brief Materialize a shared window's panes in layout order. */

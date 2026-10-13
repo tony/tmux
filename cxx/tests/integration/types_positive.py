@@ -1,5 +1,7 @@
 from tmux_cxx import (
     AsyncSessionEventStream,
+    PaneResizeDirection,
+    PaneSnapshot,
     ServerConnection,
     SessionEventGap,
     SessionEventRecord,
@@ -42,6 +44,8 @@ def consumer(client: ServerConnection) -> SessionSnapshot:
     next_window: SessionSnapshot = client.next_window(created.id)
     previous_window: SessionSnapshot = client.previous_window(created.id)
     assert next_window.id == previous_window.id
+    resized: PaneSnapshot = client.resize_pane(pane, PaneResizeDirection.RIGHT)
+    assert resized.id == pane
     assert compatibility.profile
     assert baseline.next_event.server_instance
     if isinstance(event, SessionEventRecord):

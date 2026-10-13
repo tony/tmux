@@ -172,6 +172,33 @@ Alert filters, implicit targets, hooks, and notifications remain open.
 Prove sparse wrapping, single-window stability, stale sessions, independent
 shared-window selection, real 3.4/3.7 commands, and generated interfaces.
 
+## Pane border resizing slice
+
+`ResizePane` moves the nearest matching layout border left, right, up, or
+down by an unsigned cell count. It preserves the outer window size and
+active pane, clamps at recursive pane minima, and returns the target's
+copied geometry. A last child uses its preceding border, as tmux does.
+Zero movement and an absent matching border preserve the revision.
+
+Keep tree geometry in `WindowLayout` and PTY/model resizing in the pane
+boundary. Reuse terminal-size validation and recovery across splitting,
+client-driven window sizing, and manual resizing. Recovery can restore
+sizes but cannot retract a program's already delivered SIGWINCH.
+
+Register the typed operation and `resize-pane`/`resizep` adapter beside
+other pane operations. Expose `resize_pane` and `resizePane` through the
+existing binding workers and generated contracts. Initially accept one
+direction, an exact pane target, and an optional positive signed-32-bit count.
+Absolute dimensions, zoom, mouse resizing, implicit targets, percentage
+sizes, notifications, and resize key bindings remain subsequent work.
+
+Prove nested ancestor choice, edge-pane border movement, donor ordering,
+minimum clamping, shared-window ownership, preserved selection, and
+invalid-before-effects behavior. Compare geometry against owned tmux
+3.4 and 3.7 servers and check a real program's accepted PTY dimensions.
+Run focused RED/GREEN checks, mid checks, and all configured outer gates
+before committing this slice locally.
+
 ## Architecture progress
 
 Named server/session/window/pane components, entity-local operation descriptions, and validated immutable native lookup now replace the generic domain module and operation switch. The public facade is `ServerConnection`, snapshots are values, and recoverable failures are `TmuxError`. Session/window membership and pane-program cleanup have real ownership models.
