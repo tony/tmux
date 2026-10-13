@@ -107,6 +107,7 @@ def extract_source_distribution(archive: Path, destination: Path) -> Path:
 def check_python_package(workspace: Path) -> None:
     """Rebuild and import a wheel using only the emitted source distribution."""
     environment = offline_environment()
+    environment["CXX"] = str(BUILD / "tools/llvm/bin/clang++")
     distributions = workspace / "python"
     distributions.mkdir()
     run(

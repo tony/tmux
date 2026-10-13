@@ -10,6 +10,14 @@ if (!/^[A-Za-z0-9_-]+$/.test(preset)) {
   throw new Error("TMUX_CXX_PACKAGE_PRESET must name one CMake preset");
 }
 const cmake = process.env.TMUX_CXX_CMAKE ?? resolve(project, ".venv/bin/cmake");
+const configure = spawnSync(cmake, ["--preset", preset], {
+  cwd: project,
+  stdio: "inherit",
+});
+if (configure.error) throw configure.error;
+if (configure.status !== 0) {
+  throw new Error(`addon configuration exited with status ${configure.status}`);
+}
 const build = spawnSync(cmake, ["--build", "--preset", preset, "--target", "tmux_cxx_node"], {
   cwd: project,
   stdio: "inherit",
