@@ -11,9 +11,10 @@ struct PasteBufferCommand {
     using Request = PasteBufferIntoPane::Request; ///< @copybrief PasteBufferIntoPane::Request
     /** @brief Declared alternate stock spelling for this command. */
     static constexpr std::array<std::string_view, 1> aliases{"pasteb"};
+    static constexpr std::array operations{
+        PasteBufferIntoPane::description.id}; ///< Required native operation.
     /** @brief Borrowed spellings and the required paste-buffer operation identity. */
-    static constexpr commands::CommandDescription description{"paste-buffer", aliases,
-                                                              PasteBufferIntoPane::description.id};
+    static constexpr commands::CommandDescription description{"paste-buffer", aliases, operations};
     /** @brief Require explicit buffer and percent-prefixed pane targets in either order. */
     static Result<Request> read(std::span<const std::string> arguments);
     /** @brief Queue stored bytes through the shared paste-buffer operation. */

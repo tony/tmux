@@ -11,9 +11,10 @@ struct SetBufferCommand {
     using Request = SetPasteBuffer::Request; ///< @copybrief SetPasteBuffer::Request
     /** @brief Declared alternate stock spelling for this command. */
     static constexpr std::array<std::string_view, 1> aliases{"setb"};
+    static constexpr std::array operations{
+        SetPasteBuffer::description.id}; ///< Required native operation.
     /** @brief Borrowed spellings and the required paste-buffer operation identity. */
-    static constexpr commands::CommandDescription description{"set-buffer", aliases,
-                                                              SetPasteBuffer::description.id};
+    static constexpr commands::CommandDescription description{"set-buffer", aliases, operations};
     /** @brief Require one explicit buffer name and one data argument. */
     static Result<Request> read(std::span<const std::string> arguments);
     /** @brief Store bytes through the shared paste-buffer operation. */

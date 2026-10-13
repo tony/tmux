@@ -667,6 +667,8 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
                     InstanceMethod("unlinkWindow", &NodeServerConnection::unlink_window),
                     InstanceMethod("windowLinks", &NodeServerConnection::window_links),
                     InstanceMethod("window", &NodeServerConnection::window),
+                    InstanceMethod("createWindow", &NodeServerConnection::create_window),
+                    InstanceMethod("selectWindow", &NodeServerConnection::select_window),
                     InstanceMethod("splitPane", &NodeServerConnection::split_pane),
                     InstanceMethod("selectPane", &NodeServerConnection::select_pane),
                     InstanceMethod("panes", &NodeServerConnection::panes),
@@ -839,6 +841,30 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
         return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::window */
                                [id](tmux_cxx::ServerConnection &connection) {
                                    return to_node_result(connection.window(id));
+                               });
+    }
+    /** @brief Copy creation arguments before queuing a PTY-backed window at an explicit session
+     * index. */
+    Napi::Value create_window(const Napi::CallbackInfo &info) {
+        const auto session = tmux_cxx::SessionId{id_arg(info, 0)};
+        const auto index = uint32_arg(info, 1);
+        auto name = string_arg(info, 2);
+        auto command = info.Length() > 3 ? string_arg(info, 3) : "/bin/sh";
+        return queue_operation(
+            info, /** @copybrief tmux_cxx::ServerConnection::create_window */
+            [session, index, name = std::move(name),
+             command = std::move(command)](tmux_cxx::ServerConnection &connection) mutable {
+                return to_node_result(
+                    connection.create_window(session, index, std::move(name), std::move(command)));
+            });
+    }
+    /** @brief Validate a membership identity before queuing its owning session's window selection.
+     */
+    Napi::Value select_window(const Napi::CallbackInfo &info) {
+        const auto link = tmux_cxx::WindowLinkId{id_arg(info, 0)};
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::select_window */
+                               [link](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(connection.select_window(link));
                                });
     }
     /** @brief Validate split arguments before queuing pane creation and layout mutation. */

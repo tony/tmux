@@ -15,9 +15,11 @@ struct RenameSessionCommand {
     };
     /** @brief Declared alternate stock spellings for this command. */
     static constexpr std::array<std::string_view, 1> aliases{"rename"};
+    static constexpr std::array operations{
+        RenameSession::description.id}; ///< Required native operation.
     /** @brief Borrowed spellings and the required native operation identity. */
     static constexpr commands::CommandDescription description{"rename-session", aliases,
-                                                              RenameSession::description.id};
+                                                              operations};
     /** @brief Require an explicit target and one replacement name. */
     static Result<Request> read(std::span<const std::string> arguments);
     /** @brief Resolve the target against current state and reuse native rename validation. */

@@ -89,6 +89,27 @@ Record whole-command elapsed time, failures, artifact locations, and tool
 versions under `_build/reports/`; summarize durable milestones in
 `progress.md`. Stage named files only and inspect both Git diffs each commit.
 
+## Window creation and selection slice
+
+`CreateWindow` creates one PTY-backed shared window and its first membership
+at an explicit unused session index. It preserves the session's current
+membership. `SelectWindow` resolves a `WindowLinkId`, changes only its owning
+session's current membership, and returns the resulting `SessionSnapshot`.
+Both operations have entity-local registration and native connection adapters.
+
+Registered `new-window`/`neww` adapters accept `[-d] -t session[:index]
+-n name [command]`; omitted indices use the first free index from zero.
+They invoke creation followed by selection unless detached. Registered
+`select-window`/`selectw` accepts an exact `session:index` target. Parsing
+rejects unsupported flags before effects; target resolution occurs at execution.
+Implicit targets, automatic naming, hooks, and broader grammar remain open.
+
+Prove detached creation, independent selection of linked windows, stale
+membership rejection, invalid-before-spawn behavior, and actual PTY traffic.
+Exercise the same operations through native, Python, Node, and real tmux 3.4
+and 3.7 clients. Run the configured mid, documentation, analysis, sanitizer,
+package, and standalone gates before recording the slice as verified.
+
 ## Architecture progress
 
 Named server/session/window/pane components, entity-local operation descriptions, and validated immutable native lookup now replace the generic domain module and operation switch. The public facade is `ServerConnection`, snapshots are values, and recoverable failures are `TmuxError`. Session/window membership and pane-program cleanup have real ownership models.

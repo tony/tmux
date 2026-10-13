@@ -11,9 +11,10 @@ struct SplitWindowCommand {
     using Request = SplitPane::Request; ///< @copybrief SplitPane::Request
     /** @brief Declared alternate stock spelling for this command. */
     static constexpr std::array<std::string_view, 1> aliases{"splitw"};
+    static constexpr std::array operations{
+        SplitPane::description.id}; ///< Required native operation.
     /** @brief Borrowed spellings and the required pane operation identity. */
-    static constexpr commands::CommandDescription description{"split-window", aliases,
-                                                              SplitPane::description.id};
+    static constexpr commands::CommandDescription description{"split-window", aliases, operations};
     /** @brief Require an exact pane target, optional orientation, and at most one command. */
     static Result<Request> read(std::span<const std::string> arguments);
     /** @brief Execute the same layout and process mutation used by native clients. */

@@ -16,5 +16,8 @@ class LatestClientWindowSize {
   public:
     /** @brief Resize the selected window layout, every pane terminal, and affected client views. */
     static Result<void> apply(Server &server, SessionId session_id, terminal::CellSize size);
+    /** @brief Apply client-selected dimensions to a shared window before session selection changes.
+     */
+    static Result<void> apply_to_window(Server &server, WindowId window, terminal::CellSize size);
 };
 } // namespace tmux_cxx

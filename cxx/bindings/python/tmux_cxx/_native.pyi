@@ -507,6 +507,16 @@ class ServerConnection:
         Materialize shared window state independently of its session memberships.
         """
 
+    def create_window(
+        self, session: int, index: int, name: str, command: str = "/bin/sh"
+    ) -> WindowLinkSnapshot:
+        """
+        Create a PTY-backed window at an unused session index without selecting it.
+        """
+
+    def select_window(self, window_link: int) -> SessionSnapshot:
+        """Select a window membership and return its owning session."""
+
     def split_pane(
         self, pane: int, orientation: PaneSplitOrientation, command: str = "/bin/sh"
     ) -> PaneSnapshot:

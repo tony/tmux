@@ -2,10 +2,14 @@
 #include <tmux_cxx/pane/split_orientation.hpp>
 #include <tmux_cxx/server/server.hpp>
 
+#include "protocol/native/framing.hpp"
+#include "server/api_catalogs.hpp"
 #include "session/session_event_journal.hpp"
 #include "session/session_event_reader.hpp"
 #include "window/layout.hpp"
+#include <tmux_cxx/window/operations/create_window.hpp>
 
+#include <array>
 #include <gtest/gtest.h>
 
 namespace tmux_cxx {
@@ -126,6 +130,63 @@ TEST(SessionEvents, RetentionReportsObservationGap) {
     EXPECT_EQ(retained->front().sequence, 1U);
     EXPECT_EQ(journal.tail_sequence(), 3U);
 }
+/** @brief Invalid creation arguments and malformed native traffic preserve all existing memberships
+ * and PTYs. */
+TEST(ServerWindows, RejectedCreationPreservesGraphAndPrograms) {
+    Server server;
+    const auto session = server.create_session("windows", "/bin/cat");
+    ASSERT_TRUE(session);
+    const auto initial_descriptors = server.pane_pty_descriptors().size();
+    struct InvalidCreation {
+        std::uint32_t index;
+        std::string name;
+        std::string command;
+        TmuxErrorCode error;
+    };
+    const std::array cases{
+        InvalidCreation{0, "duplicate", "/bin/cat", TmuxErrorCode::duplicate_index},
+        InvalidCreation{2147483648U, "overflow", "/bin/cat", TmuxErrorCode::invalid_argument},
+        InvalidCreation{1, "", "/bin/cat", TmuxErrorCode::invalid_argument},
+        InvalidCreation{1, std::string(129, 'a'), "/bin/cat", TmuxErrorCode::invalid_argument},
+        InvalidCreation{1, std::string(1, static_cast<char>(0xff)), "/bin/cat",
+                        TmuxErrorCode::invalid_argument},
+        InvalidCreation{1, "control\n", "/bin/cat", TmuxErrorCode::invalid_argument},
+        InvalidCreation{1, "command", std::string("cat\0ignored", 11),
+                        TmuxErrorCode::invalid_argument}};
+    for (const auto &invalid : cases) {
+        const auto result =
+            server.create_window(session->id, invalid.index, invalid.name, invalid.command);
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, invalid.error);
+        EXPECT_EQ(server.pane_pty_descriptors().size(), initial_descriptors);
+        EXPECT_EQ(server.window_links(session->id)->size(), 1U);
+        EXPECT_EQ(server.sessions().front().revision, session->revision);
+    }
+    auto catalogs = build_server_api_catalogs();
+    ASSERT_TRUE(catalogs);
+    protocol::native::NativePayloadWriter request;
+    request.u64(session->id.value);
+    request.u32(1);
+    request.string("malformed");
+    request.string("/bin/cat");
+    request.bytes.push_back(0);
+    const auto malformed =
+        catalogs->native_operations.invoke(CreateWindow::description.id, server, request.bytes);
+    ASSERT_FALSE(malformed);
+    EXPECT_EQ(malformed.error().code, TmuxErrorCode::protocol);
+    EXPECT_EQ(server.pane_pty_descriptors().size(), initial_descriptors);
+    EXPECT_EQ(server.window_links(session->id)->size(), 1U);
+    const auto created = server.create_window(session->id, 1, "tools:build.1", "/bin/cat");
+    ASSERT_TRUE(created);
+    EXPECT_EQ(created->window.value, 2U);
+    EXPECT_EQ(server.window(created->window)->pane.value, 2U);
+    ASSERT_TRUE(server.unlink_window(created->id));
+    const auto stale = server.select_window(created->id);
+    ASSERT_FALSE(stale);
+    EXPECT_EQ(stale.error().code, TmuxErrorCode::not_found);
+    EXPECT_EQ(server.sessions().front().link, session->link);
+}
+
 /** @brief Linked windows keep their panes alive until the final session membership is removed. */
 TEST(ServerWindows, MembershipOwnsIndexAndSharesPaneLifetime) {
     Server server;

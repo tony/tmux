@@ -11,9 +11,10 @@ struct SelectPaneCommand {
     using Request = SelectPane::Request; ///< @copybrief SelectPane::Request
     /** @brief Declared alternate stock spelling for this command. */
     static constexpr std::array<std::string_view, 1> aliases{"selectp"};
+    static constexpr std::array operations{
+        SelectPane::description.id}; ///< Required native operation.
     /** @brief Borrowed spellings and the required pane operation identity. */
-    static constexpr commands::CommandDescription description{"select-pane", aliases,
-                                                              SelectPane::description.id};
+    static constexpr commands::CommandDescription description{"select-pane", aliases, operations};
     /** @brief Require exactly one explicit percent-prefixed pane target. */
     static Result<Request> read(std::span<const std::string> arguments);
     /** @brief Execute shared pane selection and return no command-stream output. */

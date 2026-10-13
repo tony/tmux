@@ -6,9 +6,17 @@
 namespace tmux_cxx::commands {
 Result<void> CommandRegistry::add_registration(CommandDescription description,
                                                CommandCatalog::CommandAdapter adapter) {
-    if (registration_closed_ || description.name.empty() || description.operation.value == 0) {
+    if (registration_closed_ || description.name.empty() || description.operations.empty()) {
         return std::unexpected(
             TmuxError{TmuxErrorCode::invalid_argument, "invalid or late command registration"});
+    }
+    for (std::size_t index = 0; index < description.operations.size(); ++index) {
+        const auto operation = description.operations[index];
+        const auto earlier = description.operations.first(index);
+        if (operation.value == 0 || std::ranges::find(earlier, operation) != earlier.end()) {
+            return std::unexpected(TmuxError{TmuxErrorCode::invalid_argument,
+                                             "empty or duplicate required command operation"});
+        }
     }
     std::vector<std::string_view> registered_names{description.name};
     registered_names.insert(registered_names.end(), description.aliases.begin(),
@@ -28,7 +36,7 @@ Result<void> CommandRegistry::add_registration(CommandDescription description,
         }
     }
     for (auto name : registered_names) {
-        registrations_.push_back({name, description.operation, adapter});
+        registrations_.push_back({name, description.operations, adapter});
     }
     return {};
 }
@@ -40,9 +48,12 @@ CommandRegistry::freeze(const protocol::native::OperationCatalog &operations) &&
             TmuxError{TmuxErrorCode::invalid_argument, "command catalog is empty"});
     }
     for (const auto &registration : registrations_) {
-        if (!operations.contains(registration.operation)) {
-            return std::unexpected(TmuxError{TmuxErrorCode::invalid_argument,
-                                             "command references an unavailable native operation"});
+        for (const auto operation : registration.operations) {
+            if (!operations.contains(operation)) {
+                return std::unexpected(
+                    TmuxError{TmuxErrorCode::invalid_argument,
+                              "command references an unavailable native operation"});
+            }
         }
     }
     std::vector<CommandCatalog::Entry> commands;

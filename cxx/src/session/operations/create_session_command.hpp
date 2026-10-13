@@ -11,9 +11,10 @@ struct CreateSessionCommand {
     using Request = CreateSession::Request; ///< @copybrief CreateSession::Request
     /** @brief Declared alternate stock spellings for this command. */
     static constexpr std::array<std::string_view, 1> aliases{"new"};
-    /** @brief Borrowed spellings and the required native operation identity. */
-    static constexpr commands::CommandDescription description{"new-session", aliases,
-                                                              CreateSession::description.id};
+    static constexpr std::array operations{
+        CreateSession::description.id}; ///< Required native operation.
+    /** @brief Borrowed spellings and required native operation identities. */
+    static constexpr commands::CommandDescription description{"new-session", aliases, operations};
     /** @brief Accept detached named sessions and an optional shell command without ignoring extra
      * options. */
     static Result<Request> read(std::span<const std::string> arguments);

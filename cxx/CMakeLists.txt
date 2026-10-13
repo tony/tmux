@@ -139,6 +139,8 @@ add_library(tmux_cxx_connection STATIC
   src/window_link/operations/unlink_window_native_adapter.cpp
   src/window_link/operations/list_window_links_native_adapter.cpp
   src/window/operations/read_window_native_adapter.cpp
+  src/window/operations/create_window_native_adapter.cpp
+  src/window_link/operations/select_window_native_adapter.cpp
   src/pane/operations/send_pane_input_native_adapter.cpp
   src/pane/operations/read_pane_output_native_adapter.cpp
   src/pane/operations/read_pane_text_native_adapter.cpp
@@ -233,7 +235,11 @@ add_library(tmux_cxx_server STATIC
   src/window/register_operations.cpp
   src/window/layout.cpp src/window/window_size.cpp
   src/window/operations/read_window.cpp
+  src/window/operations/create_window.cpp
+  src/window/register_commands.cpp src/window/operations/new_window_command.cpp
   src/window_link/register_operations.cpp
+  src/window_link/register_commands.cpp src/window_link/window_target.cpp
+  src/window_link/operations/select_window.cpp src/window_link/operations/select_window_command.cpp
   src/window_link/operations/link_window.cpp src/window_link/operations/unlink_window.cpp
   src/window_link/operations/list_window_links.cpp)
 add_library(tmux_cxx::server ALIAS tmux_cxx_server)

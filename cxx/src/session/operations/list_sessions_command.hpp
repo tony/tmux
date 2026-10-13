@@ -14,9 +14,10 @@ struct ListSessionsCommand {
     };
     /** @brief Declared alternate stock spellings for this command. */
     static constexpr std::array<std::string_view, 1> aliases{"ls"};
+    static constexpr std::array operations{
+        ListSessions::description.id}; ///< Required native operation.
     /** @brief Borrowed spellings and the required native operation identity. */
-    static constexpr commands::CommandDescription description{"list-sessions", aliases,
-                                                              ListSessions::description.id};
+    static constexpr commands::CommandDescription description{"list-sessions", aliases, operations};
     /** @brief Accept an optional format expression and reject undeclared options. */
     static Result<Request> read(std::span<const std::string> arguments);
     /** @brief Format materialized snapshots without reparsing substituted session names. */

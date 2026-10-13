@@ -7,15 +7,67 @@
 #include "paste_buffer/register_commands.hpp"
 #include "paste_buffer/register_operations.hpp"
 #include "protocol/native/operation_registry.hpp"
+#include "server/api_catalogs.hpp"
 #include "session/operations/create_session_command.hpp"
 #include "session/register_commands.hpp"
 #include "session/register_operations.hpp"
+#include "window/operations/new_window_command.hpp"
 #include <tmux_cxx/server/server.hpp>
 #include <tmux_cxx/session/operations/list_sessions.hpp>
 
 #include <gtest/gtest.h>
 
 namespace tmux_cxx {
+/** @brief A composed command cannot start without every operation it may invoke. */
+TEST(CommandRegistry, NewWindowRequiresCreationAndSelection) {
+    protocol::native::OperationRegistry operations;
+    ASSERT_TRUE(operations.add<CreateWindow>());
+    auto operation_catalog = std::move(operations).freeze();
+    ASSERT_TRUE(operation_catalog);
+    commands::CommandRegistry commands;
+    ASSERT_TRUE(commands.add<NewWindowCommand>());
+    EXPECT_FALSE(std::move(commands).freeze(*operation_catalog));
+}
+
+/** @brief Window commands preserve detached creation and session-local selection of shared windows.
+ */
+TEST(CommandRegistry, WindowCommandsSelectSessionMemberships) {
+    auto catalogs = build_server_api_catalogs();
+    ASSERT_TRUE(catalogs);
+    Server server;
+    const auto first = server.create_session("first", "/bin/cat");
+    const auto second = server.create_session("second", "/bin/cat");
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+    const auto client = StockClientLifecycle::accept(server);
+    ASSERT_TRUE(client);
+    commands::CommandInvocation invocation{server, *client};
+
+    const std::vector<std::string> create{"new-window", "-d",     "-t",      "first:7",
+                                          "-n",         "shared", "/bin/cat"};
+    const auto created = catalogs->stock_commands.invoke(invocation, create);
+    ASSERT_TRUE(created) << (created ? "" : created.error().message);
+    const auto links = server.window_links(first->id);
+    ASSERT_TRUE(links);
+    ASSERT_EQ(links->size(), 2U);
+    EXPECT_EQ(links->back().index, 7U);
+    EXPECT_EQ(server.sessions().front().window, first->window);
+
+    const std::vector<std::string> select{"selectw", "-t", "first:7"};
+    ASSERT_TRUE(catalogs->stock_commands.invoke(invocation, select));
+    EXPECT_EQ(server.sessions().front().window, links->back().window);
+    const auto shared = server.link_window(links->back().window, second->id, 4);
+    ASSERT_TRUE(shared);
+    EXPECT_EQ(server.sessions().back().window, second->window);
+
+    const std::vector<std::string> select_shared{"select-window", "-t", "second:4"};
+    ASSERT_TRUE(catalogs->stock_commands.invoke(invocation, select_shared));
+    const std::vector<std::string> select_original{"select-window", "-t", "first:0"};
+    ASSERT_TRUE(catalogs->stock_commands.invoke(invocation, select_original));
+    EXPECT_EQ(server.sessions().front().window, first->window);
+    EXPECT_EQ(server.sessions().back().window, shared->window);
+}
+
 /** @brief Stock aliases invoke registered operations and reject unsupported syntax before effects.
  */
 TEST(CommandRegistry, AliasesAndValidationShareServerOperations) {

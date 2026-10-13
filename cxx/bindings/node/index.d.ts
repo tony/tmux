@@ -286,6 +286,15 @@ export class ServerConnection {
   windowLinks(session: bigint): Promise<WindowLinkSnapshot[]>;
   /** Materialize shared window state independently of its session memberships. */
   window(window: bigint): Promise<WindowSnapshot>;
+  /** Create a PTY-backed window at an unused session index without selecting it. */
+  createWindow(
+    session: bigint,
+    index: number,
+    name: string,
+    command?: string,
+  ): Promise<WindowLinkSnapshot>;
+  /** Select a window membership and return its owning session. */
+  selectWindow(windowLink: bigint): Promise<SessionSnapshot>;
   /** Copy pane text with terminal freshness and program-input state, separately from raw bytes. */
   readPaneText(pane: bigint): Promise<PaneTextSnapshot>;
   /** Materialize connection-lifetime clients in stable identity order. */

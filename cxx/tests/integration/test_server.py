@@ -41,6 +41,36 @@ def test_connection_disposal_preserves_session(server: str) -> None:
         assert observer.sessions()[0].id == session.id
 
 
+def test_windows_own_programs_and_session_selection(server: str) -> None:
+    """Separate connections create a window, select its membership, and reject it after removal."""
+    with (
+        tmux_cxx.ServerConnection(server) as creator,
+        tmux_cxx.ServerConnection(server) as observer,
+    ):
+        session = creator.create_session("windows", "/bin/cat")
+        link = creator.create_window(session.id, 7, "tools:build.1", "/bin/cat")
+        assert observer.sessions()[0].link == session.link
+        assert [value.index for value in observer.window_links(session.id)] == [0, 7]
+        window = observer.window(link.window)
+        assert window.name == "tools:build.1"
+        assert window.pane != session.pane
+        selected = observer.select_window(link.id)
+        assert selected.id == session.id
+        assert selected.window == link.window
+        assert selected.pane == window.pane
+        assert creator.select_window(link.id).revision == selected.revision
+        creator.send_pane_input(window.pane, b"new-window-pty\n")
+        assert b"new-window-pty" in observer.wait_pane_output(window.pane, b"new-window-pty")
+        with pytest.raises(tmux_cxx.TmuxError) as duplicate:
+            creator.create_window(session.id, 7, "rejected", "/bin/cat")
+        assert duplicate.value.code == "duplicate_index"
+        observer.unlink_window(link.id)
+        assert creator.sessions()[0].link == session.link
+        with pytest.raises(tmux_cxx.TmuxError) as stale:
+            creator.select_window(link.id)
+        assert stale.value.code == "not_found"
+
+
 def test_duplicate_rejection_preserves_state(server: str) -> None:
     """Rejecting a duplicate name preserves the existing session."""
     with tmux_cxx.ServerConnection(server) as connection:

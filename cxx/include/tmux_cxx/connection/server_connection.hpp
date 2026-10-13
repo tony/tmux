@@ -72,6 +72,13 @@ class ServerConnection {
     Result<std::vector<WindowLinkSnapshot>> window_links(SessionId session);
     /** @brief Materialize shared window state independently of its session memberships. */
     Result<WindowSnapshot> window(WindowId window);
+    /** @brief Create a PTY-backed window at an unused session index without selecting it.
+     *
+     * @see tmux_cxx::Server::create_window for window name constraints. */
+    Result<WindowLinkSnapshot> create_window(SessionId session, std::uint32_t index,
+                                             std::string name, std::string command = "/bin/sh");
+    /** @brief Select a window membership and return its owning session. */
+    Result<SessionSnapshot> select_window(WindowLinkId window_link);
     /** @brief Split one pane, start its command, and materialize the selected new pane. */
     Result<PaneSnapshot> split_pane(PaneId pane, PaneSplitOrientation orientation,
                                     std::string command = "/bin/sh");

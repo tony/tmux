@@ -6,11 +6,12 @@
 #include <concepts>
 
 namespace tmux_cxx::commands {
-/** @brief Describe a stock command's spelling, aliases, and required native operation. */
+/** @brief Describe a stock command's spellings and every native operation it may invoke. */
 struct CommandDescription {
     std::string_view name; ///< Canonical spelling or explicitly registered stock alias.
     std::span<const std::string_view> aliases; ///< Borrowed immutable alternate spellings.
-    protocol::native::OperationId operation;   ///< Native identity required by this command.
+    std::span<const protocol::native::OperationId>
+        operations; ///< Borrowed required native identities.
 };
 
 /** @brief Require typed argument parsing before a stock command reaches server behavior. */
@@ -44,15 +45,16 @@ class CommandRegistry {
         };
         return add_registration(Command::description, command_adapter);
     }
-    /** @brief Consume registrations after every command resolves to a native operation. */
+    /** @brief Consume registrations after every command's required native operations are available.
+     */
     Result<CommandCatalog> freeze(const protocol::native::OperationCatalog &operations) &&;
 
   private:
     /** @brief Map one declared command spelling to its native requirement and invocation. */
     struct Registration {
         std::string_view name; ///< Canonical spelling or explicitly registered stock alias.
-        protocol::native::OperationId
-            operation; ///< Required native identity validated before freezing.
+        std::span<const protocol::native::OperationId>
+            operations; ///< Required native identities validated before freezing.
         CommandCatalog::CommandAdapter adapter; ///< Typed parsing and execution entry point.
     };
     /** @brief Reject duplicate names and aliases atomically before extending the catalog. */

@@ -18,6 +18,7 @@ enum class Capability : std::uint64_t {
     paste_buffers = 1024,
     metadata_observation = 2048,
     session_options = 4096,
+    window_lifecycle = 8192,
 };
 /** @brief Convert a declared native capability to its stable wire bit. */
 constexpr std::uint64_t capability_mask(Capability capability) {

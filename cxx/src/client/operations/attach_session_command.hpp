@@ -14,9 +14,11 @@ struct AttachSessionCommand {
     };
     /** @brief Declared alternate stock spellings for this command. */
     static constexpr std::array<std::string_view, 1> aliases{"attach"};
+    static constexpr std::array operations{
+        AttachClient::description.id}; ///< Required native operation.
     /** @brief Borrowed spellings and the required client attachment operation. */
     static constexpr commands::CommandDescription description{"attach-session", aliases,
-                                                              AttachClient::description.id};
+                                                              operations};
     /** @brief Require one explicit target and reject unsupported attach options. */
     static Result<Request> read(std::span<const std::string> arguments);
     /** @brief Attach the invoking client and keep its stock connection alive. */

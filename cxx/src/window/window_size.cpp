@@ -17,6 +17,15 @@ Result<void> LatestClientWindowSize::apply(Server &server, SessionId session_id,
         return std::unexpected(
             TmuxError{TmuxErrorCode::not_found, "selected window no longer exists"});
     }
+    return apply_to_window(server, window->first, size);
+}
+
+Result<void> LatestClientWindowSize::apply_to_window(Server &server, WindowId window_id,
+                                                     terminal::CellSize size) {
+    const auto window = server.state_->windows.find(window_id);
+    if (window == server.state_->windows.end()) {
+        return std::unexpected(TmuxError{TmuxErrorCode::not_found, "window no longer exists"});
+    }
     auto candidate_layout = window->second.layout;
     const auto candidate_size = candidate_layout.resize(size);
     if (!candidate_size) {

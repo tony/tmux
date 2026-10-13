@@ -140,6 +140,26 @@ identity = "window.read"
 result = "window"
 parameters = [{ name = "window", kind = "window_id" }]
 
+[[operations]]
+type = "CreateWindow"
+header = "window/operations/create_window.hpp"
+method = "create_window"
+node = "createWindow"
+id = 29
+identity = "window.create"
+result = "window_link"
+parameters = [{ name = "session", kind = "session_id" }, { name = "index", kind = "index" }, { name = "name", kind = "text" }, { name = "command", kind = "text", default = "/bin/sh" }]
+
+[[operations]]
+type = "SelectWindow"
+header = "window_link/operations/select_window.hpp"
+method = "select_window"
+node = "selectWindow"
+id = 30
+identity = "window.select"
+result = "session"
+parameters = [{ name = "window_link", node = "windowLink", kind = "window_link_id" }]
+
 [[snapshots]]
 type = "SessionSnapshot"
 header = "session/session_snapshot.hpp"

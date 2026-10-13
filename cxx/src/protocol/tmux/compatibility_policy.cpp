@@ -32,6 +32,16 @@ StockConnectionCompatibility TmuxCompatibilityPolicy::assess(const TmuxProtocolP
         "at most 50 explicitly named paste buffers of 256 KiB each are retained");
     report.limitations.push_back("automatic paste buffers and buffer listing are unsupported");
     report.limitations.push_back(
+        "new-window supports [-d] -t session[:index] -n literal-name [command]; omitted indices "
+        "start at zero, and implicit targets, automatic naming, formats, and other flags are "
+        "unsupported");
+    report.limitations.push_back(
+        "select-window supports only exact -t session:index targets; window names, @identities, "
+        "relative targets, and navigation flags are unsupported");
+    report.limitations.push_back(
+        "window names require UTF-8, at most 128 bytes, and no control characters; hooks and "
+        "window-selection notifications remain unsupported");
+    report.limitations.push_back(
         "paste-buffer requires -b name and -t %pane; delete-after, custom separators, raw "
         "paste, and bracketed paste are unsupported");
     report.limitations.push_back(

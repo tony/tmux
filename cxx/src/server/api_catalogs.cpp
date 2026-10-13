@@ -13,7 +13,9 @@
 #include "protocol/native/operation_registry.hpp"
 #include "session/register_commands.hpp"
 #include "session/register_operations.hpp"
+#include "window/register_commands.hpp"
 #include "window/register_operations.hpp"
+#include "window_link/register_commands.hpp"
 #include "window_link/register_operations.hpp"
 
 #include <tmux_cxx/protocol/native/api_operations.hpp>
@@ -56,6 +58,12 @@ Result<ServerApiCatalogs> build_server_api_catalogs() {
         return std::unexpected(registration.error());
     }
     if (auto registration = register_paste_buffer_commands(command_registry); !registration) {
+        return std::unexpected(registration.error());
+    }
+    if (auto registration = register_window_commands(command_registry); !registration) {
+        return std::unexpected(registration.error());
+    }
+    if (auto registration = register_window_link_commands(command_registry); !registration) {
         return std::unexpected(registration.error());
     }
     auto command_catalog = std::move(command_registry).freeze(*native_operations);

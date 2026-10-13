@@ -157,6 +157,44 @@ TEST(ClientView, RedrawComposesCompleteWindowLayout) {
     EXPECT_TRUE(view.needs_redraw(changed_pane, {2, 5}));
 }
 
+/** @brief Window selection resizes the new shared window to the latest attached client before
+ * committing selection. */
+TEST(ClientEntities, WindowSelectionAppliesAttachedTerminalSize) {
+    int master = -1;
+    int slave = -1;
+    ASSERT_EQ(::openpty(&master, &slave, nullptr, nullptr, nullptr), 0);
+    posix::OwnedFd master_owner(master);
+    posix::OwnedFd slave_owner(slave);
+    const winsize initial_size{10, 40, 0, 0};
+    ASSERT_EQ(::ioctl(slave_owner.get(), TIOCSWINSZ, &initial_size), 0);
+    Server server;
+    const auto session = server.create_session("windows", "/bin/cat");
+    ASSERT_TRUE(session);
+    const auto link = server.create_window(session->id, 7, "second", "/bin/cat");
+    ASSERT_TRUE(link);
+    const auto client = StockClientLifecycle::accept(server);
+    ASSERT_TRUE(client);
+    auto compatibility = protocol::tmux::TmuxCompatibilityPolicy{}.assess(
+        protocol::tmux::legacy_profile,
+        protocol::tmux::ProtocolDirection::stock_client_to_cxx_server,
+        protocol::tmux::ConnectionMode::interactive);
+    ASSERT_TRUE(StockClientLifecycle::identify_terminal(
+        server, *client, posix::OwnedFd(::dup(slave_owner.get())),
+        posix::OwnedFd(::dup(slave_owner.get())), std::move(compatibility)));
+    ASSERT_TRUE(server.attach_client(*client, session->id));
+    ASSERT_TRUE(server.select_window(link->id));
+    const auto window = server.window(link->window);
+    ASSERT_TRUE(window);
+    EXPECT_EQ(window->rows, 10U);
+    EXPECT_EQ(window->columns, 40U);
+    const auto panes = server.panes(window->id);
+    ASSERT_TRUE(panes);
+    ASSERT_EQ(panes->size(), 1U);
+    EXPECT_EQ(panes->front().rows, 10U);
+    EXPECT_EQ(panes->front().columns, 40U);
+    EXPECT_EQ(server.clients().front().session, session->id);
+}
+
 /** @brief Disconnecting one attached client restores its TTY without destroying retained work. */
 TEST(ClientEntities, AttachmentOwnsOnlyClientRelationship) {
     int master = -1;

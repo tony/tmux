@@ -227,6 +227,58 @@ def test_registered_stock_command_subset(server: str, fixture: str) -> None:
 
 
 @pytest.mark.parametrize("fixture", ["TMUX_CXX_STOCK_CLIENT", "TMUX_CXX_MODERN_STOCK_CLIENT"])
+def test_stock_window_creation_and_selection(server: str, fixture: str) -> None:
+    """Real clients create detached windows, choose free indices, and select memberships."""
+    base = [os.environ[fixture], "-N", "-f", "/dev/null", "-S", server]
+    environment = stock_fixture_environment(os.environ[fixture])
+    with tmux_cxx.ServerConnection(server) as observer:
+        session = observer.create_session("windows", "/bin/cat")
+        subprocess.run(
+            [*base, "new-window", "-d", "-t", "windows:7", "-n", "shared", "/bin/cat"],
+            env=environment,
+            check=True,
+            capture_output=True,
+            timeout=0.9,
+        )
+        links = observer.window_links(session.id)
+        assert [link.index for link in links] == [0, 7]
+        assert observer.sessions()[0].link == session.link
+        subprocess.run(
+            [*base, "selectw", "-t", "windows:7"],
+            env=environment,
+            check=True,
+            capture_output=True,
+            timeout=0.9,
+        )
+        selected = observer.sessions()[0]
+        assert selected.link == links[1].id
+        assert selected.window == links[1].window
+        observer.send_pane_input(selected.pane, b"stock-window-pty\n")
+        assert b"stock-window-pty" in observer.wait_pane_output(selected.pane, b"stock-window-pty")
+        subprocess.run(
+            [*base, "neww", "-t", f"${session.id}", "-n", "automatic-index", "/bin/cat"],
+            env=environment,
+            check=True,
+            capture_output=True,
+            timeout=0.9,
+        )
+        links = observer.window_links(session.id)
+        assert [link.index for link in links] == [0, 1, 7]
+        assert observer.sessions()[0].link == links[1].id
+        rejected = subprocess.run(
+            [*base, "new-window", "-k", "-t", "windows:1", "-n", "rejected", "/bin/cat"],
+            env=environment,
+            capture_output=True,
+            timeout=0.9,
+        )
+        assert rejected.returncode != 0
+        assert [link.id for link in observer.window_links(session.id)] == [
+            link.id for link in links
+        ]
+        assert observer.window(links[1].window).name == "automatic-index"
+
+
+@pytest.mark.parametrize("fixture", ["TMUX_CXX_STOCK_CLIENT", "TMUX_CXX_MODERN_STOCK_CLIENT"])
 def test_stock_attach_routes_terminal_and_preserves_session(server: str, fixture: str) -> None:
     """A stock client sees every split pane, routes active input, and restores on detach."""
     with tmux_cxx.ServerConnection(server) as observer:
@@ -312,6 +364,23 @@ def test_stock_attach_routes_terminal_and_preserves_session(server: str, fixture
             os.write(master, b"left-client-input\n")
             assert b"left-client-input" in read_terminal_until(master, b"left-client-input")
             observer.wait_pane_output(session.pane, b"left-client-input", 500)
+            membership = observer.create_window(
+                session.id, 7, "next", "printf 'next-window-ready\\n'; exec /bin/cat"
+            )
+            next_pane = observer.window(membership.window).pane
+            observer.wait_pane_output(next_pane, b"next-window-ready", 500)
+            discard_terminal_output(master)
+            observer.select_window(membership.id)
+            assert b"next-window-ready" in read_terminal_until(master, b"next-window-ready")
+            next_window = observer.window(membership.window)
+            assert (next_window.rows, next_window.columns) == (12, 42)
+            os.write(master, b"next-window-input\n")
+            assert b"next-window-input" in read_terminal_until(master, b"next-window-input")
+            observer.wait_pane_output(next_pane, b"next-window-input", 500)
+            assert b"next-window-input" not in observer.read_pane_output(session.pane)
+            discard_terminal_output(master)
+            observer.select_window(session.link)
+            assert b"left-pane-ready" in read_terminal_until(master, b"left-pane-ready")
             detached = observer.detach_client(attached[0].id)
             assert detached.session is None
             assert detached.detached_from == "interactive"

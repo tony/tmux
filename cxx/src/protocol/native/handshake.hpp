@@ -17,7 +17,7 @@ constexpr std::uint64_t known_capabilities =
     capability_mask(Capability::stock_client_compatibility) |
     capability_mask(Capability::pane_layout) | capability_mask(Capability::paste_buffers) |
     capability_mask(Capability::metadata_observation) |
-    capability_mask(Capability::session_options);
+    capability_mask(Capability::session_options) | capability_mask(Capability::window_lifecycle);
 ///< Declared native capability bits in version one.
 
 /** @brief Own a server-advertised operation without retaining received traffic. */

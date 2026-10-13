@@ -25,9 +25,10 @@ struct SetOptionCommand {
     };
     /** @brief Declare tmux's short set-option spelling. */
     static constexpr std::array<std::string_view, 1> aliases{"set"};
+    static constexpr std::array operations{
+        SetSessionOption::description.id}; ///< Required native operation.
     /** @brief Map set-option spellings to the shared session-option operation. */
-    static constexpr commands::CommandDescription description{"set-option", aliases,
-                                                              SetSessionOption::description.id};
+    static constexpr commands::CommandDescription description{"set-option", aliases, operations};
     /** @brief Require exact global or targeted assignment syntax before option parsing or effects.
      */
     static Result<Request> read(std::span<const std::string> arguments);

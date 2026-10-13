@@ -265,6 +265,30 @@ async function serverOperations(): Promise<void> {
       (membership) => membership.index,
     ),
   ).toEqual([0, 7]);
+  const createdWindow = await client.createWindow(shared.id, 9, "node-window", "/bin/cat");
+  expect(createdWindow).toMatchObject({ session: shared.id, index: 9 });
+  const selectedWindow = await client.selectWindow(createdWindow.id);
+  expect(selectedWindow).toMatchObject({
+    id: shared.id,
+    link: createdWindow.id,
+    window: createdWindow.window,
+  });
+  const newPane = (await client.window(createdWindow.window)).pane;
+  await client.sendPaneInput(newPane, Buffer.from("node-window-pty\n"));
+  expect(
+    (await client.waitPaneOutput(newPane, Buffer.from("node-window-pty"))).includes(
+      Buffer.from("node-window-pty"),
+    ),
+  ).toBe(true);
+  await expect(client.createWindow(shared.id, 9, "rejected")).rejects.toMatchObject({
+    code: "duplicate_index",
+    operation: "window.create",
+  });
+  await client.unlinkWindow(createdWindow.id);
+  await expect(client.selectWindow(createdWindow.id)).rejects.toMatchObject({
+    code: "not_found",
+    operation: "window.select",
+  });
   client.close();
   const observer = new ServerConnection(socket);
   expect((await observer.sessions())[0].id).toBe(session.id);

@@ -962,3 +962,69 @@ any gate.
 | clang-tidy and fatal negative probe | PASS | 73.613 s |
 | Offline installed package consumers | PASS | 53.277 s |
 | Standalone source, install, adapters, and native consumer | PASS | 45.020 s |
+
+## 2026-10-13: Window creation and membership selection
+
+`CreateWindow` owns native identity 29 and creates a shared window, its first
+session membership, and one PTY program at an explicit unused index. Creation
+preserves current selection. `SelectWindow` owns identity 30, resolves a live
+`WindowLinkId`, changes its owning session's selection, and returns that
+session's copied state. Both declare the `window_lifecycle` capability and
+have entity-local registrations and native connection adapters. Python and
+Node expose the same C++ operations with generated declarations.
+
+`NewWindowCommand` composes creation and selection; `-d` preserves selection.
+Its explicit target is `session[:index]`, and an omitted index chooses the
+first free index from zero. `SelectWindowCommand` resolves an exact
+`session:index` at execution. Names and unsupported syntax are checked before
+effects. Selection applies the existing latest-client sizing policy before
+committing the membership change. A selection failure after stock creation
+retains the created window and program.
+
+The first command test failed because `new-window` was unregistered. Python
+and Node then failed because their creation methods were absent. Each passes
+with actual PTY traffic. The startup test exposed that a command could declare
+only one required operation: freezing succeeded without `SelectWindow`.
+`CommandDescription` now borrows an immutable array of every required native
+identity, and startup validates every entry. The negative case now rejects
+the incomplete catalog. A terminal-size test first observed the new window
+at 24 by 80 cells; it now observes the attached client's 10 by 40 cells.
+
+Ruling: Keep creation and selection separate native operations. Stock
+`new-window` composes them through explicit operation dependencies; this keeps
+session membership ownership visible. Cost if wrong: revise creation's native
+contract and both generated language interfaces.
+
+The restored host is Ubuntu 26.04.1. The exact tmux 3.4 fixture initially
+failed to load its legacy terminal and utmp libraries. Explicit provisioning
+now verifies and extracts those libraries locally, and only that fixture
+receives their search path. The unmodified tmux 3.7 reference was rebuilt with
+recorded host Autotools and Make versions. The package check also exposed a
+missing release configuration and an implicit host compiler. Prepack now
+configures its declared preset; Python sdist verification selects locked
+Clang explicitly.
+
+Brief checks rejected an oversized generated line and a duplicated creation
+contract. The canonical brief is short, and the server declaration references
+it. All authored callables pass the existing documentation safeguards.
+
+| Gate | Result | Whole-command wall time |
+|---|---|---:|
+| Focused native window, command, and size cases | PASS; 11 cases | 0.01 s |
+| Real tmux 3.4/3.7 creation, selection, redraw, and input | PASS; 4 cases | 0.64 s |
+| Mid native, Python, Node, types, generation, formatting, and integration | PASS; 86 native cases | 4.99 s |
+| Full GCC native and binding CTest suite | PASS; 91 tests | 4.02 s |
+| Strict ASan/UBSan/LeakSanitizer suite and controlled negatives | PASS | 88.31 s |
+| Bounded native, tmux, and terminal fuzz replay | PASS; 6,000 runs | 2.01 s |
+| Doxygen/compiler/language documentation and controlled negatives | PASS | 154.05 s |
+| clang-tidy and fatal negative probe | PASS | 115.67 s |
+| Offline wheel, sdist, and npm consumer checks | PASS | 43.52 s |
+| Standalone source, install, adapters, and native consumer | PASS | 66.82 s |
+
+The full objective remains open. Interactive window-navigation bindings,
+automatic naming, implicit and relative targets, window-selection events,
+hooks, broader command grammar, copy mode, reconnect/recovery, complete binding
+lifetimes, older profiles, and the remaining platform and architecture audit
+still require implementation or verification. Installed package checks here
+prove their configured build, loading, and type contracts; they do not prove
+every installed runtime and daemon-discovery requirement.
