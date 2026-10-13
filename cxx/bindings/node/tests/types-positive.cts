@@ -2,6 +2,7 @@ import {
   ServerConnection,
   type PaneSnapshot,
   type PaneTextSnapshot,
+  type PasteBufferSnapshot,
   type SessionEventStream,
   type SessionEventStreamItem,
   type SessionSnapshot,
@@ -38,6 +39,18 @@ async function consumer(client: ServerConnection): Promise<SessionSnapshot> {
   const nextWindow: SessionSnapshot = await client.nextWindow(session.id);
   const previousWindow: SessionSnapshot = await client.previousWindow(session.id);
   const resized: PaneSnapshot = await client.resizePane(pane, "right");
+  const automatic: PasteBufferSnapshot | null = await client.addPasteBuffer(Buffer.from("typed"));
+  const buffers: PasteBufferSnapshot[] = await client.pasteBuffers();
+  await client.pasteTopBuffer(pane);
+  if (automatic) {
+    const revision: bigint = automatic.revision;
+    const byteCount: number = automatic.byteCount;
+    const isAutomatic: boolean = automatic.automatic;
+    void revision;
+    void byteCount;
+    void isAutomatic;
+  }
+  void buffers;
   void resized;
   void nextWindow;
   void previousWindow;

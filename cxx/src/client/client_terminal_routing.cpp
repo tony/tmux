@@ -80,7 +80,8 @@ ClientTerminalRouting::route_ready_io(Server &server, ClientId client_id,
         if (*key_input == key_table::KeyBindingEffect::client_detached) {
             return ClientTerminalRouteOutcome::routed;
         }
-        if (*key_input != key_table::KeyBindingEffect::client_selection_changed) {
+        if (*key_input != key_table::KeyBindingEffect::client_selection_changed &&
+            *key_input != key_table::KeyBindingEffect::pane_program_input_changed) {
             break;
         }
     }

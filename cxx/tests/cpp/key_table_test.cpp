@@ -153,6 +153,87 @@ TEST(ClientKeyInput, BindingBackpressurePreservesPrefixTable) {
     EXPECT_EQ(retryable_binding_calls, 2);
 }
 
+/** @brief Input-producing bindings preserve coalesced ordinary bytes until capacity is resolved
+ * again. */
+TEST(ClientKeyInput, ProgramInputBindingsRetainSuffixAtCapacity) {
+    for (const bool paste : {true, false}) {
+        SCOPED_TRACE(paste ? "paste-buffer" : "send-prefix");
+        Server server;
+        const auto session = server.create_session("input-capacity", "/bin/cat");
+        ASSERT_TRUE(session);
+        const auto catalogs = build_server_api_catalogs();
+        ASSERT_TRUE(catalogs);
+        const std::string retained(262143, 'x');
+        if (paste) {
+            ASSERT_TRUE(server.add_paste_buffer(retained));
+        } else {
+            ASSERT_TRUE(server.set_paste_buffer("prefill", retained));
+            ASSERT_TRUE(server.paste_buffer_into_pane("prefill", session->pane));
+        }
+        ClientKeyInput input;
+        const auto empty_capacity = input.read_capacity();
+        ASSERT_TRUE(input.append(paste ? "\x02]xx" : "\x02\x02xx"));
+        const ClientSelection selection{session->id, session->link, session->window, session->pane};
+
+        const auto admitted = input.route_pending(server, ClientId{1}, selection, default_prefixes,
+                                                  paste ? 262144 : 1, catalogs->key_tables);
+
+        EXPECT_TRUE(admitted);
+        if (!admitted) {
+            continue;
+        }
+        EXPECT_EQ(*admitted, KeyBindingEffect::pane_program_input_changed);
+        EXPECT_EQ(input.read_capacity(), empty_capacity - 2);
+        const auto resumed = input.route_pending(server, ClientId{1}, selection, default_prefixes,
+                                                 paste ? 1 : 0, catalogs->key_tables);
+        ASSERT_TRUE(resumed);
+        EXPECT_EQ(input.read_capacity(), empty_capacity - (paste ? 1 : 2));
+        const auto full = server.send_pane_input(session->pane, "x");
+        ASSERT_FALSE(full);
+        EXPECT_EQ(full.error().code, TmuxErrorCode::backpressure);
+    }
+}
+
+/** @brief Resolving capacity between paste bindings preserves the same 64-decision turn limit. */
+TEST(ClientKeyInput, ProgramInputBindingsShareRoutingAllowance) {
+    Server server;
+    const auto session = server.create_session("input-fairness", "/bin/cat");
+    ASSERT_TRUE(session);
+    ASSERT_TRUE(server.add_paste_buffer("x"));
+    const auto catalogs = build_server_api_catalogs();
+    ASSERT_TRUE(catalogs);
+    ClientKeyInput input;
+    const auto empty_capacity = input.read_capacity();
+    std::string burst;
+    for (unsigned int index = 0; index < 64; ++index) {
+        burst.append("\x02]");
+    }
+    ASSERT_TRUE(input.append(burst));
+    const ClientSelection selection{session->id, session->link, session->window, session->pane};
+
+    for (unsigned int index = 0; index < 32; ++index) {
+        const auto effect = input.route_pending(server, ClientId{1}, selection, default_prefixes,
+                                                262144 - index, catalogs->key_tables);
+        ASSERT_TRUE(effect);
+        EXPECT_EQ(*effect, KeyBindingEffect::pane_program_input_changed);
+    }
+
+    EXPECT_EQ(input.read_capacity(), empty_capacity - 64);
+    EXPECT_TRUE(input.routing_deferred());
+    const auto exhausted = input.route_pending(server, ClientId{1}, selection, default_prefixes,
+                                               262112, catalogs->key_tables);
+    ASSERT_TRUE(exhausted);
+    EXPECT_EQ(*exhausted, KeyBindingEffect::client_selection_unchanged);
+    EXPECT_EQ(input.read_capacity(), empty_capacity - 64);
+    input.begin_routing_turn();
+    const auto resumed = input.route_pending(server, ClientId{1}, selection, default_prefixes,
+                                             262112, catalogs->key_tables);
+    ASSERT_TRUE(resumed);
+    EXPECT_EQ(*resumed, KeyBindingEffect::pane_program_input_changed);
+    EXPECT_EQ(input.read_capacity(), empty_capacity - 62);
+    EXPECT_FALSE(input.routing_deferred());
+}
+
 /** @brief Default percent and quote bindings split the selected pane through `SplitPane`. */
 TEST(ClientKeyInput, DefaultSplitBindingsUseTypedPaneOperation) {
     Server server;

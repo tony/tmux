@@ -30,7 +30,12 @@ StockConnectionCompatibility TmuxCompatibilityPolicy::assess(const TmuxProtocolP
         "paste-buffer names require UTF-8, at most 128 bytes, and no control characters");
     report.limitations.push_back(
         "at most 50 explicitly named paste buffers of 256 KiB each are retained");
-    report.limitations.push_back("automatic paste buffers and buffer listing are unsupported");
+    report.limitations.push_back(
+        "at most 50 automatic paste buffers of 256 KiB each are retained; automatic creation "
+        "evicts only the oldest automatic buffer; stock list-buffers is unsupported");
+    report.limitations.push_back(
+        "paste preserves bytes except LF-to-CR separators; tmux 3.7 default escaping of unsafe "
+        "bytes is not implemented");
     report.limitations.push_back(
         "new-window supports [-d] -t session[:index] -n literal-name [command]; omitted indices "
         "start at zero, and implicit targets, automatic naming, formats, and other flags are "
@@ -59,7 +64,8 @@ StockConnectionCompatibility TmuxCompatibilityPolicy::assess(const TmuxProtocolP
         "window names require nonempty UTF-8, at most 128 bytes, and no ASCII controls or DEL; "
         "hooks and window-selection notifications remain unsupported");
     report.limitations.push_back(
-        "paste-buffer requires -b name and -t %pane; delete-after, custom separators, raw "
+        "paste-buffer requires -t %pane and accepts an optional -b name; default paste selects "
+        "the newest automatic buffer; delete-after, custom separators, raw "
         "paste, and bracketed paste are unsupported");
     report.limitations.push_back(
         "set-option supports only -g and exact -t session assignments for prefix and prefix2; "
@@ -120,7 +126,8 @@ StockConnectionCompatibility TmuxCompatibilityPolicy::assess(const TmuxProtocolP
                                      "capability-sensitive glyphs or styles");
         report.limitations.push_back(
             "the prefix table contains C-b send-prefix, quote and percent split, d detach, "
-            "o next-pane, n/p window navigation, and digit window indices; missing indices are "
+            "o next-pane, ] default paste, n/p window navigation, and digit window indices; "
+            "missing indices are "
             "ignored without status feedback; creation keys and configurable tables remain "
             "unsupported");
         report.limitations.push_back(

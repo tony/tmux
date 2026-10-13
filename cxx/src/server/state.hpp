@@ -3,7 +3,7 @@
 #include "client/client.hpp"
 #include "pane/pane.hpp"
 #include "pane/program.hpp"
-#include "paste_buffer/paste_buffer.hpp"
+#include "paste_buffer/paste_buffer_store.hpp"
 #include "session/session.hpp"
 #include "session/session_event_journal.hpp"
 #include "session/session_options.hpp"
@@ -39,8 +39,8 @@ struct Server::State {
         pane_programs; ///< Owned direct children retained through termination and reaping.
     std::map<ClientId, std::unique_ptr<Client>>
         clients; ///< Connection-lifetime clients independent of persistent session ownership.
-    std::vector<PasteBuffer>
-        paste_buffers; ///< Server-global named buffers in most-recently-stored order.
+    PasteBufferStore
+        paste_buffer_store; ///< Bounded automatic and named buffers in newest-first storage order.
     SessionEventJournal
         session_event_journal; ///< Bounded committed facts for owner-qualified observers.
     bool shutdown_attempted =
@@ -59,10 +59,6 @@ struct Server::State {
     /** @brief Attempt every prior pane size; already delivered program signals remain observable.
      */
     Result<void> restore_pane_terminal_sizes(std::span<const PaneGeometry> geometries);
-    /** @brief Find one named paste buffer without changing its most-recent ordering. */
-    std::vector<PasteBuffer>::iterator find_paste_buffer(std::string_view name);
-    /** @brief Find one named paste buffer through a read-only server state. */
-    std::vector<PasteBuffer>::const_iterator find_paste_buffer(std::string_view name) const;
     /** @brief Release one membership and destroy its window only after the final membership
      * disappears. */
     void remove_window_link(WindowLinkId window_link_id);

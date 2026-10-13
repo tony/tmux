@@ -287,8 +287,29 @@ async function serverOperations(): Promise<void> {
     code: "not_found",
   });
   const pasteBytes = Buffer.from([0x62, 0x00, 0xff]);
+  await client.pasteTopBuffer(session.pane);
+  expect(await client.addPasteBuffer(Buffer.alloc(0))).toBeNull();
+  expect(await client.pasteBuffers()).toEqual([]);
+  const automaticCommand = Buffer.from("printf 'automatic-%s\\n' 'node-paste'\n");
+  const automatic = await client.addPasteBuffer(automaticCommand);
+  expect(automatic).toMatchObject({
+    name: "buffer0",
+    byteCount: automaticCommand.length,
+    automatic: true,
+  });
+  expect(typeof automatic?.revision).toBe("bigint");
   await client.setPasteBuffer("node-binary", pasteBytes);
   expect(await client.readPasteBuffer("node-binary")).toEqual(pasteBytes);
+  expect(await client.pasteBuffers()).toEqual([
+    expect.objectContaining({ name: "node-binary", automatic: false }),
+    automatic,
+  ]);
+  await client.pasteTopBuffer(session.pane);
+  expect(
+    (await client.waitPaneOutput(session.pane, Buffer.from("automatic-node-paste"))).includes(
+      Buffer.from("automatic-node-paste"),
+    ),
+  ).toBe(true);
   const pasteCommand = Buffer.from("printf 'node-paste-%s\\n' 'token'\n");
   await client.setPasteBuffer("node-command", pasteCommand);
   await client.pasteBufferIntoPane("node-command", session.pane);
@@ -302,6 +323,11 @@ async function serverOperations(): Promise<void> {
     code: "not_found",
     operation: "paste_buffer.read",
   });
+  const automaticBinary = await client.addPasteBuffer(pasteBytes);
+  if (automaticBinary === null) {
+    throw new Error("Nonempty automatic buffer input returned no metadata");
+  }
+  expect(await client.readPasteBuffer(automaticBinary.name)).toEqual(pasteBytes);
   const shared = await client.createSession("shared", "/bin/cat");
   await expect(client.linkWindow(session.window, shared.id, 2147483648)).rejects.toMatchObject({
     code: "invalid_argument",

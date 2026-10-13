@@ -196,6 +196,27 @@ class SessionEventStream:
     ) -> None:
         """Close the stream without suppressing the context's exception."""
 
+class PasteBufferSnapshot:
+    """
+    Copy server-global paste-buffer metadata without retaining its stored bytes.
+    """
+
+    @property
+    def name(self) -> str:
+        """Name resolved against the current server store."""
+
+    @property
+    def byte_count(self) -> int:
+        """Stored byte count, bounded to 256 KiB."""
+
+    @property
+    def automatic(self) -> bool:
+        """Automatic buffers participate in default paste and eviction."""
+
+    @property
+    def revision(self) -> int:
+        """Server mutation revision at the buffer's last replacement."""
+
 class WindowSnapshot:
     """
     Materialized window state shared by all sessions linked to that window.
@@ -582,6 +603,16 @@ class ServerConnection:
     def set_paste_buffer(self, name: str, bytes: bytes) -> None:
         """Store up to 256 KiB under an explicit server-global paste-buffer name."""
 
+    def add_paste_buffer(self, bytes: bytes) -> PasteBufferSnapshot | None:
+        """
+        Create a nonempty automatic buffer, evicting the oldest automatic entry at capacity.
+        """
+
+    def paste_buffers(self) -> list[PasteBufferSnapshot]:
+        """
+        Copy named and automatic buffer metadata in newest-first storage order.
+        """
+
     def read_paste_buffer(self, name: str) -> bytes:
         """
         Copy arbitrary bytes from one explicitly named server-global paste buffer.
@@ -592,6 +623,11 @@ class ServerConnection:
 
     def paste_buffer_into_pane(self, name: str, pane: int) -> None:
         """Queue one named buffer for a pane using tmux's default line separator."""
+
+    def paste_top_buffer(self, pane: int) -> None:
+        """
+        Queue the newest automatic buffer for a live pane; an empty automatic store adds no input.
+        """
 
     def send_pane_input(self, pane: int, bytes: bytes) -> None:
         """

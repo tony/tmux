@@ -75,6 +75,25 @@ async function exerciseInstalledServer(): Promise<void> {
           ],
     );
     await connection.renameSession(session, "installed-node");
+    const buffers = await connection.pasteBuffers();
+    assert(
+      buffers.some(
+        /** Observe the automatic buffer created by the independently installed Python product. */
+        (buffer) => buffer.automatic && buffer.name === "buffer0",
+      ),
+    );
+    const automaticBytes = Buffer.from(`printf 'installed-buffer-%s\\n' '${outputToken}'\n`);
+    const automatic = await connection.addPasteBuffer(automaticBytes);
+    assert(automatic && automatic.automatic);
+    assert.equal(automatic.byteCount, automaticBytes.length);
+    assert.equal(typeof automatic.revision, "bigint");
+    assert.deepEqual(await connection.readPasteBuffer(automatic.name), automaticBytes);
+    await connection.pasteTopBuffer(pane);
+    assert(
+      (
+        await connection.waitPaneOutput(pane, Buffer.from(`installed-buffer-${outputToken}`))
+      ).includes(Buffer.from(`installed-buffer-${outputToken}`)),
+    );
     const output = Buffer.from(`installed-${outputToken}`);
     await connection.sendPaneInput(
       pane,

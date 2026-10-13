@@ -2,6 +2,7 @@ from tmux_cxx import (
     AsyncSessionEventStream,
     PaneResizeDirection,
     PaneSnapshot,
+    PasteBufferSnapshot,
     ServerConnection,
     SessionEventGap,
     SessionEventRecord,
@@ -49,6 +50,14 @@ def consumer(client: ServerConnection) -> SessionSnapshot:
     assert next_window.id == previous_window.id
     resized: PaneSnapshot = client.resize_pane(pane, PaneResizeDirection.RIGHT)
     assert resized.id == pane
+    automatic: PasteBufferSnapshot | None = client.add_paste_buffer(b"typed bytes")
+    buffers: list[PasteBufferSnapshot] = client.paste_buffers()
+    client.paste_top_buffer(pane)
+    if automatic is not None:
+        assert automatic.byte_count > 0 and automatic.automatic
+        revision: int = automatic.revision
+        assert revision > 0
+    assert buffers is not None
     assert compatibility.profile
     assert baseline.next_event.server_instance
     if isinstance(event, SessionEventRecord):

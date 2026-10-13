@@ -30,7 +30,8 @@ class ClientTerminalRouting {
   public:
     /** @brief Capture attached client descriptors until the next client lifecycle mutation. */
     static std::vector<ClientTerminalRoute> capture(const Server &server);
-    /** @brief Route terminal I/O with one shared key allowance across target changes. */
+    /** @brief Route terminal I/O with one shared key allowance across target and capacity changes.
+     */
     static ClientTerminalRouteOutcome route_ready_io(Server &server, ClientId client_id,
                                                      const key_table::KeyTableCatalog &key_tables,
                                                      short input_events, short output_events);

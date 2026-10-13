@@ -18,6 +18,6 @@ SendPrefixKeyBinding::execute(key_table::KeyBindingInvocation &invocation) {
         !sent) {
         return std::unexpected(sent.error());
     }
-    return key_table::KeyBindingEffect::client_selection_unchanged;
+    return key_table::KeyBindingEffect::pane_program_input_changed;
 }
 } // namespace tmux_cxx

@@ -67,15 +67,6 @@ PaneSnapshot Server::State::pane_snapshot(const Window &window,
             window.revision};
 }
 
-std::vector<PasteBuffer>::iterator Server::State::find_paste_buffer(std::string_view name) {
-    return std::ranges::find(paste_buffers, name, &PasteBuffer::name);
-}
-
-std::vector<PasteBuffer>::const_iterator
-Server::State::find_paste_buffer(std::string_view name) const {
-    return std::ranges::find(paste_buffers, name, &PasteBuffer::name);
-}
-
 void Server::State::remove_window_link(WindowLinkId window_link_id) {
     const auto window_link = window_links.at(window_link_id);
     auto &session = sessions.at(window_link.session);
@@ -147,7 +138,7 @@ Result<void> Server::shutdown() {
         program.stop();
     }
     state_->clients.clear();
-    state_->paste_buffers.clear();
+    state_->paste_buffer_store.clear();
     state_->panes.clear();
     state_->window_links.clear();
     state_->windows.clear();

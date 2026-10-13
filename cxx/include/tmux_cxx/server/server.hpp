@@ -5,6 +5,7 @@
 #include <tmux_cxx/pane/pane_text_snapshot.hpp>
 #include <tmux_cxx/pane/resize_direction.hpp>
 #include <tmux_cxx/pane/split_orientation.hpp>
+#include <tmux_cxx/paste_buffer/paste_buffer_snapshot.hpp>
 #include <tmux_cxx/protocol/tmux/stock_connection_compatibility.hpp>
 #include <tmux_cxx/session/session_prefix_keys.hpp>
 #include <tmux_cxx/session/session_snapshot.hpp>
@@ -121,6 +122,10 @@ class Server {
      *
      * Empty data succeeds without changing the buffer store. */
     Result<void> set_paste_buffer(std::string name, std::string bytes);
+    /** @copydoc tmux_cxx::ServerConnection::add_paste_buffer */
+    Result<std::optional<PasteBufferSnapshot>> add_paste_buffer(std::string bytes);
+    /** @copybrief tmux_cxx::ServerConnection::paste_buffers */
+    Result<std::vector<PasteBufferSnapshot>> paste_buffers() const;
     /** @brief Copy arbitrary bytes from one explicitly named server-global paste buffer. */
     Result<std::string> read_paste_buffer(std::string_view name) const;
     /** @brief Delete one explicitly named server-global paste buffer. */
@@ -128,6 +133,8 @@ class Server {
     /** @brief Replace line feeds with carriage returns and atomically queue one named buffer for a
      * pane. */
     Result<void> paste_buffer_into_pane(std::string_view name, PaneId pane);
+    /** @copybrief tmux_cxx::ServerConnection::paste_top_buffer */
+    Result<void> paste_top_buffer(PaneId pane);
     /** @copydoc tmux_cxx::ServerConnection::send_pane_input */
     Result<void> send_pane_input(PaneId pane, std::string_view bytes);
     /** @brief Read retained raw PTY output; report a gap if earlier bytes were discarded. */

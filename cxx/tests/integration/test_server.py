@@ -422,6 +422,41 @@ def test_named_paste_buffers_preserve_bytes_and_drive_panes(server: str) -> None
         assert failure.value.operation == "paste_buffer.read"
 
 
+def test_automatic_paste_buffers_skip_named_buffers(server: str) -> None:
+    """Automatic creation, metadata, and default paste share the compiled server store."""
+    with tmux_cxx.ServerConnection(server) as connection:
+        session = connection.create_session("automatic-paste", "/bin/sh")
+        connection.paste_top_buffer(session.pane)
+        assert connection.add_paste_buffer(b"") is None
+        assert connection.paste_buffers() == []
+        command = b"printf 'automatic-%s\\n' 'python-paste'\n"
+        created = connection.add_paste_buffer(command)
+        assert isinstance(created, tmux_cxx.PasteBufferSnapshot)
+        assert created.name == "buffer0"
+        assert created.byte_count == len(command)
+        assert created.automatic and created.revision > 0
+        connection.set_paste_buffer("named", b"not a shell command")
+        metadata = connection.paste_buffers()
+        assert [buffer.name for buffer in metadata] == ["named", "buffer0"]
+        assert [buffer.automatic for buffer in metadata] == [False, True]
+        assert metadata[1].revision == created.revision
+        connection.paste_top_buffer(session.pane)
+        assert b"automatic-python-paste" in connection.wait_pane_output(
+            session.pane, b"automatic-python-paste", 500
+        )
+        binary = connection.add_paste_buffer(b"binary\x00\xff")
+        assert binary is not None
+        assert connection.read_paste_buffer(binary.name) == b"binary\x00\xff"
+        connection.kill_session(session.id)
+        with pytest.raises(tmux_cxx.TmuxError) as stale:
+            connection.paste_top_buffer(session.pane)
+        assert stale.value.code == "not_found"
+        assert stale.value.operation == "paste_buffer.paste_top"
+    with pytest.raises(tmux_cxx.TmuxError) as closed:
+        connection.add_paste_buffer(b"closed")
+    assert closed.value.code == "closed"
+
+
 def test_removing_hup_ignoring_program_keeps_server_responsive(server: str) -> None:
     """Pane removal admits requests while the server terminates and reaps a HUP-ignoring child."""
     with tmux_cxx.ServerConnection(server) as connection:

@@ -5,6 +5,7 @@
 #include <tmux_cxx/pane/pane_text_snapshot.hpp>
 #include <tmux_cxx/pane/resize_direction.hpp>
 #include <tmux_cxx/pane/split_orientation.hpp>
+#include <tmux_cxx/paste_buffer/paste_buffer_snapshot.hpp>
 #include <tmux_cxx/protocol/tmux/stock_connection_compatibility.hpp>
 #include <tmux_cxx/session/session_event.hpp>
 #include <tmux_cxx/session/session_event_stream.hpp>
@@ -106,12 +107,21 @@ class ServerConnection {
     Result<std::vector<PaneSnapshot>> panes(WindowId window);
     /** @brief Store up to 256 KiB under an explicit server-global paste-buffer name. */
     Result<void> set_paste_buffer(std::string name, std::string bytes);
+    /** @brief Create a nonempty automatic buffer, evicting the oldest automatic entry at capacity.
+     *
+     * Each buffer allows 256 KiB; at most 50 automatic buffers remain. */
+    Result<std::optional<PasteBufferSnapshot>> add_paste_buffer(std::string bytes);
+    /** @brief Copy named and automatic buffer metadata in newest-first storage order. */
+    Result<std::vector<PasteBufferSnapshot>> paste_buffers();
     /** @brief Copy arbitrary bytes from one explicitly named server-global paste buffer. */
     Result<std::string> read_paste_buffer(std::string name);
     /** @brief Delete one explicitly named server-global paste buffer. */
     Result<void> delete_paste_buffer(std::string name);
     /** @brief Queue one named buffer for a pane using tmux's default line separator. */
     Result<void> paste_buffer_into_pane(std::string name, PaneId pane);
+    /** @brief Queue the newest automatic buffer for a live pane; an empty automatic store adds no
+     * input. */
+    Result<void> paste_top_buffer(PaneId pane);
     /** @brief Queue up to 64 KiB of input; accepted bytes may be delivered after completion.
      *
      * Backpressure rejects all request bytes before effects. */

@@ -3,12 +3,13 @@
 #include "pane/pane_target.hpp"
 
 #include <optional>
+#include <type_traits>
 
 namespace tmux_cxx {
 namespace {
 /** @brief Return the exact stock subset advertised by this command adapter. */
 TmuxError paste_buffer_syntax_error() {
-    return {TmuxErrorCode::invalid_argument, "supported syntax: paste-buffer -b name -t %pane"};
+    return {TmuxErrorCode::invalid_argument, "supported syntax: paste-buffer [-b name] -t %pane"};
 }
 } // namespace
 
@@ -39,16 +40,27 @@ PasteBufferCommand::read(std::span<const std::string> arguments) {
             }
         }
     }
-    if (!name || !pane) {
+    if (!pane) {
         return std::unexpected(paste_buffer_syntax_error());
     }
-    return Request{std::move(*name), *pane};
+    if (name) {
+        return Request{PasteBufferIntoPane::Request{std::move(*name), *pane}};
+    }
+    return Request{PasteTopBuffer::Request{*pane}};
 }
 
 Result<commands::CommandOutcome>
 PasteBufferCommand::execute(commands::CommandInvocation &invocation, Request request) {
-    if (auto pasted = PasteBufferIntoPane::execute(invocation.server, std::move(request));
-        !pasted) {
+    const auto pasted = std::visit(
+        /** @brief Invoke named or automatic paste through the parsed request's operation. */
+        [&invocation](auto typed_request) -> Result<void> {
+            using Operation =
+                std::conditional_t<std::is_same_v<decltype(typed_request), PasteTopBuffer::Request>,
+                                   PasteTopBuffer, PasteBufferIntoPane>;
+            return Operation::execute(invocation.server, std::move(typed_request));
+        },
+        std::move(request));
+    if (!pasted) {
         return std::unexpected(pasted.error());
     }
     return commands::CommandOutcome{"", commands::ClientContinuation::exit};

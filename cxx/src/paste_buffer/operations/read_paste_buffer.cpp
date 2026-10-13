@@ -10,8 +10,8 @@ Result<std::string> Server::read_paste_buffer(std::string_view name) const {
         return std::unexpected(
             TmuxError{TmuxErrorCode::invalid_argument, "invalid paste-buffer name"});
     }
-    const auto buffer = state_->find_paste_buffer(name);
-    if (buffer == state_->paste_buffers.end()) {
+    const auto *buffer = state_->paste_buffer_store.find(name);
+    if (buffer == nullptr) {
         return std::unexpected(
             TmuxError{TmuxErrorCode::not_found, "paste buffer no longer exists"});
     }

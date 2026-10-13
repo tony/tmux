@@ -13,6 +13,11 @@ def native_bytes(value: bytes) -> bytes:
     return struct.pack("<I", len(value)) + value
 
 
+def paste_buffer_metadata(name: bytes, automatic: int, revision: int, count: int = 5) -> bytes:
+    """Encode copied metadata for controlled native-reply corruption cases."""
+    return native_bytes(name) + struct.pack("<IHQ", count, automatic, revision)
+
+
 def read_native_frame(peer: socket.socket) -> tuple[int, bytes]:
     """Receive one complete bounded frame under the socket's declared timeout."""
     request = bytearray()
@@ -164,6 +169,53 @@ def test_native_reply_rejects_untrusted_envelope(
             2048,
             struct.pack("<I", 0) + native_bytes(b"3" * 32) + struct.pack("<Q", 0),
         ),
+        (36, "paste_buffer.add", 1, 1024, struct.pack("<H", 2)),
+        (36, "paste_buffer.add", 1, 1024, struct.pack("<H", 0)),
+        (
+            36,
+            "paste_buffer.add",
+            1,
+            1024,
+            struct.pack("<H", 1) + paste_buffer_metadata(b"buffer0", 0, 1),
+        ),
+        (
+            36,
+            "paste_buffer.add",
+            1,
+            1024,
+            struct.pack("<H", 1) + paste_buffer_metadata(b"buffer0", 1, 1, 4),
+        ),
+        (37, "paste_buffer.list", 0, 1024, struct.pack("<I", 101)),
+        (
+            37,
+            "paste_buffer.list",
+            0,
+            1024,
+            struct.pack("<I", 2)
+            + paste_buffer_metadata(b"duplicate", 0, 2)
+            + paste_buffer_metadata(b"duplicate", 0, 1),
+        ),
+        (
+            37,
+            "paste_buffer.list",
+            0,
+            1024,
+            struct.pack("<I", 51)
+            + b"".join(
+                paste_buffer_metadata(f"buffer{index}".encode(), 1, 51 - index)
+                for index in range(51)
+            ),
+        ),
+        (
+            37,
+            "paste_buffer.list",
+            0,
+            1024,
+            struct.pack("<I", 2)
+            + paste_buffer_metadata(b"old", 0, 1)
+            + paste_buffer_metadata(b"new", 0, 2),
+        ),
+        (38, "paste_buffer.paste_top", 2, 1032, b"extra"),
     ],
     ids=[
         "create-invalid-utf8",
@@ -180,6 +232,15 @@ def test_native_reply_rejects_untrusted_envelope(
         "window-truncated",
         "window-invalid-utf8",
         "observation-wrong-owner",
+        "automatic-invalid-optional",
+        "automatic-missing-created-buffer",
+        "automatic-named-result",
+        "automatic-wrong-byte-count",
+        "buffer-list-excess-count",
+        "buffer-list-duplicate-names",
+        "buffer-list-excess-automatic-count",
+        "buffer-list-wrong-revision-order",
+        "default-paste-excess",
     ],
 )
 def test_native_success_payload_rejection_retains_context(
@@ -189,6 +250,7 @@ def test_native_success_payload_rejection_retains_context(
     effect: int,
     capability: int,
     malformed: bytes,
+    input_bytes: bytes = b"input",
 ) -> None:
     """Reject malformed operation payloads with protocol errors and accepted ownership context."""
     endpoint = tmp_path_factory.mktemp("native_payload") / "sock"
@@ -249,9 +311,30 @@ def test_native_success_payload_rejection_retains_context(
                             connection.window(1)
                         case "session.observe":
                             connection.observe_sessions()
+                        case "paste_buffer.add":
+                            connection.add_paste_buffer(input_bytes)
+                        case "paste_buffer.list":
+                            connection.paste_buffers()
+                        case "paste_buffer.paste_top":
+                            connection.paste_top_buffer(1)
                         case _:
                             raise AssertionError("unknown controlled operation fixture")
                 assert failure.value.code == "protocol"
                 assert failure.value.operation == identity
                 assert failure.value.server_instance == owner.decode()
             response.result(timeout=0.7)
+
+
+def test_native_empty_automatic_input_rejects_created_metadata(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    """An empty automatic request cannot expose a peer's claimed buffer creation."""
+    test_native_success_payload_rejection_retains_context(
+        tmp_path_factory,
+        36,
+        "paste_buffer.add",
+        1,
+        1024,
+        struct.pack("<H", 1) + paste_buffer_metadata(b"buffer0", 1, 1),
+        input_bytes=b"",
+    )

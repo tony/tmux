@@ -179,7 +179,11 @@ add_library(tmux_cxx_connection STATIC
   src/paste_buffer/operations/set_paste_buffer_native_adapter.cpp
   src/paste_buffer/operations/read_paste_buffer_native_adapter.cpp
   src/paste_buffer/operations/delete_paste_buffer_native_adapter.cpp
-  src/paste_buffer/operations/paste_buffer_into_pane_native_adapter.cpp)
+  src/paste_buffer/operations/paste_buffer_into_pane_native_adapter.cpp
+  src/paste_buffer/operations/add_paste_buffer_native_adapter.cpp
+  src/paste_buffer/operations/list_paste_buffers_native_adapter.cpp
+  src/paste_buffer/operations/paste_top_buffer_native_adapter.cpp
+  src/paste_buffer/paste_buffer_native_codec.cpp)
 add_library(tmux_cxx::connection ALIAS tmux_cxx_connection)
 target_include_directories(tmux_cxx_connection PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -257,10 +261,16 @@ add_library(tmux_cxx_server STATIC
   src/pane/operations/wait_pane_output.cpp
   src/paste_buffer/register_operations.cpp
   src/paste_buffer/register_commands.cpp
+  src/paste_buffer/register_key_bindings.cpp
+  src/paste_buffer/paste_buffer_store.cpp
   src/paste_buffer/operations/set_paste_buffer.cpp
   src/paste_buffer/operations/read_paste_buffer.cpp
   src/paste_buffer/operations/delete_paste_buffer.cpp
   src/paste_buffer/operations/paste_buffer_into_pane.cpp
+  src/paste_buffer/operations/add_paste_buffer.cpp
+  src/paste_buffer/operations/list_paste_buffers.cpp
+  src/paste_buffer/operations/paste_top_buffer.cpp
+  src/paste_buffer/operations/paste_top_buffer_key_binding.cpp
   src/paste_buffer/operations/set_buffer_command.cpp
   src/paste_buffer/operations/delete_buffer_command.cpp
   src/paste_buffer/operations/paste_buffer_command.cpp
@@ -319,6 +329,7 @@ if(TMUX_CXX_BUILD_PYTHON_BINDING)
       include/tmux_cxx/window_link/window_link_snapshot.hpp
       include/tmux_cxx/pane/pane_snapshot.hpp
       include/tmux_cxx/pane/pane_text_snapshot.hpp
+      include/tmux_cxx/paste_buffer/paste_buffer_snapshot.hpp
     VERBATIM)
   add_custom_target(binding_documentation_header ALL DEPENDS "${binding_documentation}")
 endif()
@@ -336,6 +347,7 @@ if(TMUX_CXX_BUILD_NODE_BINDING)
       include/tmux_cxx/window_link/window_link_snapshot.hpp
       include/tmux_cxx/pane/pane_snapshot.hpp
       include/tmux_cxx/pane/pane_text_snapshot.hpp
+      include/tmux_cxx/paste_buffer/paste_buffer_snapshot.hpp
     VERBATIM)
   add_custom_target(node_declarations ALL
     DEPENDS "${CMAKE_SOURCE_DIR}/bindings/node/index.d.ts")

@@ -420,6 +420,47 @@ identity = "paste_buffer.paste_into_pane"
 result = "void"
 parameters = [{ name = "name", kind = "text" }, { name = "pane", kind = "pane_id" }]
 
+[[operations]]
+type = "AddPasteBuffer"
+header = "paste_buffer/operations/add_paste_buffer.hpp"
+method = "add_paste_buffer"
+node = "addPasteBuffer"
+id = 36
+identity = "paste_buffer.add"
+result = "optional_paste_buffer"
+parameters = [{ name = "bytes", kind = "bytes" }]
+
+[[operations]]
+type = "ListPasteBuffers"
+header = "paste_buffer/operations/list_paste_buffers.hpp"
+method = "paste_buffers"
+node = "pasteBuffers"
+id = 37
+identity = "paste_buffer.list"
+result = "paste_buffers"
+parameters = []
+
+[[operations]]
+type = "PasteTopBuffer"
+header = "paste_buffer/operations/paste_top_buffer.hpp"
+method = "paste_top_buffer"
+node = "pasteTopBuffer"
+id = 38
+identity = "paste_buffer.paste_top"
+result = "void"
+parameters = [{ name = "pane", kind = "pane_id" }]
+
+[[snapshots]]
+type = "PasteBufferSnapshot"
+header = "paste_buffer/paste_buffer_snapshot.hpp"
+prefix = "paste_buffer"
+fields = [
+  { name = "name", kind = "text" },
+  { name = "byte_count", node = "byteCount", kind = "count" },
+  { name = "automatic", kind = "boolean" },
+  { name = "revision", kind = "revision" },
+]
+
 [[snapshots]]
 type = "PaneTextSnapshot"
 header = "pane/pane_text_snapshot.hpp"

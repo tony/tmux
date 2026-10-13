@@ -9,6 +9,7 @@
 #include "pane/register_key_bindings.hpp"
 #include "pane/register_operations.hpp"
 #include "paste_buffer/register_commands.hpp"
+#include "paste_buffer/register_key_bindings.hpp"
 #include "paste_buffer/register_operations.hpp"
 #include "protocol/native/operation_registry.hpp"
 #include "session/register_commands.hpp"
@@ -76,6 +77,10 @@ Result<ServerApiCatalogs> build_server_api_catalogs() {
         return std::unexpected(registration.error());
     }
     if (auto registration = register_client_key_bindings(key_binding_registry); !registration) {
+        return std::unexpected(registration.error());
+    }
+    if (auto registration = register_paste_buffer_key_bindings(key_binding_registry);
+        !registration) {
         return std::unexpected(registration.error());
     }
     if (auto registration = register_window_link_key_bindings(key_binding_registry);

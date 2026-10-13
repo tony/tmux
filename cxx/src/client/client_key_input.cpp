@@ -73,8 +73,9 @@ ClientKeyInput::route_pending(Server &server, ClientId client, ClientSelection s
                 pending_bytes_.clear();
                 return key_table::KeyBindingEffect::client_detached;
             }
-            if (**binding == key_table::KeyBindingEffect::client_selection_changed) {
-                return key_table::KeyBindingEffect::client_selection_changed;
+            if (**binding == key_table::KeyBindingEffect::client_selection_changed ||
+                **binding == key_table::KeyBindingEffect::pane_program_input_changed) {
+                return **binding;
             }
             continue;
         }

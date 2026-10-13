@@ -65,6 +65,7 @@ using NodeOperationValue = std::variant<
     tmux_cxx::StockConnectionCompatibility, tmux_cxx::WindowSnapshot, tmux_cxx::WindowLinkSnapshot,
     std::vector<tmux_cxx::WindowLinkSnapshot>, tmux_cxx::PaneSnapshot,
     std::vector<tmux_cxx::PaneSnapshot>, tmux_cxx::PaneTextSnapshot, tmux_cxx::SessionEventBatch,
+    std::optional<tmux_cxx::PasteBufferSnapshot>, std::vector<tmux_cxx::PasteBufferSnapshot>,
     std::shared_ptr<tmux_cxx::SessionEventStream>, std::string>;
 /** @brief Move-owned native work that never captures JavaScript handles. */
 using NodeOperation =
@@ -241,6 +242,15 @@ Napi::Object window_link_object(Napi::Env env, const tmux_cxx::WindowLinkSnapsho
     object.Set("revision", Napi::BigInt::New(env, link.revision));
     return object;
 }
+/** @brief Materialize copied buffer metadata with an exact JavaScript revision. */
+Napi::Object paste_buffer_object(Napi::Env env, const tmux_cxx::PasteBufferSnapshot &buffer) {
+    auto object = Napi::Object::New(env);
+    object.Set("name", buffer.name);
+    object.Set("byteCount", Napi::Number::New(env, buffer.byte_count));
+    object.Set("automatic", Napi::Boolean::New(env, buffer.automatic));
+    object.Set("revision", Napi::BigInt::New(env, buffer.revision));
+    return object;
+}
 /** @brief Materialize one pane's window-owned geometry and active selection. */
 Napi::Object pane_object(Napi::Env env, const tmux_cxx::PaneSnapshot &pane) {
     auto object = Napi::Object::New(env);
@@ -342,6 +352,20 @@ Napi::Value to_javascript(Napi::Env env, const NodeOperationValue &operation_val
         auto array = Napi::Array::New(env, panes->size());
         for (std::size_t index = 0; index < panes->size(); ++index) {
             array.Set(static_cast<std::uint32_t>(index), pane_object(env, (*panes)[index]));
+        }
+        return array;
+    }
+    if (auto buffer = std::get_if<std::optional<tmux_cxx::PasteBufferSnapshot>>(&operation_value)) {
+        if (!*buffer) {
+            return env.Null();
+        }
+        return paste_buffer_object(env, **buffer);
+    }
+    if (auto buffers = std::get_if<std::vector<tmux_cxx::PasteBufferSnapshot>>(&operation_value)) {
+        auto array = Napi::Array::New(env, buffers->size());
+        for (std::size_t index = 0; index < buffers->size(); ++index) {
+            array.Set(static_cast<std::uint32_t>(index),
+                      paste_buffer_object(env, (*buffers)[index]));
         }
         return array;
     }
@@ -711,10 +735,13 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
                     InstanceMethod("selectPane", &NodeServerConnection::select_pane),
                     InstanceMethod("panes", &NodeServerConnection::panes),
                     InstanceMethod("setPasteBuffer", &NodeServerConnection::set_paste_buffer),
+                    InstanceMethod("addPasteBuffer", &NodeServerConnection::add_paste_buffer),
+                    InstanceMethod("pasteBuffers", &NodeServerConnection::paste_buffers),
                     InstanceMethod("readPasteBuffer", &NodeServerConnection::read_paste_buffer),
                     InstanceMethod("deletePasteBuffer", &NodeServerConnection::delete_paste_buffer),
                     InstanceMethod("pasteBufferIntoPane",
                                    &NodeServerConnection::paste_buffer_into_pane),
+                    InstanceMethod("pasteTopBuffer", &NodeServerConnection::paste_top_buffer),
                     InstanceMethod("sendPaneInput", &NodeServerConnection::send_pane_input),
                     InstanceMethod("readPaneOutput", &NodeServerConnection::read_pane_output),
                     InstanceMethod("readPaneText", &NodeServerConnection::read_pane_text),
@@ -995,6 +1022,21 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
                                    return to_node_result(connection.read_paste_buffer(name));
                                });
     }
+    /** @brief Copy automatic-buffer bytes before queuing native storage. */
+    Napi::Value add_paste_buffer(const Napi::CallbackInfo &info) {
+        auto bytes = bytes_arg(info, 0);
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::add_paste_buffer */
+                               [bytes](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(connection.add_paste_buffer(bytes));
+                               });
+    }
+    /** @brief Queue copied buffer metadata without borrowing server storage. */
+    Napi::Value paste_buffers(const Napi::CallbackInfo &info) {
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::paste_buffers */
+                               [](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(connection.paste_buffers());
+                               });
+    }
     /** @brief Queue explicit deletion for one copied paste-buffer name. */
     Napi::Value delete_paste_buffer(const Napi::CallbackInfo &info) {
         auto name = string_arg(info, 0);
@@ -1013,6 +1055,14 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
             [name, pane](tmux_cxx::ServerConnection &connection) {
                 return to_node_result(connection.paste_buffer_into_pane(name, pane));
             });
+    }
+    /** @brief Queue default automatic paste for a validated pane identity. */
+    Napi::Value paste_top_buffer(const Napi::CallbackInfo &info) {
+        auto pane = tmux_cxx::PaneId{id_arg(info, 0)};
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::paste_top_buffer */
+                               [pane](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(connection.paste_top_buffer(pane));
+                               });
     }
     /** @brief Copy raw program-input bytes before queuing their delivery. */
     Napi::Value send_pane_input(const Napi::CallbackInfo &info) {

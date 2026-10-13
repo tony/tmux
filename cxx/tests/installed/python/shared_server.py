@@ -39,6 +39,10 @@ def create_session(socket: str, record: Path) -> None:
             (13, 0, 11, 1),
         ]
         owner = connection.observe_sessions().next_event.server_instance
+        automatic = connection.add_paste_buffer(b"installed-python-buffer")
+        assert automatic is not None and automatic.automatic
+        connection.set_paste_buffer("installed-named", b"named buffers are skipped")
+        assert [buffer.automatic for buffer in connection.paste_buffers()] == [False, True]
         record.write_text(f"{session.id} {session.pane} {owner}\n")
     try:
         connection.sessions()
@@ -72,6 +76,12 @@ def observe_session(socket: str, record: Path) -> None:
         output = observer.read_pane_output(pane_id)
         assert b"installed-node-current-pty" in output
         assert b"installed-node-lts-pty" in output
+        assert b"installed-buffer-node-current-pty" in output
+        assert b"installed-buffer-node-lts-pty" in output
+        buffers = observer.paste_buffers()
+        assert len(buffers) == 4
+        assert buffers[0].automatic and buffers[0].revision > 0
+        assert observer.read_paste_buffer(buffers[0].name).startswith(b"printf 'installed-buffer-")
         observer.send_pane_input(pane_id, b"printf 'python-%s\\n' 'installed-pty'\n")
         assert b"python-installed-pty" in observer.wait_pane_output(
             pane_id, b"python-installed-pty", 500

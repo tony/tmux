@@ -46,6 +46,9 @@ KINDS = {
     "pane_text": ("PaneTextSnapshot", "PaneTextSnapshot"),
     "pane": ("PaneSnapshot", "PaneSnapshot"),
     "panes": ("std::vector<PaneSnapshot>", "PaneSnapshot[]"),
+    "paste_buffer": ("PasteBufferSnapshot", "PasteBufferSnapshot"),
+    "optional_paste_buffer": ("std::optional<PasteBufferSnapshot>", "PasteBufferSnapshot | null"),
+    "paste_buffers": ("std::vector<PasteBufferSnapshot>", "PasteBufferSnapshot[]"),
     "client": ("ClientSnapshot", "ClientSnapshot"),
     "clients": ("std::vector<ClientSnapshot>", "ClientSnapshot[]"),
     "stock_connection_compatibility": (

@@ -229,6 +229,38 @@ def test_registered_stock_command_subset(server: str, fixture: str) -> None:
 
 
 @pytest.mark.parametrize("fixture", ["TMUX_CXX_STOCK_CLIENT", "TMUX_CXX_MODERN_STOCK_CLIENT"])
+def test_stock_automatic_buffers_and_default_paste(server: str, fixture: str) -> None:
+    """Unmodified clients create automatic buffers and paste past newer named entries."""
+    binary = os.environ[fixture]
+    base = [binary, "-N", "-f", "/dev/null", "-S", server]
+    environment = stock_fixture_environment(binary)
+    with tmux_cxx.ServerConnection(server) as observer:
+        session = observer.create_session("stock-default-paste", "/bin/sh")
+        commands = [
+            ["paste-buffer", "-t", f"%{session.pane}"],
+            ["set-buffer", ""],
+            ["set-buffer", "printf 'automatic-%s\\n' 'stock-paste'\n"],
+            ["set-buffer", "-b", "named", "default paste must skip this"],
+            ["paste-buffer", "-t", f"%{session.pane}"],
+        ]
+        for command in commands:
+            subprocess.run(
+                [*base, *command],
+                env=environment,
+                check=True,
+                capture_output=True,
+                timeout=0.9,
+            )
+        buffers = observer.paste_buffers()
+        assert [buffer.name for buffer in buffers] == ["named", "buffer0"]
+        assert [buffer.automatic for buffer in buffers] == [False, True]
+        assert observer.read_paste_buffer("buffer0") == commands[2][1].encode()
+        assert b"automatic-stock-paste" in observer.wait_pane_output(
+            session.pane, b"automatic-stock-paste", 500
+        )
+
+
+@pytest.mark.parametrize("fixture", ["TMUX_CXX_STOCK_CLIENT", "TMUX_CXX_MODERN_STOCK_CLIENT"])
 def test_stock_window_creation_and_selection(server: str, fixture: str) -> None:
     """Real clients create, rename, and select live shared windows through explicit targets."""
     base = [os.environ[fixture], "-N", "-f", "/dev/null", "-S", server]
@@ -778,6 +810,18 @@ def test_stock_attach_routes_terminal_and_preserves_session(server: str, fixture
             assert observer.sessions()[0].link == membership.id
             assert client.poll() is None
             observer.wait_pane_output(next_pane, b"missing-index-input", 500)
+            observer.add_paste_buffer(b"prefix-default-paste\n")
+            observer.set_paste_buffer("newest-named", b"must-not-paste\n")
+            discard_terminal_output(master)
+            os.write(master, b"\x02]coalesced-paste-tail\n")
+            assert b"prefix-default-paste" in read_terminal_until(master, b"prefix-default-paste")
+            assert b"prefix-default-paste" in observer.wait_pane_output(
+                next_pane, b"prefix-default-paste", 500
+            )
+            assert b"must-not-paste" not in observer.read_pane_output(next_pane)
+            assert b"coalesced-paste-tail" in observer.wait_pane_output(
+                next_pane, b"coalesced-paste-tail", 500
+            )
             discard_terminal_output(master)
             os.write(master, b"\x020")
             assert b"left-pane-ready" in read_terminal_until(master, b"left-pane-ready")

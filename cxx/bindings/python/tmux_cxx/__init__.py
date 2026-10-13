@@ -5,6 +5,7 @@ from ._native import PaneResizeDirection as PaneResizeDirection
 from ._native import PaneSnapshot as PaneSnapshot
 from ._native import PaneSplitOrientation as PaneSplitOrientation
 from ._native import PaneTextSnapshot as PaneTextSnapshot
+from ._native import PasteBufferSnapshot as PasteBufferSnapshot
 from ._native import SessionClosedEvent as SessionClosedEvent
 from ._native import SessionCreatedEvent as SessionCreatedEvent
 from ._native import SessionEventBatch as SessionEventBatch
@@ -31,6 +32,7 @@ __all__ = [
     "PaneSnapshot",
     "PaneSplitOrientation",
     "PaneTextSnapshot",
+    "PasteBufferSnapshot",
     "ServerConnection",
     "SessionClosedEvent",
     "SessionCreatedEvent",

@@ -47,6 +47,7 @@ NB_MODULE(_native, module) {
     using tmux_cxx::PaneSnapshot;
     using tmux_cxx::PaneSplitOrientation;
     using tmux_cxx::PaneTextSnapshot;
+    using tmux_cxx::PasteBufferSnapshot;
     using tmux_cxx::ServerConnection;
     using tmux_cxx::SessionClosedEvent;
     using tmux_cxx::SessionCreatedEvent;
@@ -170,6 +171,11 @@ NB_MODULE(_native, module) {
                const nb::object &) { self.close(); },
             nb::arg("exc_type").none(), nb::arg("exc_value").none(), nb::arg("traceback").none(),
             "Close the stream without suppressing the context's exception.");
+    nb::class_<PasteBufferSnapshot>(module, "PasteBufferSnapshot", docs::paste_buffer_type)
+        .def_ro("name", &PasteBufferSnapshot::name, docs::paste_buffer_name)
+        .def_ro("byte_count", &PasteBufferSnapshot::byte_count, docs::paste_buffer_byte_count)
+        .def_ro("automatic", &PasteBufferSnapshot::automatic, docs::paste_buffer_automatic)
+        .def_ro("revision", &PasteBufferSnapshot::revision, docs::paste_buffer_revision);
     nb::class_<WindowSnapshot>(module, "WindowSnapshot", docs::window_type)
         .def_prop_ro(
             "id", /** @brief Expose this snapshot's shared window identity as an exact Python
@@ -486,6 +492,19 @@ NB_MODULE(_native, module) {
             },
             nb::arg("name"), nb::arg("bytes"), docs::set_paste_buffer)
         .def(
+            "add_paste_buffer", /** @brief Copy arbitrary bytes before releasing the GIL for
+                                    automatic buffer creation. */
+            [](ServerConnection &self, nb::bytes python_bytes) {
+                std::string bytes(python_bytes.c_str(), python_bytes.size());
+                nb::gil_scoped_release release;
+                return unwrap(self.add_paste_buffer(std::move(bytes)));
+            },
+            nb::arg("bytes"), docs::add_paste_buffer)
+        .def(
+            "paste_buffers", /** @copybrief tmux_cxx::ServerConnection::paste_buffers */
+            [](ServerConnection &self) { return unwrap(self.paste_buffers()); },
+            docs::paste_buffers, nb::call_guard<nb::gil_scoped_release>())
+        .def(
             "read_paste_buffer", /** @brief Release the GIL for buffer observation and reacquire it
                                      before constructing Python bytes. */
             [](ServerConnection &self, std::string name) {
@@ -511,6 +530,12 @@ NB_MODULE(_native, module) {
             },
             nb::arg("name"), nb::arg("pane"), docs::paste_buffer_into_pane,
             nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "paste_top_buffer", /** @copybrief tmux_cxx::ServerConnection::paste_top_buffer */
+            [](ServerConnection &self, std::uint64_t pane) {
+                unwrap(self.paste_top_buffer(PaneId{pane}));
+            },
+            nb::arg("pane"), docs::paste_top_buffer, nb::call_guard<nb::gil_scoped_release>())
         .def(
             "send_pane_input", /** @brief Copy raw bytes before releasing the GIL to deliver program
                                   input. */

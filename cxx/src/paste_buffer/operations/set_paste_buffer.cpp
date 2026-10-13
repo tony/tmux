@@ -6,25 +6,14 @@
 
 namespace tmux_cxx {
 Result<void> Server::set_paste_buffer(std::string name, std::string bytes) {
-    if (!valid_paste_buffer_name(name) || bytes.size() > paste_buffer_byte_limit) {
-        return std::unexpected(
-            TmuxError{TmuxErrorCode::invalid_argument, "invalid paste-buffer name or size"});
+    const auto stored =
+        state_->paste_buffer_store.set(std::move(name), std::move(bytes), state_->revision + 1);
+    if (!stored) {
+        return std::unexpected(stored.error());
     }
-    if (bytes.empty()) {
-        return {};
+    if (*stored) {
+        ++state_->revision;
     }
-    auto existing = state_->find_paste_buffer(name);
-    if (existing == state_->paste_buffers.end() &&
-        state_->paste_buffers.size() == paste_buffer_count_limit) {
-        return std::unexpected(
-            TmuxError{TmuxErrorCode::backpressure, "paste-buffer store is full"});
-    }
-    if (existing != state_->paste_buffers.end()) {
-        state_->paste_buffers.erase(existing);
-    }
-    state_->paste_buffers.insert(
-        state_->paste_buffers.begin(),
-        PasteBuffer{std::move(name), std::move(bytes), ++state_->revision});
     return {};
 }
 

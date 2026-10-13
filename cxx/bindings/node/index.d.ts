@@ -83,6 +83,18 @@ export interface SessionEventGap {
   readonly replacement: SessionObservation;
 }
 
+/** Copy server-global paste-buffer metadata without retaining its stored bytes. */
+export interface PasteBufferSnapshot {
+  /** Name resolved against the current server store. */
+  readonly name: string;
+  /** Stored byte count, bounded to 256 KiB. */
+  readonly byteCount: number;
+  /** Automatic buffers participate in default paste and eviction. */
+  readonly automatic: boolean;
+  /** Server mutation revision at the buffer's last replacement. */
+  readonly revision: bigint;
+}
+
 /** Own interpreted pane text and freshness independently of raw bytes and client rendering. */
 export interface PaneTextSnapshot {
   /** Server instance owning this text observation. */
@@ -349,6 +361,12 @@ export class ServerConnection {
   deletePasteBuffer(name: string): Promise<void>;
   /** Queue one named buffer for a pane using tmux's default line separator. */
   pasteBufferIntoPane(name: string, pane: bigint): Promise<void>;
+  /** Create a nonempty automatic buffer, evicting the oldest automatic entry at capacity. */
+  addPasteBuffer(bytes: Uint8Array): Promise<PasteBufferSnapshot | null>;
+  /** Copy named and automatic buffer metadata in newest-first storage order. */
+  pasteBuffers(): Promise<PasteBufferSnapshot[]>;
+  /** Queue the newest automatic buffer for a live pane; an empty automatic store adds no input. */
+  pasteTopBuffer(pane: bigint): Promise<void>;
   /** Establish an atomic session baseline and an independently cancellable event stream. */
   subscribeSessions(): Promise<SessionEventStream>;
   /** Stop admission for this connection and streams sharing its native channel. */

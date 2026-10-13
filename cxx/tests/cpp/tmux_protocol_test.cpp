@@ -214,12 +214,14 @@ TEST(TmuxProtocol, CompatibilitySeparatesEvidenceFromReleaseClaims) {
     EXPECT_TRUE(std::ranges::contains(
         report.limitations,
         "the prefix table contains C-b send-prefix, quote and percent split, d detach, "
-        "o next-pane, n/p window navigation, and digit window indices; missing indices are "
+        "o next-pane, ] default paste, n/p window navigation, and digit window indices; missing "
+        "indices are "
         "ignored without status feedback; creation keys and configurable tables remain "
         "unsupported"));
     EXPECT_TRUE(std::ranges::contains(
         report.limitations,
-        "paste-buffer requires -b name and -t %pane; delete-after, custom separators, raw "
+        "paste-buffer requires -t %pane and accepts an optional -b name; default paste selects "
+        "the newest automatic buffer; delete-after, custom separators, raw "
         "paste, and bracketed paste are unsupported"));
 
     const auto control = TmuxCompatibilityPolicy{}.assess(

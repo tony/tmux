@@ -6,16 +6,9 @@
 
 namespace tmux_cxx {
 Result<void> Server::delete_paste_buffer(std::string_view name) {
-    if (!valid_paste_buffer_name(name)) {
-        return std::unexpected(
-            TmuxError{TmuxErrorCode::invalid_argument, "invalid paste-buffer name"});
+    if (auto deleted = state_->paste_buffer_store.erase(name); !deleted) {
+        return deleted;
     }
-    const auto buffer = state_->find_paste_buffer(name);
-    if (buffer == state_->paste_buffers.end()) {
-        return std::unexpected(
-            TmuxError{TmuxErrorCode::not_found, "paste buffer no longer exists"});
-    }
-    state_->paste_buffers.erase(buffer);
     ++state_->revision;
     return {};
 }
