@@ -1,12 +1,12 @@
 [build-system]
-requires = ["scikit-build-core==1.1.1", "nanobind==3.1.0", "ruff==0.16.10"]
+requires = ["scikit-build-core==1.1.1", "nanobind==3.1.0", "ruff==0.17.0"]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "tmux-cxx"
 version = "0.1.0.dev0"
 description = "Native control for the independent C++ tmux server"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 readme = "README.md"
 
 [dependency-groups]
@@ -16,13 +16,13 @@ dev = [
   "nanobind==3.1.0",
   "scikit-build-core==1.1.1",
   "pytest==9.1.1",
-  "ty==0.0.85",
-  "ruff==0.16.10",
-  "uv==0.12.23",
+  "ty==0.0.86",
+  "ruff==0.17.0",
+  "uv==0.13.0",
 ]
 
 [tool.uv]
-exclude-newer = "2026-10-07T23:59:59Z"
+exclude-newer = "2026-10-13T23:59:59Z"
 
 [tool.scikit-build]
 minimum-version = "1.1.1"
@@ -39,7 +39,7 @@ testpaths = ["tests/integration", "tests/compat", "tests/tooling"]
 addopts = "-ra --strict-markers"
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 100
 include = ["support/**/*.py", "tests/**/*.py", "bindings/python/**/*.py", "bindings/python/**/*.pyi"]
 
@@ -54,5 +54,5 @@ unused-ignore-comment = "error"
 possibly-missing-attribute = "error"
 
 [tool.ty.environment]
-python-version = "3.12"
+python-version = "3.13"
 extra-paths = ["_build/dev/python", "_build/tools/clang_python"]

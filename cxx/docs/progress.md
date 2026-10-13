@@ -1028,3 +1028,54 @@ lifetimes, older profiles, and the remaining platform and architecture audit
 still require implementation or verification. Installed package checks here
 prove their configured build, loading, and type contracts; they do not prove
 every installed runtime and daemon-discovery requirement.
+
+## 2026-10-13: Ubuntu 26.04 toolchain
+
+The current Ubuntu 26.04.1 host runs the locked LLVM 23.1.3 tools, CMake
+4.4.4, Ninja 1.13.2, and Doxygen 1.18.0. Those were already current final
+releases. The second compiler now uses verified Ubuntu GCC 15.2 packages;
+its libstdc++ and libgcc runtime files match the host. Upstream GCC 16.2
+remains unverified. [Toolchain support](toolchain.md) records release sources,
+support boundaries, and upgrade rules.
+
+Current CPython 3.15.0, uv 0.13.0, Ruff 0.17.0, ty 0.0.86, Node 26.11.1,
+and Oxc/Vitest tooling are locked and provisioned. Python requires 3.13;
+3.12 has passed the requested three-year window. Both locked Node runtimes
+use stable Node-API 10. C++23 remains the baseline; the C++26 preset now
+has build and test entries. CMake probes monadic expected operations,
+borrowed spans, enum conversions, and move-only continuations. A copied
+probe with a missing monadic operation fails through the compiler and the
+required-facility diagnostic; the unmodified probe passes.
+
+Bootstrap updates stale uv installations, selects the locked interpreter,
+and confines interpreter links to its project-local tool directory. Its
+regression test failed before both corrections and passes afterward.
+The LLVM binaries require no legacy ICU package or library-path injection.
+Bootstrap also obtains the exact hash-verified tmux 3.4 package so setup
+does not depend on the host's newer tmux binary.
+
+An instrumented admission test exposed a race between expected server
+closure and a later startup write. Identification completion and startup
+now share one write; closure and absence of effects remain asserted.
+The full sanitizer suite passes with its existing negative probes and
+external-library suppressions.
+
+| Gate | Result | Whole-command wall time |
+|---|---|---:|
+| Configured mid loop | PASS | 5.14 s |
+| GCC 15 native and both binding suites | PASS; 91 tests | 2.91 s |
+| C++26 native and both binding suites | PASS; 91 tests | 2.79 s |
+| Python 3.13 minimum, integration/compatibility/tooling | PASS; 73 cases | 1.55 s |
+| Ubuntu Python 3.14, integration/compatibility/tooling | PASS; 73 cases | 1.79 s |
+| ASan/UBSan/LeakSanitizer and controlled negatives | PASS | 10.42 s |
+| Bounded native, tmux, and terminal fuzz replay | PASS; 6,000 runs | 2.60 s |
+| Doxygen/compiler/language documentation and negatives | PASS | 8.88 s |
+| clang-tidy and fatal negative probe | PASS | 140.25 s |
+| Offline wheel/sdist/npm consumers | PASS | 44.36 s |
+| Standalone source, install, adapters, and native consumer | PASS | 60.30 s |
+
+The documentation result reuses an unchanged compiler inventory; the cold
+run after the tool update took 209.07 seconds. Builds used fresh CMake ABI
+metadata after the interpreter change. Source-wide application acceptance,
+full tmux parity, installed daemon discovery, and the remaining objective
+requirements stay open.

@@ -20,11 +20,6 @@ ENVIRONMENT = dict(
     os.environ,
     PATH=str(NODE.parent) + os.pathsep + os.environ["PATH"],
     PYTHONPATH=str(ROOT / "_build/dev/python"),
-    LD_LIBRARY_PATH=str(ROOT / "_build/tools/llvm_runtime/usr/lib/x86_64-linux-gnu")
-    + os.pathsep
-    + str(ROOT / "_build/tools/llvm/lib")
-    + os.pathsep
-    + os.environ.get("LD_LIBRARY_PATH", ""),
 )
 DEADLINE = float("inf")
 

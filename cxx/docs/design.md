@@ -78,14 +78,13 @@ Real unmodified tmux 3.4 and 3.7 clients exercise the declared command subset, i
 
 The default build uses Clang 23 with host libstdc++ consistently. The locked libc++ lacks the required `std::move_only_function` facility. Both bindings remain enabled by default. The Linux sanitizer preset instruments native targets, both bindings, nanobind's runtime, and libvterm with ASan/UBSan; recoverable sanitizer reports are disabled. Extension hosts preload the matching shared runtime. Fixtures keep that injection out of unrelated shell programs. Two narrow leak suppressions cover Node OpenSSL initialization and Vitest's external Rolldown DSO, independently reproduced without our addon. First-party memory faults, arithmetic overflow, and leaks remain fatal through controlled probes. Protocol and terminal fuzz targets retain bounded regression inputs and run with leak, address, and undefined-behavior detection active.
 
-The locked Ubuntu GCC 14.2 fallback configures and builds both bindings and
+The locked Ubuntu 26.04 GCC 15.2 toolchain configures and builds both bindings and
 passes all configured native, Python, Node Current, and Node LTS tests. Its
-libstdc++ and libgcc runtime files match the Ubuntu 24.04 host files byte for
-byte. Current upstream GCC and a current-Ubuntu fixture remain separate open
-gates.
+libstdc++ and libgcc runtime files match the Ubuntu 26.04 host files byte for
+byte. Current upstream GCC remains an open gate.
 
 A clean native install consumer has exercised the exported server target and
-its installed terminal dependency with locked Clang 23 and Ubuntu GCC 13. A
+its installed terminal dependency with locked Clang 23. A
 fresh Python wheel consumer and an extracted npm-tarball consumer exercise the
 real server. The Python sdist carries the digest-verified libvterm archive,
 excludes local dependency trees, rebuilds a wheel offline, and installs it in a
@@ -94,5 +93,6 @@ on its build-only `node-addon-api` headers and installs from an empty cache.
 The standalone source gate copies no build state or dependency tree, restores
 the locked Node development dependencies offline, builds both bindings,
 installs the native package, loads both adapters, and runs an external C++
-consumer. Broader binding-lifetime instrumentation, daemon discovery, current
-GCC, and current-Ubuntu fixtures remain open.
+consumer. Broader binding-lifetime instrumentation, daemon discovery, and
+current upstream GCC remain open. [Toolchain support](toolchain.md) describes
+the current Ubuntu, language-runtime, and dependency boundaries.

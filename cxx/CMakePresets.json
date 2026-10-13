@@ -1,5 +1,10 @@
 {
-  "version": 6,
+  "version": 12,
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 4,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "dev",
@@ -36,7 +41,7 @@
       "inherits": "dev",
       "binaryDir": "${sourceDir}/_build/gcc",
       "cacheVariables": {
-        "CMAKE_CXX_COMPILER": "${sourceDir}/_build/tools/gcc/usr/bin/g++-14",
+        "CMAKE_CXX_COMPILER": "${sourceDir}/_build/tools/gcc/usr/bin/g++-15",
         "TMUX_CXX_STDLIB": "libstdc++"
       }
     },
@@ -69,6 +74,11 @@
       "name": "gcc",
       "configurePreset": "gcc",
       "jobs": 4
+    },
+    {
+      "name": "cxx26",
+      "configurePreset": "cxx26",
+      "jobs": 4
     }
   ],
   "testPresets": [
@@ -95,6 +105,16 @@
     {
       "name": "gcc",
       "configurePreset": "gcc",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "cxx26",
+      "configurePreset": "cxx26",
       "output": {
         "outputOnFailure": true
       },

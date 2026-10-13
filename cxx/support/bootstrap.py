@@ -404,7 +404,7 @@ def main() -> int:
     )
     parser.add_argument("--just", action="store_true", help="provision the locked recipe runner")
     parser.add_argument(
-        "--gcc", action="store_true", help="provision the locked Ubuntu GCC fallback"
+        "--gcc", action="store_true", help="provision the locked Ubuntu GCC toolchain"
     )
     args = parser.parse_args()
     os.chdir(ROOT)
@@ -419,18 +419,19 @@ def main() -> int:
             provision_clang_python(lock["clang_python"])
             for name in (
                 "llvm",
-                "llvm_runtime",
                 "doxygen",
                 "graphviz",
                 "node_current",
                 "node_lts",
                 "npm",
+                "tmux_fixture_package",
                 "googletest",
                 "stop_slop",
                 "just",
             ):
                 provision_archive(name, lock[name])
             provision_deb_bundle("gcc", lock["gcc"])
+            provision_tmux_fixture(BUILD / "tools/tmux_fixture_package/usr/bin/tmux")
         if args.python:
             provision_python(lock)
         if args.modern_fixture:

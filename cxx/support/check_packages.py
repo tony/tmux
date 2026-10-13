@@ -162,7 +162,7 @@ def check_python_package(workspace: Path) -> None:
     type_project = workspace / "python-types"
     type_project.mkdir()
     (type_project / "pyproject.toml").write_text(
-        '[project]\nname = "tmux-cxx-package-check"\nversion = "0"\nrequires-python = ">=3.12"\n'
+        '[project]\nname = "tmux-cxx-package-check"\nversion = "0"\nrequires-python = ">=3.13"\n'
     )
     positive = type_project / "positive.py"
     negative = type_project / "negative.py"

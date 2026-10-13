@@ -15,7 +15,7 @@ option(TMUX_CXX_SANITIZE "Instrument every native target with ASan and UBSan" OF
 option(TMUX_CXX_BUILD_PYTHON_BINDING "Build the nanobind Python adapter" ON)
 option(TMUX_CXX_BUILD_NODE_BINDING "Build the Node-API JavaScript adapter" ON)
 set(TMUX_CXX_NODE_ROOT "${CMAKE_SOURCE_DIR}/_build/tools/node_current" CACHE PATH "Locked Node distribution")
-find_package(Python 3.12 REQUIRED COMPONENTS Interpreter)
+find_package(Python 3.13 REQUIRED COMPONENTS Interpreter)
 
 set(sanitizer_environment)
 set(sanitizer_stub_options)
@@ -50,11 +50,36 @@ if(TMUX_CXX_STDLIB STREQUAL "libc++")
 else()
   set(CMAKE_REQUIRED_FLAGS "-std=c++23")
 endif()
-check_cxx_source_compiles("#include <expected>\n#include <span>\nint main() { std::expected<int,int> r(1); int a[1]{}; std::span<int> s(a); return *r - 1 + s[0]; }" TMUX_CXX_REQUIRED_LIBRARY)
+check_cxx_source_compiles([=[
+  #include <expected>
+  #include <span>
+  #include <utility>
+  enum class CheckStatus { success };
+  /** @brief Require monadic results, borrowed spans, and typed enum conversions. */
+  int main() {
+    std::expected<int, int> result(1);
+    /** @brief Preserve a successful value through the expected continuation. */
+    auto retain = [](int value) { return std::expected<int, int>(value); };
+    /** @brief Transform the successful probe value into a zero exit status. */
+    auto subtract_one = [](int value) { return value - 1; };
+    auto mapped = result.and_then(retain).transform(subtract_one);
+    int values[1]{};
+    std::span<int> view(values);
+    return *mapped + view[0] + std::to_underlying(CheckStatus::success);
+  }
+]=] TMUX_CXX_REQUIRED_LIBRARY)
 if(NOT TMUX_CXX_REQUIRED_LIBRARY)
-  message(FATAL_ERROR "Required C++23 std::expected/std::span facilities are unavailable")
+  message(FATAL_ERROR "Required C++23 std::expected monadic operations, std::span, or std::to_underlying are unavailable")
 endif()
-check_cxx_source_compiles("#include <functional>\nint main() { std::move_only_function<int()> next = [] { return 0; }; return next(); }" TMUX_CXX_REQUIRED_CONTINUATION)
+check_cxx_source_compiles([=[
+  #include <functional>
+  /** @brief Require the move-only callable used by native continuations. */
+  int main() {
+    /** @brief Complete the continuation probe successfully. */
+    std::move_only_function<int()> next = [] { return 0; };
+    return next();
+  }
+]=] TMUX_CXX_REQUIRED_CONTINUATION)
 if(NOT TMUX_CXX_REQUIRED_CONTINUATION)
   message(FATAL_ERROR "The selected standard library must provide C++23 std::move_only_function")
 endif()
@@ -72,9 +97,7 @@ function(tmux_cxx_target target)
     set_property(TARGET ${target} APPEND PROPERTY BUILD_RPATH "${llvm_runtime}")
   endif()
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_link_options(${target} PRIVATE -fuse-ld=lld)
-    set_property(TARGET ${target} PROPERTY CXX_LINKER_LAUNCHER
-      "${CMAKE_COMMAND};-E;env;LD_LIBRARY_PATH=${CMAKE_SOURCE_DIR}/_build/tools/llvm_runtime/usr/lib/x86_64-linux-gnu:$ENV{LD_LIBRARY_PATH}")
+    set_property(TARGET ${target} PROPERTY LINKER_TYPE LLD)
   endif()
   if(TMUX_CXX_SANITIZE)
     target_compile_options(${target} PRIVATE -fsanitize=address,undefined,fuzzer-no-link
@@ -300,7 +323,7 @@ if(TMUX_CXX_BUILD_NODE_BINDING)
 endif()
 
 if(TMUX_CXX_BUILD_PYTHON_BINDING)
-  find_package(Python 3.12 REQUIRED COMPONENTS Interpreter Development.Module)
+  find_package(Python 3.13 REQUIRED COMPONENTS Interpreter Development.Module)
   execute_process(COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
     OUTPUT_VARIABLE nanobind_dir OUTPUT_STRIP_TRAILING_WHITESPACE
     COMMAND_ERROR_IS_FATAL ANY)
@@ -347,7 +370,7 @@ if(TMUX_CXX_BUILD_NODE_BINDING)
   endif()
   add_library(tmux_cxx_node MODULE bindings/node/addon.cpp)
   target_include_directories(tmux_cxx_node SYSTEM PRIVATE "${node_headers}" "${node_api_headers}")
-  target_compile_definitions(tmux_cxx_node PRIVATE NAPI_VERSION=8
+  target_compile_definitions(tmux_cxx_node PRIVATE NAPI_VERSION=10
     NODE_ADDON_API_CPP_EXCEPTIONS NODE_ADDON_API_CPP_EXCEPTIONS_ALL)
   target_link_libraries(tmux_cxx_node PRIVATE tmux_cxx_connection)
   tmux_cxx_target(tmux_cxx_node)

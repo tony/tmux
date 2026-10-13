@@ -26,11 +26,6 @@ def environment() -> dict[str, str]:
     return dict(
         os.environ,
         PATH=str(NODE.parent) + os.pathsep + os.environ["PATH"],
-        LD_LIBRARY_PATH=str(ROOT / "_build/tools/llvm_runtime/usr/lib/x86_64-linux-gnu")
-        + os.pathsep
-        + str(ROOT / "_build/tools/llvm/lib")
-        + os.pathsep
-        + os.environ.get("LD_LIBRARY_PATH", ""),
         npm_config_cache=str(ROOT / "_build/cache/npm"),
         npm_config_offline="true",
     )

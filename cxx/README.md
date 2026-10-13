@@ -10,9 +10,19 @@ Single `-C` clients from tmux 3.4 and 3.7 can run an initial registered command 
 
 ## Build and check
 
-Run these commands from this directory. Bootstrap installs locked tools and language dependencies locally. The stock test fixture requires the exact Ubuntu tmux 3.4 binary recorded in the lock; another binary fails verification. Provisioning also extracts locked legacy libraries inside this project. Tests supply them only to that exact fixture; the C++ server, language hosts, and modern fixture retain their own runtimes.
+Run these commands from this directory on Ubuntu 26.04. Bootstrap installs locked tools and language dependencies locally, including the exact tmux 3.4 test package and its isolated libraries. Tests supply those libraries only to that fixture; the C++ server, language hosts, and modern fixture retain their own runtimes. An explicitly supplied stock binary must match the recorded digest.
 
 Explicit tool updates resolve current stable releases and pin their sources and checksums in `support/toolchain.lock.toml`. LLVM and its parser bindings move together. npm has its own current stable pin because Node's bundled npm can lag. Python and Node package dependencies retain their separate lockfiles.
+
+[Toolchain support](docs/toolchain.md) records the verified releases,
+Python minimum, and upgrade policy. After changing the interpreter or
+compiler, refresh the selected CMake preset's cached ABI information.
+
+```console
+$ .venv/bin/cmake \
+    --fresh \
+    --preset dev
+```
 
 The modern fixture builds unmodified tmux 3.7 from its locked source archive with the locked Clang. It requires the recorded host Autoconf, Automake, Make, libevent, and ncurses development tools. Reference fixture binaries remain test inputs.
 
@@ -21,8 +31,7 @@ $ python3 support/bootstrap.py \
     --provision \
     --python \
     --node \
-    --modern-fixture \
-    --stock-fixture /usr/bin/tmux
+    --modern-fixture
 ```
 
 Configure and build both native extensions with the C++ daemon.
@@ -90,13 +99,12 @@ $ _build/tools/just/just standalone-check
 Checks preserve source files. Formatting recipes are separate. The locked
 `just` lists recipe groups when invoked without arguments. The release build
 and exported CMake package pass with locked Clang 23. The complete configured
-suite also passes with the locked Ubuntu GCC 14 fallback. The source
+suite also passes with the locked Ubuntu 26.04 GCC 15 toolchain. The source
 distribution carries the verified libvterm source archive and excludes local
 dependency trees; the npm package installs its prebuilt addon without runtime
 dependencies. A clean source copy builds both bindings and an installed native
 consumer without borrowing first-party sources from the working tree. Current
-upstream GCC, broader binding lifetimes, daemon discovery, and current-Ubuntu
-verification remain open.
+upstream GCC, broader binding lifetimes, and daemon discovery remain open.
 The same addon runs against locked Node Current and LTS binaries.
 
 ## Session event streams

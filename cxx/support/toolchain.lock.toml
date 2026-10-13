@@ -1,5 +1,5 @@
 schema = 1
-resolved = "2026-10-05"
+resolved = "2026-10-13"
 architecture = "x86_64"
 host_ubuntu = "26.04.1"
 final_ubuntu = "26.04.1"
@@ -9,7 +9,7 @@ standard_library = "Ubuntu 26.04 libstdc++6 16-20260322-1ubuntu1 with GCC 15 hea
 llvm_components = ["clang", "clang++", "clang-format", "clang-tidy", "clangd", "lld", "lldb", "compiler-rt", "llvm-cov", "llvm-profdata"]
 python_graph = "uv.lock"
 node_graph = "bindings/node/package-lock.json"
-node_api = 8
+node_api = 10
 
 [llvm]
 version = "23.1.3"
@@ -17,7 +17,7 @@ url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.3/LLV
 sha256 = "14d2f701eb68fb799001bdea6231048f3990690fa2f406d563555ff8f744daba"
 source = "https://github.com/llvm/llvm-project/releases/tag/llvmorg-23.1.3"
 layout = "prefixed"
-resolved = "2026-10-07"
+resolved = "2026-10-13"
 
 [doxygen]
 version = "1.18.0"
@@ -25,8 +25,8 @@ url = "https://github.com/doxygen/doxygen/releases/download/Release_1_18_0/doxyg
 sha256 = "14fa81bdc34171edb5f1f02b1d60e74802f0439b77fa44e592565d517d72df90"
 source = "https://github.com/doxygen/doxygen/releases/tag/Release_1_18_0"
 layout = "prefixed"
-resolved = "2026-10-07"
-checked = "2026-10-07"
+resolved = "2026-10-13"
+checked = "2026-10-13"
 
 [just]
 version = "1.58.0"
@@ -34,100 +34,103 @@ url = "https://github.com/casey/just/releases/download/1.58.0/just-1.58.0-x86_64
 sha256 = "4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d"
 source = "https://github.com/casey/just/releases/tag/1.58.0"
 layout = "flat"
-resolved = "2026-10-07"
-checked = "2026-10-07"
+resolved = "2026-10-13"
+checked = "2026-10-13"
 
 [node_current]
-version = "26.11.0"
+version = "26.11.1"
 npm = "11.20.0"
-url = "https://nodejs.org/dist/v26.11.0/node-v26.11.0-linux-x64.tar.xz"
-sha256 = "db6342d36ebdb3cbd72103d0ce5ccc528620f6c9df72a11f4ccb384bf1bef678"
-resolved = "2026-10-07"
+url = "https://nodejs.org/dist/v26.11.1/node-v26.11.1-linux-x64.tar.xz"
+sha256 = "3883bfc73f9a680ca4eab04b196068aaaab1373ffa77d8fc1a4408222495b651"
+resolved = "2026-10-13"
 
 [node_lts]
 version = "24.21.0"
 npm = "11.19.0"
 url = "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz"
 sha256 = "fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6"
-resolved = "2026-10-07"
+resolved = "2026-10-13"
 
 [python]
-version = "3.14.8"
+version = "3.15.0"
 source = "https://www.python.org/downloads/"
-ubuntu_version = "3.12.3"
+ubuntu_version = "3.14.4"
 graph = "uv.lock"
-resolved = "2026-10-07"
+resolved = "2026-10-13"
+minimum = "3.13"
 
 [uv]
-version = "0.12.23"
+version = "0.13.0"
 source = "https://pypi.org/project/uv/"
 graph = "uv.lock"
-resolved = "2026-10-07"
+resolved = "2026-10-13"
 
 [gcc]
-version = "14.2.0"
-package = "14.2.0-4ubuntu2~24.04.1"
+version = "15.2.0"
+package = "15.2.0-16ubuntu1"
 upstream_resolved = "16.2.0"
-source = "Ubuntu noble-updates"
+source = "Ubuntu resolute"
 target = "x86_64-linux-gnu"
-fallback = "Verified Ubuntu GCC 14.2 package fallback; stable upstream GCC 16.2.0 still requires a local build and verification."
-checked = "2026-10-08"
+fallback = "Verified Ubuntu 26.04 GCC 15.2 distribution; stable upstream GCC 16.2.0 remains an unverified candidate."
+checked = "2026-10-13"
 provisioned = true
 
+[gcc.packages]
+
 [gcc.packages.cpp]
-filename = "cpp-14_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/cpp-14_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-sha256 = "4bc737f3aa5275dc4468f08119443a17f4a0ca87731f83cee4a187eda5bd862b"
+filename = "cpp-15_15.2.0-16ubuntu1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-15/cpp-15_15.2.0-16ubuntu1_amd64.deb"
+sha256 = "baacc9086e17c8cadc3603365e660f907bca483de4446e56e6f1bc25da4c02be"
 
 [gcc.packages.cpp_target]
-filename = "cpp-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/cpp-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-sha256 = "57a15d7740b39a6719e04a633e3471c6811adf1597f0797bef5e0501fc7ad7c2"
+filename = "cpp-15-x86-64-linux-gnu_15.2.0-16ubuntu1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-15/cpp-15-x86-64-linux-gnu_15.2.0-16ubuntu1_amd64.deb"
+sha256 = "1649aa71c45b047feda5b9ca303c94799bdba5befa5c9de9735cbfc59c3ef93f"
 
 [gcc.packages.gxx]
-filename = "g++-14_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/g++-14_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-sha256 = "1022aa40afd9d3c5e60a9e4172e01efc4a2854c27098d4b2f6bda7fe26748d35"
+filename = "g++-15_15.2.0-16ubuntu1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-15/g++-15_15.2.0-16ubuntu1_amd64.deb"
+sha256 = "cb7771861d821e48d38253f2397217920d5cf8020ed9de8372a625d080dcc6be"
 
 [gcc.packages.gxx_target]
-filename = "g++-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/g++-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-sha256 = "437bfbb2285ef9023d80a6cbcf5054f902814239317438801fcb873c4b4de8ac"
+filename = "g++-15-x86-64-linux-gnu_15.2.0-16ubuntu1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-15/g++-15-x86-64-linux-gnu_15.2.0-16ubuntu1_amd64.deb"
+sha256 = "8673a23519f570b4a5b4a663a9ce3b0e2f0be50c7250ce7fdae19eb064c3d6aa"
 
 [gcc.packages.gcc]
-filename = "gcc-14_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/gcc-14_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-sha256 = "4fd974528294841c5a7d18d40dd7abb0788b3d80853970ed2d009c4172b845f4"
+filename = "gcc-15_15.2.0-16ubuntu1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-15/gcc-15_15.2.0-16ubuntu1_amd64.deb"
+sha256 = "28da225c111d3ce9d230209cca24db46ec645f631f593f188bef718d8a1e4711"
 
 [gcc.packages.gcc_base]
-filename = "gcc-14-base_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-14/gcc-14-base_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-sha256 = "b95c172411a7fdae70307cf33a9f5320ba5e056b556454543dd5b679d5ce1c4f"
+filename = "gcc-15-base_15.2.0-16ubuntu1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-15/gcc-15-base_15.2.0-16ubuntu1_amd64.deb"
+sha256 = "5a302d705d562fb7e150415b00651c00fed58b633faadff0b332eac1b73fadb3"
 
 [gcc.packages.gcc_target]
-filename = "gcc-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/gcc-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-sha256 = "863df95a0d9f21d2bdb24696d04cf5032c9cb0f87d20e78a57b04add2cb21f16"
+filename = "gcc-15-x86-64-linux-gnu_15.2.0-16ubuntu1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-15/gcc-15-x86-64-linux-gnu_15.2.0-16ubuntu1_amd64.deb"
+sha256 = "df0e5375c9e981b18e396c2e9ec1e359f226576a9b94a311bf07603f3ca6023a"
 
 [gcc.packages.libgcc_dev]
-filename = "libgcc-14-dev_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-14/libgcc-14-dev_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-sha256 = "055dfa5fa7448fe20ad2f3832df2edd2b0ffca7f8a6c5fbbc5576dc61b2eb8b7"
+filename = "libgcc-15-dev_15.2.0-16ubuntu1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-15/libgcc-15-dev_15.2.0-16ubuntu1_amd64.deb"
+sha256 = "32fa5bde1891f46fd4f422e466c863fb78e834b634e1aa08211c8eea68870af5"
 
 [gcc.packages.libgcc_runtime]
-filename = "libgcc-s1_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-14/libgcc-s1_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-sha256 = "aa7fadbe33b78bcf99885318040601c550c208929565b179891d9a3cc2aa68cd"
+filename = "libgcc-s1_16-20260322-1ubuntu1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-16/libgcc-s1_16-20260322-1ubuntu1_amd64.deb"
+sha256 = "2fb4d81c14fdf34251639ae82f5181f9f98480ea16125d535571ac1be9db3065"
 
 [gcc.packages.libstdcxx_dev]
-filename = "libstdc++-14-dev_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-url = "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-14/libstdc++-14-dev_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-sha256 = "6d223262b8cbe6d5150435056d58dffa8159d8582fc0df47fb45ea550cd37424"
+filename = "libstdc++-15-dev_15.2.0-16ubuntu1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-15/libstdc++-15-dev_15.2.0-16ubuntu1_amd64.deb"
+sha256 = "9a400597b1db45cf51238c9eb556e211ec092d363cfb7ebebac627750ba56433"
 
 [gcc.packages.libstdcxx_runtime]
-filename = "libstdc++6_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-14/libstdc++6_14.2.0-4ubuntu2~24.04.1_amd64.deb"
-sha256 = "a51f8de7829211db961a31f02158058ad1a95f92ac6d0a5dff6350e2821c54c0"
+filename = "libstdc++6_16-20260322-1ubuntu1_amd64.deb"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-16/libstdc++6_16-20260322-1ubuntu1_amd64.deb"
+sha256 = "a32b9ad585e39bdc7bd15d1eae6293461e6d466859a1dd2f7862d1e40f89b9d8"
 
 [graphviz]
 version = "16.1.0"
@@ -137,20 +140,14 @@ sha256 = "fe344258d6171d4679bd6ed02fb8f41b3cb9a59ec35fef5f77684dd09512a7c8"
 format = "deb"
 resolved = "2026-10-07"
 scope = "upstream Ubuntu 24.04 amd64 package; project-local documentation diagrams"
-checked = "2026-10-07"
+checked = "2026-10-13"
 
 [native_dependencies]
-libevent = "2.1.12-stable-9ubuntu2.2"
-ncurses = "6.4+20240113-1ubuntu2.2"
-source = "Ubuntu noble-updates"
+libevent = "2.1.12-stable-10ubuntu0.2"
+ncurses = "6.6+20251231-1"
+source = "Ubuntu resolute and resolute-updates"
 generators = "none in initial engine"
-
-[llvm_runtime]
-version = "70.1-2"
-url = "https://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu70_70.1-2_amd64.deb"
-sha256 = "58a154f6307289813da2276f900498ef536ae7c0522d2cf31a3c3c5cf62dfd9a"
-source = "https://archive.ubuntu.com/ubuntu/dists/jammy/main/binary-amd64/Packages.xz"
-format = "deb"
+scope = "host development packages for the isolated stock reference fixture"
 
 [googletest]
 version = "1.18.0"
@@ -158,7 +155,7 @@ revision = "063de7e9578f82b369302001269680b4b1553359"
 url = "https://codeload.github.com/google/googletest/tar.gz/063de7e9578f82b369302001269680b4b1553359"
 source = "https://github.com/google/googletest/releases/tag/v1.18.0"
 sha256 = "623fe05d283020f37a579a8985ba338091ac7229da62b5591ff40acdf05b95e2"
-checked = "2026-10-07"
+checked = "2026-10-13"
 
 [tmux_fixture]
 version = "3.4"
@@ -167,9 +164,19 @@ sha256 = "034b15c64035f783d43862f2775eb4828f61571ca62c8199796000b97d556ecd"
 source = "Ubuntu noble-updates tmux package"
 scope = "isolated unmodified test client; never a production backend"
 
+[tmux_fixture_package]
+version = "3.4-1ubuntu0.1"
+url = "https://archive.ubuntu.com/ubuntu/pool/main/t/tmux/tmux_3.4-1ubuntu0.1_amd64.deb"
+sha256 = "2913e17aa61879d1f905aab6f374f153f1ece63aefba1b996e387325d1d5338d"
+source = "Ubuntu noble-updates tmux package archive"
+format = "deb"
+scope = "project-local source of the hash-verified tmux 3.4 test binary"
+
 [tmux_fixture_runtime]
 source = "Ubuntu noble and noble-updates"
 scope = "isolated libraries for the unmodified tmux 3.4 fixture on newer hosts"
+
+[tmux_fixture_runtime.packages]
 
 [tmux_fixture_runtime.packages.tinfo]
 filename = "libtinfo6_6.4+20240113-1ubuntu2.2_amd64.deb"
@@ -242,4 +249,4 @@ version = "12.2.0"
 url = "https://registry.npmjs.org/npm/-/npm-12.2.0.tgz"
 sha256 = "6666b48816b39b86c3febac7b51a4ee4de6c5ca589c382ad8004b6b113f86677"
 node = "^22.22.2 || ^24.15.0 || >=26.0.0"
-resolved = "2026-10-07"
+resolved = "2026-10-13"
