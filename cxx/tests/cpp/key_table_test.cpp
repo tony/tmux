@@ -4,6 +4,8 @@
 #include "pane/operations/select_next_pane_key_binding.hpp"
 #include "protocol/native/operation_registry.hpp"
 #include "server/api_catalogs.hpp"
+#include "window_link/operations/select_window_key_binding.hpp"
+#include "window_link/register_key_bindings.hpp"
 
 #include <tmux_cxx/client/operations/detach_client.hpp>
 #include <tmux_cxx/server/server.hpp>
@@ -25,7 +27,7 @@ struct UnknownOperationBinding {
                                                        protocol::native::OperationId{999}};
     /** @brief Remain unreachable because startup rejects the operation reference first. */
     static Result<KeyBindingEffect> execute(KeyBindingInvocation &) {
-        return KeyBindingEffect::selected_pane_unchanged;
+        return KeyBindingEffect::client_selection_unchanged;
     }
 };
 
@@ -36,7 +38,7 @@ struct RootFallbackBinding {
                                                        DetachClient::description.id};
     /** @brief Mark root fallback without mutating the otherwise empty test server. */
     static Result<KeyBindingEffect> execute(KeyBindingInvocation &) {
-        return KeyBindingEffect::selected_pane_changed;
+        return KeyBindingEffect::client_selection_changed;
     }
 };
 
@@ -54,7 +56,7 @@ struct RetryablePrefixBinding {
             return std::unexpected(
                 TmuxError{TmuxErrorCode::backpressure, "synthetic key binding backpressure"});
         }
-        return KeyBindingEffect::selected_pane_unchanged;
+        return KeyBindingEffect::client_selection_unchanged;
     }
 };
 } // namespace
@@ -94,10 +96,11 @@ TEST(ClientKeyInput, UnmatchedPrefixBindingRetriesRootTable) {
     ClientKeyInput input;
     ASSERT_TRUE(input.append("\x02x"));
     Server server;
-    const auto effect = input.route_pending(server, ClientId{1}, WindowId{1}, PaneId{1},
+    const auto effect = input.route_pending(server, ClientId{1},
+                                            {SessionId{1}, WindowLinkId{1}, WindowId{1}, PaneId{1}},
                                             default_prefixes, 0, *key_tables);
     ASSERT_TRUE(effect);
-    EXPECT_EQ(*effect, KeyBindingEffect::selected_pane_changed);
+    EXPECT_EQ(*effect, KeyBindingEffect::client_selection_changed);
 }
 
 /** @brief Selecting next in a one-pane window reports that the selected pane stayed unchanged. */
@@ -105,13 +108,15 @@ TEST(ClientKeyInput, NextPaneBindingReportsUnchangedForSinglePane) {
     Server server;
     const auto session = server.create_session("one-pane", "/bin/cat");
     ASSERT_TRUE(session);
-    KeyBindingInvocation invocation{server, ClientId{1}, session->window, session->pane,
+    KeyBindingInvocation invocation{server,
+                                    ClientId{1},
+                                    {session->id, session->link, session->window, session->pane},
                                     default_prefixes.prefix};
 
     const auto effect = SelectNextPaneKeyBinding::execute(invocation);
 
     ASSERT_TRUE(effect);
-    EXPECT_EQ(*effect, KeyBindingEffect::selected_pane_unchanged);
+    EXPECT_EQ(*effect, KeyBindingEffect::client_selection_unchanged);
 }
 
 /** @brief Binding backpressure leaves the command key and prefix-table selection retryable. */
@@ -129,16 +134,18 @@ TEST(ClientKeyInput, BindingBackpressurePreservesPrefixTable) {
     Server server;
     retryable_binding_calls = 0;
 
-    const auto deferred = input.route_pending(server, ClientId{1}, WindowId{1}, PaneId{1},
-                                              default_prefixes, 0, *key_tables);
+    const auto deferred = input.route_pending(
+        server, ClientId{1}, {SessionId{1}, WindowLinkId{1}, WindowId{1}, PaneId{1}},
+        default_prefixes, 0, *key_tables);
     ASSERT_TRUE(deferred);
-    EXPECT_EQ(*deferred, KeyBindingEffect::selected_pane_unchanged);
+    EXPECT_EQ(*deferred, KeyBindingEffect::client_selection_unchanged);
     EXPECT_EQ(retryable_binding_calls, 1);
 
-    const auto retried = input.route_pending(server, ClientId{1}, WindowId{1}, PaneId{1},
-                                             default_prefixes, 0, *key_tables);
+    const auto retried = input.route_pending(
+        server, ClientId{1}, {SessionId{1}, WindowLinkId{1}, WindowId{1}, PaneId{1}},
+        default_prefixes, 0, *key_tables);
     ASSERT_TRUE(retried);
-    EXPECT_EQ(*retried, KeyBindingEffect::selected_pane_unchanged);
+    EXPECT_EQ(*retried, KeyBindingEffect::client_selection_unchanged);
     EXPECT_EQ(retryable_binding_calls, 2);
 }
 
@@ -153,12 +160,12 @@ TEST(ClientKeyInput, DefaultSplitBindingsUseTypedPaneOperation) {
     constexpr std::array<char, 2> left_right{2, '%'};
     ASSERT_TRUE(input.append({left_right.data(), left_right.size()}));
 
-    const auto first_split =
-        input.route_pending(server, ClientId{1}, session->window, session->pane, default_prefixes,
-                            262144, catalogs->key_tables);
+    const auto first_split = input.route_pending(
+        server, ClientId{1}, {session->id, session->link, session->window, session->pane},
+        default_prefixes, 262144, catalogs->key_tables);
 
     ASSERT_TRUE(first_split);
-    EXPECT_EQ(*first_split, KeyBindingEffect::selected_pane_changed);
+    EXPECT_EQ(*first_split, KeyBindingEffect::client_selection_changed);
     auto panes = server.panes(session->window);
     ASSERT_TRUE(panes);
     ASSERT_EQ(panes->size(), 2U);
@@ -168,15 +175,105 @@ TEST(ClientKeyInput, DefaultSplitBindingsUseTypedPaneOperation) {
     constexpr std::array<char, 2> top_bottom{2, '"'};
     ASSERT_TRUE(input.append({top_bottom.data(), top_bottom.size()}));
 
-    const auto second_split =
-        input.route_pending(server, ClientId{1}, session->window, active_after_first->id,
-                            default_prefixes, 262144, catalogs->key_tables);
+    const auto second_split = input.route_pending(
+        server, ClientId{1}, {session->id, session->link, session->window, active_after_first->id},
+        default_prefixes, 262144, catalogs->key_tables);
 
     ASSERT_TRUE(second_split);
-    EXPECT_EQ(*second_split, KeyBindingEffect::selected_pane_changed);
+    EXPECT_EQ(*second_split, KeyBindingEffect::client_selection_changed);
     panes = server.panes(session->window);
     ASSERT_TRUE(panes);
     EXPECT_EQ(panes->size(), 3U);
     EXPECT_EQ(std::ranges::count(*panes, true, &PaneSnapshot::active), 1);
+}
+
+/** @brief Window navigation cannot publish a key catalog without its selection operation. */
+TEST(KeyBindingRegistry, WindowKeysRequireSelectionOperation) {
+    protocol::native::OperationRegistry operations;
+    ASSERT_TRUE(operations.add<DetachClient>());
+    const auto operation_catalog = std::move(operations).freeze();
+    ASSERT_TRUE(operation_catalog);
+    KeyBindingRegistry registry;
+    ASSERT_TRUE(register_window_link_key_bindings(registry));
+    const auto rejected = std::move(registry).freeze(*operation_catalog);
+    ASSERT_FALSE(rejected);
+    EXPECT_EQ(rejected.error().code, TmuxErrorCode::invalid_argument);
+}
+
+/** @brief Sparse window keys wrap within their session and preserve independent shared-window
+ * selections. */
+TEST(ClientKeyInput, WindowKeysResolveSessionMemberships) {
+    Server server;
+    const auto first = server.create_session("first", "/bin/cat");
+    ASSERT_TRUE(first);
+    const auto shared = server.create_window(first->id, 7, "shared", "/bin/cat");
+    ASSERT_TRUE(shared);
+    const auto second = server.create_session("second", "/bin/cat");
+    ASSERT_TRUE(second);
+    const auto second_link = server.link_window(shared->window, second->id, 3);
+    ASSERT_TRUE(second_link);
+    const auto catalogs = build_server_api_catalogs();
+    ASSERT_TRUE(catalogs);
+    for (std::uint32_t index = 0; index < 10; ++index) {
+        EXPECT_TRUE(catalogs->key_tables.contains("prefix", KeyCode{'0' + index}));
+    }
+
+    /** @brief Resolve a session's live selection before routing one complete prefix command. */
+    const auto invoke_key = [&](SessionId session_id, char key) -> Result<KeyBindingEffect> {
+        const auto sessions = server.sessions();
+        const auto session = std::ranges::find(sessions, session_id, &SessionSnapshot::id);
+        if (session == sessions.end()) {
+            return std::unexpected(TmuxError{TmuxErrorCode::not_found, "test session is absent"});
+        }
+        ClientKeyInput input;
+        const std::array<char, 2> bytes{2, key};
+        if (auto queued = input.append({bytes.data(), bytes.size()}); !queued) {
+            return std::unexpected(queued.error());
+        }
+        return input.route_pending(server, ClientId{1},
+                                   {session->id, session->link, session->window, session->pane},
+                                   default_prefixes, 262144, catalogs->key_tables);
+    };
+
+    const auto next = invoke_key(first->id, 'n');
+    ASSERT_TRUE(next);
+    EXPECT_EQ(*next, KeyBindingEffect::client_selection_changed);
+    EXPECT_EQ(server.sessions()[0].link, shared->id);
+    EXPECT_EQ(server.sessions()[1].link, second->link);
+    ASSERT_TRUE(invoke_key(first->id, 'n'));
+    EXPECT_EQ(server.sessions()[0].link, first->link);
+    ASSERT_TRUE(invoke_key(first->id, 'p'));
+    EXPECT_EQ(server.sessions()[0].link, shared->id);
+    ASSERT_TRUE(invoke_key(first->id, 'p'));
+    EXPECT_EQ(server.sessions()[0].link, first->link);
+
+    ASSERT_TRUE(invoke_key(second->id, '3'));
+    EXPECT_EQ(server.sessions()[1].link, second_link->id);
+    EXPECT_EQ(server.sessions()[0].link, first->link);
+    ASSERT_TRUE(invoke_key(second->id, '0'));
+    EXPECT_EQ(server.sessions()[1].link, second->link);
+    const auto unchanged_revision = server.sessions()[1].revision;
+    const auto absent = invoke_key(second->id, '9');
+    ASSERT_TRUE(absent);
+    EXPECT_EQ(*absent, KeyBindingEffect::client_selection_unchanged);
+    EXPECT_EQ(server.sessions()[1].revision, unchanged_revision);
+
+    KeyBindingInvocation invocation{server,
+                                    ClientId{1},
+                                    {first->id, first->link, first->window, first->pane},
+                                    default_prefixes.prefix};
+    const auto foreign = select_window_link_for_key(invocation, *second_link);
+    ASSERT_FALSE(foreign);
+    EXPECT_EQ(foreign.error().code, TmuxErrorCode::invalid_argument);
+    EXPECT_EQ(server.sessions()[0].link, first->link);
+    EXPECT_EQ(server.sessions()[1].link, second->link);
+
+    ASSERT_TRUE(server.unlink_window(second_link->id));
+    const auto remaining_revision = server.sessions()[1].revision;
+    const auto single = invoke_key(second->id, 'n');
+    ASSERT_TRUE(single);
+    EXPECT_EQ(*single, KeyBindingEffect::client_selection_unchanged);
+    EXPECT_EQ(server.sessions()[1].revision, remaining_revision);
+    EXPECT_EQ(server.window_links(first->id)->size(), 2U);
 }
 } // namespace tmux_cxx::key_table

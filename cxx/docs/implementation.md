@@ -110,6 +110,25 @@ Exercise the same operations through native, Python, Node, and real tmux 3.4
 and 3.7 clients. Run the configured mid, documentation, analysis, sanitizer,
 package, and standalone gates before recording the slice as verified.
 
+## Interactive window navigation slice
+
+Resolve each matched key against the invoking client's current session and
+window membership. Prefix-n and prefix-p traverse memberships in index order
+and wrap at either end. Prefix-0 through prefix-9 select that exact session
+index. Missing indices preserve the attachment and selection; error/status
+presentation remains an explicit compatibility limit.
+
+Keep bindings beside window-membership operations and register their typed
+adapters in the immutable key-table catalog. Use the existing `SelectWindow`
+operation for mutation, sizing, and session ownership. Input routing must
+resolve the newly selected window and pane before forwarding trailing bytes.
+Creation via prefix-c remains separate until its implicit command and naming
+policy is defined. Broader key parsing and configurable tables remain open.
+
+Prove sparse-index wrapping, independent selections for linked sessions,
+missing-index preservation, and same-read input redirection. Exercise real
+tmux 3.4 and 3.7 attachments and restoration, then run configured gates.
+
 ## Architecture progress
 
 Named server/session/window/pane components, entity-local operation descriptions, and validated immutable native lookup now replace the generic domain module and operation switch. The public facade is `ServerConnection`, snapshots are values, and recoverable failures are `TmuxError`. Session/window membership and pane-program cleanup have real ownership models.

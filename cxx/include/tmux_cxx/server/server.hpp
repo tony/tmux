@@ -85,7 +85,7 @@ class Server {
     Result<WindowSnapshot> window(WindowId window) const;
     /** @copybrief tmux_cxx::ServerConnection::create_window
      *
-     * Names require UTF-8, at most 128 bytes, and no control characters. */
+     * Names require UTF-8, at most 128 bytes, and no ASCII controls or DEL. */
     Result<WindowLinkSnapshot> create_window(SessionId session, std::uint32_t index,
                                              std::string name, std::string command = "/bin/sh");
     /** @brief Select a live membership in its owning session without changing other sessions'

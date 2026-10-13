@@ -8,7 +8,7 @@
 namespace tmux_cxx {
 Result<key_table::KeyBindingEffect>
 SelectNextPaneKeyBinding::execute(key_table::KeyBindingInvocation &invocation) {
-    auto panes = invocation.server.panes(invocation.window);
+    auto panes = invocation.server.panes(invocation.selection.window);
     if (!panes) {
         return std::unexpected(panes.error());
     }
@@ -26,7 +26,7 @@ SelectNextPaneKeyBinding::execute(key_table::KeyBindingInvocation &invocation) {
     if (!selected) {
         return std::unexpected(selected.error());
     }
-    return selected_pane_changed ? key_table::KeyBindingEffect::selected_pane_changed
-                                 : key_table::KeyBindingEffect::selected_pane_unchanged;
+    return selected_pane_changed ? key_table::KeyBindingEffect::client_selection_changed
+                                 : key_table::KeyBindingEffect::client_selection_unchanged;
 }
 } // namespace tmux_cxx

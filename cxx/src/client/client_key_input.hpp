@@ -19,11 +19,9 @@ class ClientKeyInput {
     std::size_t read_capacity() const;
     /** @brief Append terminal bytes without discarding earlier input when the buffer is full. */
     Result<void> append(std::string_view bytes);
-    /** @brief Route pending bytes and report whether the selected pane changed or the client
-     * detached.
-     */
+    /** @brief Route pending bytes until the client's selection changes or attachment ends. */
     Result<key_table::KeyBindingEffect> route_pending(Server &server, ClientId client,
-                                                      WindowId window, PaneId pane,
+                                                      ClientSelection selection,
                                                       const SessionPrefixKeys &prefix_keys,
                                                       std::size_t program_input_capacity,
                                                       const key_table::KeyTableCatalog &key_tables);

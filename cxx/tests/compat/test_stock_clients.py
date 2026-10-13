@@ -372,17 +372,41 @@ def test_stock_attach_routes_terminal_and_preserves_session(server: str, fixture
             next_pane = observer.window(membership.window).pane
             observer.wait_pane_output(next_pane, b"next-window-ready", 500)
             discard_terminal_output(master)
-            observer.select_window(membership.id)
-            assert b"next-window-ready" in read_terminal_until(master, b"next-window-ready")
+            os.write(master, b"\x02nnext-window-input\n")
+            rendered = read_terminal_until(master, b"next-window-input")
+            assert b"next-window-ready" in rendered
+            assert observer.sessions()[0].link == membership.id
             next_window = observer.window(membership.window)
             assert (next_window.rows, next_window.columns) == (12, 42)
-            os.write(master, b"next-window-input\n")
-            assert b"next-window-input" in read_terminal_until(master, b"next-window-input")
             observer.wait_pane_output(next_pane, b"next-window-input", 500)
             assert b"next-window-input" not in observer.read_pane_output(session.pane)
             discard_terminal_output(master)
-            observer.select_window(session.link)
+            os.write(master, b"\x02n")
             assert b"left-pane-ready" in read_terminal_until(master, b"left-pane-ready")
+            assert observer.sessions()[0].link == session.link
+            discard_terminal_output(master)
+            os.write(master, b"\x02p")
+            assert b"next-window-ready" in read_terminal_until(master, b"next-window-ready")
+            assert observer.sessions()[0].link == membership.id
+            discard_terminal_output(master)
+            os.write(master, b"\x02p")
+            assert b"left-pane-ready" in read_terminal_until(master, b"left-pane-ready")
+            assert observer.sessions()[0].link == session.link
+            discard_terminal_output(master)
+            os.write(master, b"\x027digit-window-input\n")
+            assert b"digit-window-input" in read_terminal_until(master, b"digit-window-input")
+            assert observer.sessions()[0].link == membership.id
+            observer.wait_pane_output(next_pane, b"digit-window-input", 500)
+            discard_terminal_output(master)
+            os.write(master, b"\x029missing-index-input\n")
+            assert b"missing-index-input" in read_terminal_until(master, b"missing-index-input")
+            assert observer.sessions()[0].link == membership.id
+            assert client.poll() is None
+            observer.wait_pane_output(next_pane, b"missing-index-input", 500)
+            discard_terminal_output(master)
+            os.write(master, b"\x020")
+            assert b"left-pane-ready" in read_terminal_until(master, b"left-pane-ready")
+            assert observer.sessions()[0].link == session.link
             detached = observer.detach_client(attached[0].id)
             assert detached.session is None
             assert detached.detached_from == "interactive"

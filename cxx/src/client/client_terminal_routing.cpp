@@ -70,15 +70,16 @@ ClientTerminalRouting::route_ready_io(Server &server, ClientId client_id,
             return ClientTerminalRouteOutcome::failed;
         }
         auto key_input = client.key_input.route_pending(
-            server, client_id, window_entry->first, pane_entry->first, *prefix_keys,
-            pane_entry->second->client_program_input_capacity(), key_tables);
+            server, client_id,
+            {session_entry->first, link_entry->first, window_entry->first, pane_entry->first},
+            *prefix_keys, pane_entry->second->client_program_input_capacity(), key_tables);
         if (!key_input) {
             return ClientTerminalRouteOutcome::failed;
         }
         if (*key_input == key_table::KeyBindingEffect::client_detached) {
             return ClientTerminalRouteOutcome::routed;
         }
-        if (*key_input != key_table::KeyBindingEffect::selected_pane_changed) {
+        if (*key_input != key_table::KeyBindingEffect::client_selection_changed) {
             break;
         }
     }

@@ -213,8 +213,10 @@ TEST(TmuxProtocol, CompatibilitySeparatesEvidenceFromReleaseClaims) {
         "unset and implicit current-session assignment are unsupported"));
     EXPECT_TRUE(std::ranges::contains(
         report.limitations,
-        "the prefix table contains only C-b send-prefix, quote and percent split, d detach, and o "
-        "next-pane; configurable key tables and bindings are unsupported"));
+        "the prefix table contains C-b send-prefix, quote and percent split, d detach, "
+        "o next-pane, n/p window navigation, and digit window indices; missing indices are "
+        "ignored without status feedback; creation keys and configurable tables remain "
+        "unsupported"));
     EXPECT_TRUE(std::ranges::contains(
         report.limitations,
         "paste-buffer requires -b name and -t %pane; delete-after, custom separators, raw "

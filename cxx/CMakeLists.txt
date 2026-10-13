@@ -262,6 +262,11 @@ add_library(tmux_cxx_server STATIC
   src/window/register_commands.cpp src/window/operations/new_window_command.cpp
   src/window_link/register_operations.cpp
   src/window_link/register_commands.cpp src/window_link/window_target.cpp
+  src/window_link/register_key_bindings.cpp
+  src/window_link/operations/select_window_key_binding.cpp
+  src/window_link/operations/next_window_key_binding.cpp
+  src/window_link/operations/previous_window_key_binding.cpp
+  src/window_link/operations/select_window_index_key_binding.cpp
   src/window_link/operations/select_window.cpp src/window_link/operations/select_window_command.cpp
   src/window_link/operations/link_window.cpp src/window_link/operations/unlink_window.cpp
   src/window_link/operations/list_window_links.cpp)

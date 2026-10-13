@@ -1079,3 +1079,43 @@ run after the tool update took 209.07 seconds. Builds used fresh CMake ABI
 metadata after the interpreter change. Source-wide application acceptance,
 full tmux parity, installed daemon discovery, and the remaining objective
 requirements stay open.
+
+## 2026-10-13: Interactive window navigation
+
+Prefix-`n` and prefix-`p` traverse the invoking session's window memberships
+in index order and wrap. Prefix digits select their exact index. Missing
+indices preserve selection and attachment without status feedback.
+Entity-local typed bindings register at startup and invoke `SelectWindow`
+through the immutable key catalog.
+
+`ClientSelection` copies the current session, membership, window, and pane
+identities for each invocation. Shared windows retain independent session
+selections. `client_selection_changed` requests fresh routing before later
+bytes from the same terminal read; it covers window and pane changes.
+
+The real tmux 3.4 and 3.7 attachment tests first failed because navigation
+input reached the old pane. They now prove sparse-index wrapping, digit
+selection, same-read input redirection, sizing, and terminal restoration.
+Native cases cover shared memberships, missing-index preservation, and the
+required selection operation. Removing the foreign-session guard makes its
+native ownership assertion fail; restoring it passes the focused cases.
+
+| Gate | Result | Whole-command wall time |
+|---|---|---:|
+| Focused ownership negative and restored window-key cases | PASS; 9 cases | 2.02 s |
+| Real tmux 3.4/3.7 window navigation | PASS; 2 cases | 0.22 s |
+| Configured mid loop | PASS; 88 native cases | 7.40 s |
+| GCC 15 native and both binding suites | PASS; 93 tests | 2.80 s |
+| C++26 native and both binding suites | PASS; 93 tests | 3.24 s |
+| ASan/UBSan/LeakSanitizer and controlled negatives | PASS | 45.03 s |
+| Bounded native, tmux, and terminal fuzz replay | PASS; 6,000 runs | 2.36 s |
+| Doxygen/compiler/language documentation and negatives | PASS | 181.42 s |
+| clang-tidy and fatal negative probe | PASS | 130.12 s |
+| Offline wheel/sdist/npm consumers | PASS | 38.66 s |
+| Standalone source, install, adapters, and native consumer | PASS | 67.79 s |
+
+Creation keys, automatic naming, command queues, configurable key tables,
+status feedback, window-selection notifications, and the broader objective
+remain open. The bounded byte queue alone does not establish a bounded
+number of key operations per event-loop turn; that fairness boundary still
+needs a focused test and continuation policy.

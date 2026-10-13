@@ -5,12 +5,12 @@ namespace {
 /** @brief Split the invocation's selected pane with the requested tmux layout orientation. */
 Result<key_table::KeyBindingEffect> split_selected_pane(key_table::KeyBindingInvocation &invocation,
                                                         PaneSplitOrientation orientation) {
-    if (auto split =
-            SplitPane::execute(invocation.server, {invocation.pane, orientation, "/bin/sh"});
+    if (auto split = SplitPane::execute(invocation.server,
+                                        {invocation.selection.pane, orientation, "/bin/sh"});
         !split) {
         return std::unexpected(split.error());
     }
-    return key_table::KeyBindingEffect::selected_pane_changed;
+    return key_table::KeyBindingEffect::client_selection_changed;
 }
 } // namespace
 

@@ -19,11 +19,11 @@ Result<void> ClientKeyInput::append(std::string_view bytes) {
 }
 
 Result<key_table::KeyBindingEffect>
-ClientKeyInput::route_pending(Server &server, ClientId client, WindowId window, PaneId pane,
+ClientKeyInput::route_pending(Server &server, ClientId client, ClientSelection selection,
                               const SessionPrefixKeys &prefix_keys,
                               std::size_t program_input_capacity,
                               const key_table::KeyTableCatalog &key_tables) {
-    key_table::KeyBindingInvocation invocation{server, client, window, pane, prefix_keys.prefix};
+    key_table::KeyBindingInvocation invocation{server, client, selection, prefix_keys.prefix};
     while (!pending_bytes_.empty()) {
         const auto key = key_table::KeyCode{
             static_cast<std::uint32_t>(static_cast<unsigned char>(pending_bytes_.front()))};
@@ -42,7 +42,7 @@ ClientKeyInput::route_pending(Server &server, ClientId client, WindowId window, 
         if (!binding) {
             if (binding.error().code == TmuxErrorCode::backpressure) {
                 active_table_ = selected_table;
-                return key_table::KeyBindingEffect::selected_pane_unchanged;
+                return key_table::KeyBindingEffect::client_selection_unchanged;
             }
             return std::unexpected(binding.error());
         }
@@ -51,7 +51,7 @@ ClientKeyInput::route_pending(Server &server, ClientId client, WindowId window, 
             if (!binding) {
                 if (binding.error().code == TmuxErrorCode::backpressure) {
                     active_table_ = selected_table;
-                    return key_table::KeyBindingEffect::selected_pane_unchanged;
+                    return key_table::KeyBindingEffect::client_selection_unchanged;
                 }
                 return std::unexpected(binding.error());
             }
@@ -62,8 +62,8 @@ ClientKeyInput::route_pending(Server &server, ClientId client, WindowId window, 
                 pending_bytes_.clear();
                 return key_table::KeyBindingEffect::client_detached;
             }
-            if (**binding == key_table::KeyBindingEffect::selected_pane_changed) {
-                return key_table::KeyBindingEffect::selected_pane_changed;
+            if (**binding == key_table::KeyBindingEffect::client_selection_changed) {
+                return key_table::KeyBindingEffect::client_selection_changed;
             }
             continue;
         }
@@ -83,16 +83,16 @@ ClientKeyInput::route_pending(Server &server, ClientId client, WindowId window, 
         }
         const auto admitted_bytes = std::min(passthrough_bytes, program_input_capacity);
         if (admitted_bytes == 0) {
-            return key_table::KeyBindingEffect::selected_pane_unchanged;
+            return key_table::KeyBindingEffect::client_selection_unchanged;
         }
-        auto admitted =
-            SendPaneInput::execute(server, {pane, pending_bytes_.substr(0, admitted_bytes)});
+        auto admitted = SendPaneInput::execute(
+            server, {selection.pane, pending_bytes_.substr(0, admitted_bytes)});
         if (!admitted) {
             return std::unexpected(admitted.error());
         }
         pending_bytes_.erase(0, admitted_bytes);
         program_input_capacity -= admitted_bytes;
     }
-    return key_table::KeyBindingEffect::selected_pane_unchanged;
+    return key_table::KeyBindingEffect::client_selection_unchanged;
 }
 } // namespace tmux_cxx

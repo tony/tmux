@@ -107,6 +107,15 @@ consumer without borrowing first-party sources from the working tree. Current
 upstream GCC, broader binding lifetimes, and daemon discovery remain open.
 The same addon runs against locked Node Current and LTS binaries.
 
+## Window keys
+
+The default prefix is `C-b`. Prefix-`n` and prefix-`p` cycle this session's
+window memberships in index order, wrapping at either end. Prefix-`0`
+through prefix-`9` select an exact window index. Missing indices preserve
+the current selection and attachment; status feedback, prefix-`c`, and
+configurable key tables remain unfinished. Window switches route subsequent
+input to the new pane, including bytes received with the command key.
+
 ## Session event streams
 
 Set `TMUX_CXX_SOCKET` to a running C++ server. Python offers the same synchronous stream as C++ plus an asyncio adapter whose cancellation closes only that observer.

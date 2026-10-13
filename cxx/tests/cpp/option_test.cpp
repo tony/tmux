@@ -135,17 +135,19 @@ TEST(CommandRegistry, SetOptionChangesInteractivePrefixThroughTypedSessionOperat
     ClientKeyInput input;
     constexpr std::array<char, 2> old_prefix{2, '%'};
     ASSERT_TRUE(input.append({old_prefix.data(), old_prefix.size()}));
-    auto effect = input.route_pending(server, *client, session->window, session->pane, *prefix_keys,
-                                      262144, catalogs->key_tables);
+    auto effect = input.route_pending(server, *client,
+                                      {session->id, session->link, session->window, session->pane},
+                                      *prefix_keys, 262144, catalogs->key_tables);
     ASSERT_TRUE(effect);
     EXPECT_EQ(server.panes(session->window)->size(), 1U);
 
     constexpr std::array<char, 2> primary_prefix{1, '%'};
     ASSERT_TRUE(input.append({primary_prefix.data(), primary_prefix.size()}));
-    effect = input.route_pending(server, *client, session->window, session->pane, *prefix_keys,
-                                 262144, catalogs->key_tables);
+    effect = input.route_pending(server, *client,
+                                 {session->id, session->link, session->window, session->pane},
+                                 *prefix_keys, 262144, catalogs->key_tables);
     ASSERT_TRUE(effect);
-    EXPECT_EQ(*effect, key_table::KeyBindingEffect::selected_pane_changed);
+    EXPECT_EQ(*effect, key_table::KeyBindingEffect::client_selection_changed);
     auto panes = server.panes(session->window);
     ASSERT_TRUE(panes);
     ASSERT_EQ(panes->size(), 2U);
@@ -154,10 +156,11 @@ TEST(CommandRegistry, SetOptionChangesInteractivePrefixThroughTypedSessionOperat
 
     constexpr std::array<char, 2> secondary_prefix{24, '"'};
     ASSERT_TRUE(input.append({secondary_prefix.data(), secondary_prefix.size()}));
-    effect = input.route_pending(server, *client, session->window, active->id, *prefix_keys, 262144,
-                                 catalogs->key_tables);
+    effect = input.route_pending(server, *client,
+                                 {session->id, session->link, session->window, active->id},
+                                 *prefix_keys, 262144, catalogs->key_tables);
     ASSERT_TRUE(effect);
-    EXPECT_EQ(*effect, key_table::KeyBindingEffect::selected_pane_changed);
+    EXPECT_EQ(*effect, key_table::KeyBindingEffect::client_selection_changed);
     EXPECT_EQ(server.panes(session->window)->size(), 3U);
 }
 

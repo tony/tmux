@@ -1,5 +1,7 @@
 #pragma once
 
+#include "client/client_selection.hpp"
+
 #include <tmux_cxx/identity.hpp>
 #include <tmux_cxx/key_table/key_code.hpp>
 #include <tmux_cxx/protocol/native/operation.hpp>
@@ -20,20 +22,20 @@ struct KeyBindingDescription {
     protocol::native::OperationId operation; ///< Shared typed operation required by the command.
 };
 
-/** @brief Supply the live server, invoking client, and selected window to one matched binding. */
+/** @brief Supply the live server and invoking client's resolved selection to one matched binding.
+ */
 struct KeyBindingInvocation {
-    Server &server;                ///< Authoritative server whose operation the binding invokes.
-    ClientId client;               ///< Attached client whose active table matched the key.
-    WindowId window;               ///< Shared window selected by the invoking client's session.
-    PaneId pane;                   ///< Pane selected when this binding began execution.
+    Server &server;            ///< Authoritative server whose operation the binding invokes.
+    ClientId client;           ///< Attached client whose active table matched the key.
+    ClientSelection selection; ///< Session-owned membership and pane resolved before invocation.
     std::optional<KeyCode> prefix; ///< Effective primary prefix used by send-prefix.
 };
 
 /** @brief Report how one successful binding affects subsequent client terminal input. */
 enum class KeyBindingEffect {
-    selected_pane_unchanged, ///< Keep routing terminal bytes to the resolved pane.
-    selected_pane_changed,   ///< Resolve the client's selected window and pane again.
-    client_detached          ///< End input routing because the client attachment ended.
+    client_selection_unchanged, ///< Keep routing terminal bytes to the resolved pane.
+    client_selection_changed,   ///< Resolve the client's selected membership and pane again.
+    client_detached             ///< End input routing because the client attachment ended.
 };
 } // namespace key_table
 } // namespace tmux_cxx

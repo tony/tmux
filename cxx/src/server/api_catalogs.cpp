@@ -16,6 +16,7 @@
 #include "window/register_commands.hpp"
 #include "window/register_operations.hpp"
 #include "window_link/register_commands.hpp"
+#include "window_link/register_key_bindings.hpp"
 #include "window_link/register_operations.hpp"
 
 #include <tmux_cxx/protocol/native/api_operations.hpp>
@@ -75,6 +76,10 @@ Result<ServerApiCatalogs> build_server_api_catalogs() {
         return std::unexpected(registration.error());
     }
     if (auto registration = register_client_key_bindings(key_binding_registry); !registration) {
+        return std::unexpected(registration.error());
+    }
+    if (auto registration = register_window_link_key_bindings(key_binding_registry);
+        !registration) {
         return std::unexpected(registration.error());
     }
     auto key_tables = std::move(key_binding_registry).freeze(*native_operations);

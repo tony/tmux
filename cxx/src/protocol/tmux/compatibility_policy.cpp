@@ -102,8 +102,10 @@ StockConnectionCompatibility TmuxCompatibilityPolicy::assess(const TmuxProtocolP
         report.limitations.push_back("ordinary-client borders use basic ASCII without "
                                      "capability-sensitive glyphs or styles");
         report.limitations.push_back(
-            "the prefix table contains only C-b send-prefix, quote and percent split, d detach, "
-            "and o next-pane; configurable key tables and bindings are unsupported");
+            "the prefix table contains C-b send-prefix, quote and percent split, d detach, "
+            "o next-pane, n/p window navigation, and digit window indices; missing indices are "
+            "ignored without status feedback; creation keys and configurable tables remain "
+            "unsupported");
         report.limitations.push_back(
             "the latest attached client controls shared window dimensions");
     }
