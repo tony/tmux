@@ -3,6 +3,140 @@
 #include <gtest/gtest.h>
 
 namespace tmux_cxx::terminal {
+namespace {
+/** @brief Collect copied cell text without adding wide-cell continuation glyphs. */
+std::u32string history_line_text(const TerminalLine &line) {
+    std::u32string text;
+    for (const auto &cell : line.cells) {
+        text += cell.text;
+    }
+    return text;
+}
+} // namespace
+
+/** @brief Preserve chronological soft and hard row boundaries across every delivery fragment. */
+TEST(TerminalHistory, ChunkedRowsRetainBoundaryMetadata) {
+    constexpr std::string_view output = "abcdEF\r\nGH\r\nIJ";
+    for (std::size_t chunk_size = 1; chunk_size <= output.size(); ++chunk_size) {
+        TerminalState terminal({2, 4}, 4);
+        for (std::size_t offset = 0; offset < output.size(); offset += chunk_size) {
+            ASSERT_TRUE(terminal.ingest_program_output(output.substr(offset, chunk_size)));
+        }
+        const auto history = terminal.history_snapshot();
+        ASSERT_EQ(history.lines.size(), 4);
+        EXPECT_EQ(history.history_lines, 2);
+        EXPECT_FALSE(history.history_gap);
+        EXPECT_TRUE(history.complete);
+        EXPECT_EQ(history.cursor, (CellPosition{1, 2}));
+        EXPECT_EQ(history_line_text(history.lines[0]), U"abcd");
+        EXPECT_EQ(history_line_text(history.lines[1]), U"EF  ");
+        EXPECT_EQ(history_line_text(history.lines[2]), U"GH  ");
+        EXPECT_EQ(history_line_text(history.lines[3]), U"IJ  ");
+        EXPECT_FALSE(history.lines[0].continuation);
+        EXPECT_TRUE(history.lines[1].continuation);
+        EXPECT_FALSE(history.lines[2].continuation);
+        EXPECT_FALSE(history.lines[3].continuation);
+    }
+}
+
+/** @brief Capture disappearing metadata before a multirow scroll replaces visible line information.
+ */
+TEST(TerminalHistory, MultipleRowScrollUsesOutgoingBoundaries) {
+    TerminalState terminal({4, 4}, 6);
+    ASSERT_TRUE(terminal.ingest_program_output("abcdEF\r\nGH\r\nIJ\x1b[2S"));
+    const auto history = terminal.history_snapshot();
+    ASSERT_EQ(history.lines.size(), 6);
+    EXPECT_EQ(history.history_lines, 2);
+    EXPECT_EQ(history_line_text(history.lines[0]), U"abcd");
+    EXPECT_EQ(history_line_text(history.lines[1]), U"EF  ");
+    EXPECT_EQ(history_line_text(history.lines[2]), U"GH  ");
+    EXPECT_FALSE(history.lines[0].continuation);
+    EXPECT_TRUE(history.lines[1].continuation);
+    for (std::size_t row = 2; row < history.lines.size(); ++row) {
+        EXPECT_FALSE(history.lines[row].continuation);
+    }
+}
+
+/** @brief Preserve original retained widths and restored continuation when resizing pushes and pops
+ * rows. */
+TEST(TerminalHistory, ResizeRetainsWidthsAndRestoresBoundaries) {
+    TerminalState terminal({4, 4}, 6);
+    ASSERT_TRUE(terminal.ingest_program_output("abcdEF\r\nGH\r\nIJ"));
+    ASSERT_TRUE(terminal.resize({2, 6}));
+    const auto pushed = terminal.history_snapshot();
+    ASSERT_EQ(pushed.lines.size(), 4);
+    EXPECT_EQ(pushed.history_lines, 2);
+    EXPECT_EQ(pushed.lines[0].cells.size(), 4);
+    EXPECT_EQ(pushed.lines[1].cells.size(), 4);
+    EXPECT_EQ(pushed.lines[2].cells.size(), 6);
+    EXPECT_TRUE(pushed.lines[1].continuation);
+    ASSERT_TRUE(terminal.resize({4, 3}));
+    auto restored = terminal.history_snapshot();
+    ASSERT_EQ(restored.lines.size(), 4);
+    EXPECT_EQ(restored.history_lines, 0);
+    EXPECT_EQ(history_line_text(restored.lines[0]), U"abc");
+    EXPECT_EQ(history_line_text(restored.lines[1]), U"EF ");
+    EXPECT_TRUE(restored.lines[1].continuation);
+    EXPECT_FALSE(restored.lines[2].continuation);
+    ASSERT_TRUE(terminal.resize({4, 7}));
+    restored = terminal.history_snapshot();
+    EXPECT_TRUE(restored.lines[1].continuation);
+    EXPECT_EQ(history_line_text(pushed.lines[0]), U"abcd");
+}
+
+/** @brief Keep discarded primary-history evidence separate from active alternate-screen captures.
+ */
+TEST(TerminalHistory, EvictionAndAlternateScreenRemainSeparate) {
+    TerminalState terminal({2, 4}, 1);
+    ASSERT_TRUE(terminal.ingest_program_output("abcdEF\r\nGH\r\nIJ"));
+    auto primary = terminal.history_snapshot();
+    ASSERT_EQ(primary.lines.size(), 3);
+    EXPECT_EQ(primary.history_lines, 1);
+    EXPECT_TRUE(primary.history_gap);
+    EXPECT_TRUE(primary.lines[0].continuation);
+    EXPECT_EQ(history_line_text(primary.lines[0]), U"EF  ");
+    ASSERT_TRUE(terminal.ingest_program_output("\x1b[?1049h\x1b[H\x1b[2JmnopQR\r\nST\r\nUV"));
+    const auto alternate = terminal.history_snapshot();
+    ASSERT_EQ(alternate.lines.size(), 2);
+    EXPECT_TRUE(alternate.alternate_screen);
+    EXPECT_EQ(alternate.history_lines, 0);
+    EXPECT_FALSE(alternate.history_gap);
+    EXPECT_EQ(history_line_text(alternate.lines[0]), U"ST  ");
+    EXPECT_EQ(history_line_text(alternate.lines[1]), U"UV  ");
+    ASSERT_TRUE(terminal.ingest_program_output("\x1b[?1049l"));
+    primary = terminal.history_snapshot();
+    EXPECT_EQ(primary.history_lines, 1);
+    EXPECT_TRUE(primary.history_gap);
+    EXPECT_TRUE(primary.lines[0].continuation);
+    EXPECT_EQ(history_line_text(primary.lines[0]), U"EF  ");
+    TerminalState discarded({2, 4}, 0);
+    ASSERT_TRUE(discarded.ingest_program_output("abcdEF\r\nGH\r\nIJ"));
+    EXPECT_TRUE(discarded.history_snapshot().complete);
+    EXPECT_EQ(discarded.history_snapshot().history_lines, 0);
+    EXPECT_TRUE(discarded.history_snapshot().history_gap);
+}
+
+/** @brief Copy independently owned rows without draining replies or disturbing partial parser
+ * state. */
+TEST(TerminalHistory, CaptureIsIndependentAndPreservesParserContinuation) {
+    TerminalState terminal({2, 4}, 4);
+    ASSERT_TRUE(terminal.ingest_program_output("abcdEF\r\nGH\r\nIJ\x1b[6n\x1b[31"));
+    const auto before = terminal.snapshot();
+    auto captured = terminal.history_snapshot();
+    EXPECT_EQ(captured.revision, before.revision);
+    EXPECT_EQ(terminal.snapshot().revision, before.revision);
+    EXPECT_EQ(terminal.snapshot().cells, before.cells);
+    EXPECT_EQ(terminal.snapshot().cursor, before.cursor);
+    EXPECT_EQ(terminal.take_program_replies(), "\x1b[2;3R");
+    captured.lines[0].cells[0].text = U"changed";
+    EXPECT_EQ(history_line_text(terminal.history_snapshot().lines[0]), U"abcd");
+    ASSERT_TRUE(terminal.ingest_program_output("mK"));
+    EXPECT_EQ(terminal.snapshot().cursor, (CellPosition{1, 3}));
+    EXPECT_EQ(terminal.snapshot().cells[6].foreground.value, 1);
+    EXPECT_EQ(history_line_text(captured.lines[3]), U"IJ  ");
+    EXPECT_EQ(history_line_text(terminal.history_snapshot().lines[3]), U"IJK ");
+}
+
 /** @brief Partial control and Unicode sequences retain parser state and preserve cell widths and
  * attributes. */
 TEST(TerminalState, ChunkBoundariesPreserveMeaning) {

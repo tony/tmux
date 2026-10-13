@@ -53,6 +53,24 @@ Its changed thread-safe callback exception handling applies when that API is
 used. New addon work must retain JavaScript-thread ownership and explicit
 exception translation. Experimental Node APIs remain outside this baseline.
 
+## Terminal history adapters
+
+The locked libvterm 0.3.3 archive and extracted sources remain unchanged.
+CMake generates `state.c` and `screen.c` copies with narrow history call
+sites. Their C++ callbacks obtain the registered screen context through
+libvterm's public API, use bounded metadata storage, and cannot throw across
+the C boundary. The archive, original files, and generated derivatives have
+separate digest checks in `cmake/VTerm.cmake` and the native toolchain lock.
+See [source provenance](attribution.md) for the external library's license.
+
+Before scrolling shifts line information, the adapter captures the
+disappearing rows' continuation flags. Resize captures the old flags,
+restores flags with popped history, and preserves surviving visible flags
+when reflow is disabled. `TerminalLine.continuation` means this row continues
+the preceding row. History captures own chronological retained rows followed
+by visible rows at their original widths; active alternate-screen captures
+exclude primary history and its gap evidence.
+
 ## Support age and upgrades
 
 Python requires 3.13 or newer. Python 3.12 was released in October 2023 and

@@ -2,7 +2,8 @@
 
 #include <cstdlib>
 
-/** @brief Compare retained terminal meaning and replies across whole and fragmented output.
+/** @brief Compare terminal cells, history boundaries, and replies across whole and fragmented
+ * output.
  *
  * Parser revisions reflect feed calls and are excluded from comparison.
  * Unexpected exceptions abort this isolated terminal test. */
@@ -32,6 +33,17 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t *data, std::size_t size
         first.history_gap != second.history_gap ||
         whole.take_program_replies() != fragmented.take_program_replies()) {
         std::abort();
+    }
+    const auto first_history = whole.history_snapshot();
+    const auto second_history = fragmented.history_snapshot();
+    if (first_history.lines.size() != second_history.lines.size()) {
+        std::abort();
+    }
+    for (std::size_t row = 0; row < first_history.lines.size(); ++row) {
+        if (first_history.lines[row].continuation != second_history.lines[row].continuation ||
+            first_history.lines[row].cells != second_history.lines[row].cells) {
+            std::abort();
+        }
     }
     return 0;
 } catch (...) {

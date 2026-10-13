@@ -111,10 +111,22 @@ string(REPLACE "rect.end_col   = state->pos.col + count;"
 string(REPLACE "col = state->pos.col + count;"
   "col = tmux_cxx_vterm_saturating_add(state->pos.col, count);"
   vterm_state "${vterm_state}")
+# Preserve metadata before libvterm shifts the line information belonging to outgoing history.
+string(REPLACE "#include \"vterm_internal.h\"\n"
+  "#include \"vterm_internal.h\"\n\nextern void tmux_cxx_vterm_prepare_history_rows(VTerm *vt, const VTermLineInfo *rows, int count);\n"
+  vterm_state "${vterm_state}")
+string(REPLACE "  // Update lineinfo if full line\n"
+  [=[  if(rect.start_row == 0 && rect.start_col == 0 && rect.end_col == state->cols &&
+      downward > 0 && rightward == 0 && !state->mode.alt_screen)
+    tmux_cxx_vterm_prepare_history_rows(state->vt, state->lineinfo, downward);
+
+  // Update lineinfo if full line
+]=]
+  vterm_state "${vterm_state}")
 string(SHA256 vterm_corrected_digest "${vterm_state}")
-if(NOT vterm_corrected_digest STREQUAL "4503192bae1c2998070fff109fe600b2202dab35afdc4bd7b41bf0c7b89fa215")
+if(NOT vterm_corrected_digest STREQUAL "811efb064fc10614b01132b16ae5b21d71241318623be1ec41683a83ce3c21bc")
   message(FATAL_ERROR
-    "The generated libvterm UTF-8 backport differs from its locked result: ${vterm_corrected_digest}")
+    "The generated libvterm state hooks differ from their locked result: ${vterm_corrected_digest}")
 endif()
 file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/vterm/state.c" CONTENT "@vterm_state@" @ONLY)
 
@@ -166,6 +178,47 @@ if(NOT vterm_corrected_digest STREQUAL "08ab071ef14f9b7632b608b3fe18450f399774df
 endif()
 file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/vterm/parser.c" CONTENT "@vterm_parser@" @ONLY)
 
+# Preserve retained boundaries through screen history callbacks and non-reflow resize.
+file(SHA256 "${vterm_source}/src/screen.c" vterm_screen_digest)
+if(NOT vterm_screen_digest STREQUAL "d37cc2977595c9766dd85d20ce86e3a7838271a7df9c28f9ff1ac4a8ff1bb59a")
+  message(FATAL_ERROR "The locked libvterm history hooks require an unchanged screen.c")
+endif()
+file(READ "${vterm_source}/src/screen.c" vterm_screen)
+string(REPLACE "#include \"vterm_internal.h\"\n"
+  [=[#include "vterm_internal.h"
+
+extern void tmux_cxx_vterm_prepare_history_rows(VTerm *vt, const VTermLineInfo *rows, int count);
+extern void tmux_cxx_vterm_prepare_history_row(VTerm *vt, int row);
+extern int tmux_cxx_vterm_popped_history_continuation(VTerm *vt);
+]=]
+  vterm_screen "${vterm_screen}")
+string(REPLACE
+  "  (screen->callbacks->sb_pushline)(screen->cols, screen->sb_buffer, screen->cbdata);"
+  "  tmux_cxx_vterm_prepare_history_row(screen->vt, row);\n  (screen->callbacks->sb_pushline)(screen->cols, screen->sb_buffer, screen->cbdata);"
+  vterm_screen "${vterm_screen}")
+string(REPLACE "  VTermLineInfo *old_lineinfo = statefields->lineinfos[bufidx];\n"
+  [=[  VTermLineInfo *old_lineinfo = statefields->lineinfos[bufidx];
+  if(bufidx == BUFIDX_PRIMARY)
+    tmux_cxx_vterm_prepare_history_rows(screen->vt, old_lineinfo, old_rows);
+]=]
+  vterm_screen "${vterm_screen}")
+string(REPLACE "      new_lineinfo[new_row].continuation = (new_row > new_row_start);"
+  [=[      new_lineinfo[new_row].continuation = REFLOW
+        ? (new_row > new_row_start)
+        : old_lineinfo ? old_lineinfo[old_row_start].continuation : 0;]=]
+  vterm_screen "${vterm_screen}")
+string(REPLACE
+  "      if(!(screen->callbacks->sb_popline(old_cols, screen->sb_buffer, screen->cbdata)))\n        break;"
+  [=[      if(!(screen->callbacks->sb_popline(old_cols, screen->sb_buffer, screen->cbdata)))
+        break;
+      new_lineinfo[new_row].continuation = tmux_cxx_vterm_popped_history_continuation(screen->vt);]=]
+  vterm_screen "${vterm_screen}")
+string(SHA256 vterm_corrected_digest "${vterm_screen}")
+if(NOT vterm_corrected_digest STREQUAL "c179c5f0568598a65724ef0319fcc1be7ab79fa76d71956dc3ef3ad283d71bda")
+  message(FATAL_ERROR "The generated libvterm history hooks differ from their locked result: ${vterm_corrected_digest}")
+endif()
+file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/vterm/screen.c" CONTENT "@vterm_screen@" @ONLY)
+
 set(vterm_compile_flags -x c -std=c99 -fPIC -Wall -Wextra -Wpedantic
   "$<$<CONFIG:Debug>:-g>" "$<$<NOT:$<CONFIG:Debug>>:-O2>")
 if(TMUX_CXX_SANITIZE)
@@ -180,7 +233,7 @@ set(vterm_headers
 set(vterm_objects)
 foreach(vterm_name encoding keyboard mouse parser pen screen state unicode vterm)
   set(vterm_input "${vterm_source}/src/${vterm_name}.c")
-  if(vterm_name STREQUAL "state" OR vterm_name STREQUAL "parser")
+  if(vterm_name STREQUAL "state" OR vterm_name STREQUAL "parser" OR vterm_name STREQUAL "screen")
     set(vterm_input "${CMAKE_BINARY_DIR}/vterm/${vterm_name}.c")
   endif()
   set(vterm_object "${CMAKE_BINARY_DIR}/vterm/${vterm_name}.o")

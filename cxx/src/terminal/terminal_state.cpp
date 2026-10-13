@@ -3,8 +3,10 @@
 #include <vterm.h>
 
 #include <algorithm>
+#include <array>
 #include <deque>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -69,15 +71,25 @@ struct VTermDeleter {
 
 /** @brief Retain external terminal ownership and contain every C callback exception locally. */
 struct TerminalState::ParserState {
+    /** @brief Retain external cell values together with the row's logical-line boundary. */
+    struct HistoryLine {
+        std::vector<VTermScreenCell> cells; ///< Cells at their original retained width.
+        bool continuation;                  ///< This row continues the previous logical line.
+    };
     std::unique_ptr<VTerm, VTermDeleter>
         terminal;                  ///< Exclusive external parser and screen allocation.
     VTermScreen *screen = nullptr; ///< Borrowed screen owned by terminal for this state's lifetime.
     CellSize size;                 ///< Current bounded program terminal dimensions.
     std::size_t history_limit;     ///< Maximum retained primary scrollback lines.
-    std::deque<std::vector<VTermScreenCell>>
-        history;                ///< Owned scrollback with copied cells and their original widths.
-    bool history_gap = false;   ///< Earlier terminal history has been evicted or cleared.
-    bool cursor_visible = true; ///< Terminal cursor visibility set by property callbacks.
+    std::deque<HistoryLine>
+        history; ///< Owned scrollback with copied cells and their original widths.
+    std::array<bool, 512> outgoing_continuations{}; ///< Pre-move flags for bounded outgoing rows.
+    int outgoing_rows = 0; ///< Number of pre-move row flags captured by the external bridge.
+    bool outgoing_continuation = false;      ///< Flag prepared for the next history callback.
+    bool outgoing_row_prepared = false;      ///< Require metadata before retaining outgoing cells.
+    std::optional<bool> popped_continuation; ///< Boundary retained until resize restores the row.
+    bool history_gap = false;      ///< Earlier terminal history has been evicted or cleared.
+    bool cursor_visible = true;    ///< Terminal cursor visibility set by property callbacks.
     bool alternate_screen = false; ///< Currently selected terminal buffer.
     bool failed = false; ///< Contained allocation or reply-bound failure prevents further mutation.
     std::uint64_t revision =
@@ -143,12 +155,19 @@ struct TerminalState::ParserState {
         if (parser_state.failed) {
             return 0;
         }
+        if (!parser_state.outgoing_row_prepared) {
+            parser_state.failed = true;
+            return 0;
+        }
+        const auto continuation = parser_state.outgoing_continuation;
+        parser_state.outgoing_row_prepared = false;
         try {
             if (parser_state.history_limit == 0) {
                 parser_state.history_gap = true;
                 return 1;
             }
-            parser_state.history.emplace_back(cells, cells + columns);
+            parser_state.history.push_back(
+                HistoryLine{std::vector<VTermScreenCell>(cells, cells + columns), continuation});
             if (parser_state.history.size() > parser_state.history_limit) {
                 parser_state.history.pop_front();
                 parser_state.history_gap = true;
@@ -172,7 +191,9 @@ struct TerminalState::ParserState {
                                        &blank.bg);
         std::fill_n(cells, columns, blank);
         const auto &line = parser_state.history.back();
-        std::copy_n(line.begin(), std::min(line.size(), static_cast<std::size_t>(columns)), cells);
+        std::copy_n(line.cells.begin(),
+                    std::min(line.cells.size(), static_cast<std::size_t>(columns)), cells);
+        parser_state.popped_continuation = line.continuation;
         parser_state.history.pop_back();
         return 1;
     }
@@ -183,6 +204,62 @@ struct TerminalState::ParserState {
         parser_state.history_gap |= !parser_state.history.empty();
         parser_state.history.clear();
         return 1;
+    }
+};
+
+/** @brief Bridge generated external call sites to the owning C++ terminal callback context. */
+struct VTermHistoryCallbacks {
+    /** @brief Borrow the registered screen context without relying on state callback internals.
+     *
+     * Only the private TerminalState screen installs these hooks and its ParserState callback
+     * context. */
+    static TerminalState::ParserState *context(VTerm *terminal) noexcept {
+        return static_cast<TerminalState::ParserState *>(
+            vterm_screen_get_cbdata(vterm_obtain_screen(terminal)));
+    }
+    /** @brief Preserve outgoing continuation flags before scroll or resize changes line metadata.
+     */
+    static void prepare_rows(VTerm *terminal, const VTermLineInfo *rows, int count) noexcept {
+        auto *state = context(terminal);
+        if (!state || state->failed) {
+            return;
+        }
+        if (count < 0 || static_cast<std::size_t>(count) > state->outgoing_continuations.size()) {
+            state->failed = true;
+            return;
+        }
+        state->outgoing_rows = count;
+        for (int row = 0; row < count; ++row) {
+            state->outgoing_continuations[static_cast<std::size_t>(row)] =
+                rows && rows[row].continuation;
+        }
+    }
+    /** @brief Pair the next disappearing cell row with its previously captured boundary. */
+    static void prepare_row(VTerm *terminal, int row) noexcept {
+        auto *state = context(terminal);
+        if (!state || state->failed) {
+            return;
+        }
+        if (row < 0 || row >= state->outgoing_rows) {
+            state->failed = true;
+            return;
+        }
+        state->outgoing_continuation = state->outgoing_continuations[static_cast<std::size_t>(row)];
+        state->outgoing_row_prepared = true;
+    }
+    /** @brief Transfer the popped history boundary to the external resize destination row. */
+    static int popped_continuation(VTerm *terminal) noexcept {
+        auto *state = context(terminal);
+        if (!state || state->failed) {
+            return 0;
+        }
+        if (!state->popped_continuation) {
+            state->failed = true;
+            return 0;
+        }
+        const auto continuation = *state->popped_continuation;
+        state->popped_continuation.reset();
+        return continuation ? 1 : 0;
     }
 };
 
@@ -249,7 +326,59 @@ TerminalSnapshot TerminalState::snapshot() const {
     return terminal_snapshot;
 }
 
+TerminalHistorySnapshot TerminalState::history_snapshot() const {
+    const auto visible = snapshot();
+    const auto history_rows = visible.alternate_screen ? 0 : parser_state_->history.size();
+    TerminalHistorySnapshot captured{visible.size,
+                                     visible.cursor,
+                                     visible.cursor_visible,
+                                     visible.alternate_screen,
+                                     visible.complete,
+                                     visible.revision,
+                                     static_cast<std::uint32_t>(history_rows),
+                                     !visible.alternate_screen && visible.history_gap,
+                                     {}};
+    captured.lines.reserve(history_rows + visible.size.rows);
+    if (!visible.alternate_screen) {
+        for (const auto &stored : parser_state_->history) {
+            TerminalLine line{{}, stored.continuation};
+            line.cells.reserve(stored.cells.size());
+            for (const auto &cell : stored.cells) {
+                line.cells.push_back(copy_terminal_cell(cell));
+            }
+            captured.lines.push_back(std::move(line));
+        }
+    }
+    const auto *state = vterm_obtain_state(parser_state_->terminal.get());
+    for (std::size_t row = 0; row < visible.size.rows; ++row) {
+        TerminalLine line{
+            {},
+            static_cast<bool>(
+                vterm_state_get_lineinfo(state, static_cast<int>(row))->continuation)};
+        line.cells.assign(visible.cells.begin() + row * visible.size.columns,
+                          visible.cells.begin() + (row + 1) * visible.size.columns);
+        captured.lines.push_back(std::move(line));
+    }
+    return captured;
+}
+
 std::string TerminalState::take_program_replies() {
     return std::exchange(parser_state_->replies, {});
 }
 } // namespace tmux_cxx::terminal
+
+/** @brief Capture row boundaries before generated external scroll or resize code moves them. */
+extern "C" void tmux_cxx_vterm_prepare_history_rows(VTerm *terminal, const VTermLineInfo *rows,
+                                                    int count) noexcept {
+    tmux_cxx::terminal::VTermHistoryCallbacks::prepare_rows(terminal, rows, count);
+}
+
+/** @brief Prepare one outgoing row's boundary before the existing external history callback. */
+extern "C" void tmux_cxx_vterm_prepare_history_row(VTerm *terminal, int row) noexcept {
+    tmux_cxx::terminal::VTermHistoryCallbacks::prepare_row(terminal, row);
+}
+
+/** @brief Restore the logical-line boundary belonging to one popped history row. */
+extern "C" int tmux_cxx_vterm_popped_history_continuation(VTerm *terminal) noexcept {
+    return tmux_cxx::terminal::VTermHistoryCallbacks::popped_continuation(terminal);
+}

@@ -228,7 +228,7 @@ checked = "2026-10-07"
 [libvterm.backports]
 utf8_continuation_source = "https://github.com/vim/vim/commit/b24a1d9291b2d7fe202237a5d531076a095887d6"
 utf8_original_sha256 = "8f6504f091a91194fa4e972a142d586fb96bd8e7a15b6d26747323f1fe48ff38"
-state_corrected_sha256 = "4503192bae1c2998070fff109fe600b2202dab35afdc4bd7b41bf0c7b89fa215"
+state_corrected_sha256 = "811efb064fc10614b01132b16ae5b21d71241318623be1ec41683a83ce3c21bc"
 utf8_scope = "one streaming UTF-8 decoder plus post-decode GL character-set mapping in a generated external-library copy"
 combining_source = "https://github.com/neovim/neovim/commit/814f2629cbcf02b18ff08d394d15835419e563e4"
 combining_scope = "right-edge cursor predicate backported to libvterm's combining loop; preserve pending wrap until the next base glyph"
@@ -243,6 +243,9 @@ csi_original_sha256 = "237220e912ab95795f78c013d6734b88080b00595010dab87d11980c2
 csi_corrected_sha256 = "08ab071ef14f9b7632b608b3fe18450f399774dfa1aac13db278fde9d529c4c8"
 csi_scope = "unchanged upstream bounds for numeric CSI parsing and argument storage"
 osc_scope = "first-party C++ decimal accumulation keeps unsupported OSC command numbers from wrapping into recognized commands"
+screen_original_sha256 = "d37cc2977595c9766dd85d20ce86e3a7838271a7df9c28f9ff1ac4a8ff1bb59a"
+screen_corrected_sha256 = "c179c5f0568598a65724ef0319fcc1be7ab79fa76d71956dc3ef3ad283d71bda"
+history_scope = "C++ callbacks preserve pre-move row continuation through generated external scroll and resize hooks; the source archive remains unchanged"
 
 [npm]
 version = "12.2.0"

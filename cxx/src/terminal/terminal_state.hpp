@@ -1,5 +1,6 @@
 #pragma once
 
+#include <tmux_cxx/terminal/terminal_history_snapshot.hpp>
 #include <tmux_cxx/terminal/terminal_snapshot.hpp>
 #include <tmux_cxx/tmux_error.hpp>
 
@@ -7,6 +8,7 @@
 #include <string_view>
 
 namespace tmux_cxx::terminal {
+struct VTermHistoryCallbacks;
 /** @brief Own retained VT parser, screen, and bounded history; callers serialize all access. */
 class TerminalState {
   public:
@@ -29,10 +31,15 @@ class TerminalState {
     /** @brief Copy visible cells and cursor state; retained terminal history cannot recover
      * discarded raw output. */
     TerminalSnapshot snapshot() const;
+    /** @brief Copy chronological history and active visible rows without changing parser state.
+     *
+     * Alternate captures exclude primary history and its gap evidence. */
+    TerminalHistorySnapshot history_snapshot() const;
     /** @brief Transfer ordered terminal replies, bounded to 64 KiB, for delivery to the program. */
     std::string take_program_replies();
 
   private:
+    friend struct VTermHistoryCallbacks;
     struct ParserState;
     std::unique_ptr<ParserState>
         parser_state_; ///< Exclusive parser, retained screen, and callback-state ownership.
