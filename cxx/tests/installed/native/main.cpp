@@ -11,6 +11,10 @@ int main() {
     if (!session || server.sessions().size() != 1) {
         return 1;
     }
+    const auto renamed = server.rename_window(session->window, "installed:window");
+    if (!renamed || renamed->name != "installed:window" || renamed->pane != session->pane) {
+        return 5;
+    }
     const auto text = server.read_pane_text(session->pane);
     if (!text || text->server_instance != server.server_instance() || text->pane != session->pane ||
         text->rows != 24 || text->columns != 80 || !text->complete) {

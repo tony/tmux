@@ -285,10 +285,20 @@ def test_linked_window_survives_its_original_session(server: str) -> None:
         link = connection.link_window(first.window, second.id, 7)
         assert (link.window, link.session, link.index) == (first.window, second.id, 7)
         assert [entry.index for entry in connection.window_links(second.id)] == [0, 7]
+        renamed = connection.rename_window(first.window, "python:shared.1")
+        assert (renamed.id, renamed.name) == (first.window, "python:shared.1")
+        assert connection.window(link.window).name == "python:shared.1"
+        with pytest.raises(tmux_cxx.TmuxError) as invalid:
+            connection.rename_window(first.window, "invalid\n")
+        assert (invalid.value.code, invalid.value.operation) == (
+            "invalid_argument",
+            "window.rename",
+        )
         connection.kill_session(first.id)
         connection.unlink_window(second.link)
         assert connection.sessions()[0].pane == first.pane
         assert connection.window(first.window).pane == first.pane
+        assert connection.window(first.window).name == "python:shared.1"
         connection.send_pane_input(first.pane, b"shared-pane\n")
         assert b"shared-pane" in connection.wait_pane_output(first.pane, b"shared-pane", 500)
         connection.unlink_window(link.id)

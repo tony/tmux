@@ -72,6 +72,8 @@ class ServerConnection {
     Result<std::vector<WindowLinkSnapshot>> window_links(SessionId session);
     /** @brief Materialize shared window state independently of its session memberships. */
     Result<WindowSnapshot> window(WindowId window);
+    /** @brief Rename a shared window while preserving every session membership and selection. */
+    Result<WindowSnapshot> rename_window(WindowId window, std::string name);
     /** @brief Create a PTY-backed window at an unused session index without selecting it.
      *
      * @see tmux_cxx::Server::create_window for window name constraints. */

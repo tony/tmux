@@ -64,6 +64,11 @@ TEST(CommandRegistry, WindowCommandsSelectSessionMemberships) {
     ASSERT_TRUE(catalogs->stock_commands.invoke(invocation, select_shared));
     const std::vector<std::string> select_original{"select-window", "-t", "first:0"};
     ASSERT_TRUE(catalogs->stock_commands.invoke(invocation, select_original));
+    const std::vector<std::string> rename{"renamew", "-t", "second:4", "tools:build.1"};
+    const auto renamed = catalogs->stock_commands.invoke(invocation, rename);
+    ASSERT_TRUE(renamed) << (renamed ? "" : renamed.error().message);
+    EXPECT_EQ(server.window(links->back().window)->name, "tools:build.1");
+    EXPECT_EQ(server.window(shared->window)->name, "tools:build.1");
     EXPECT_EQ(server.sessions().front().window, first->window);
     EXPECT_EQ(server.sessions().back().window, shared->window);
 }

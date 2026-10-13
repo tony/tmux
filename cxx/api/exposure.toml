@@ -160,6 +160,16 @@ identity = "window.select"
 result = "session"
 parameters = [{ name = "window_link", node = "windowLink", kind = "window_link_id" }]
 
+[[operations]]
+type = "RenameWindow"
+header = "window/operations/rename_window.hpp"
+method = "rename_window"
+node = "renameWindow"
+id = 31
+identity = "window.rename"
+result = "window"
+parameters = [{ name = "window", kind = "window_id" }, { name = "name", kind = "text" }]
+
 [[snapshots]]
 type = "SessionSnapshot"
 header = "session/session_snapshot.hpp"

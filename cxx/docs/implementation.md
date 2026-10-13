@@ -141,6 +141,22 @@ Prove that a large key batch yields, that selection changes cannot reset
 the allowance, and that later turns finish ordered input without another
 write. Use real tmux 3.4 and 3.7 attachments to test the poll continuation.
 
+## Shared window naming slice
+
+`RenameWindow` resolves a live `WindowId`, validates the replacement name,
+and changes that shared window without changing memberships or selections.
+An unchanged name preserves the window revision. Return a copied
+`WindowSnapshot` through C++, Python, and Node.
+
+Register `rename-window`/`renamew` with an explicit `session:index` target.
+Resolve its membership at execution, then invoke the same typed operation.
+Reuse creation's name constraints and reject malformed traffic before
+mutation. Window events, automatic names, formats, and interactive rename
+prompts remain separate unfinished behavior.
+
+Prove shared-window ownership, unchanged-name behavior, invalid and stale
+requests, real tmux 3.4/3.7 commands, and both generated language contracts.
+
 ## Architecture progress
 
 Named server/session/window/pane components, entity-local operation descriptions, and validated immutable native lookup now replace the generic domain module and operation switch. The public facade is `ServerConnection`, snapshots are values, and recoverable failures are `TmuxError`. Session/window membership and pane-program cleanup have real ownership models.

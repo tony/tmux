@@ -259,6 +259,13 @@ async function serverOperations(): Promise<void> {
   });
   const link = await client.linkWindow(session.window, shared.id, 7);
   expect(link).toMatchObject({ session: shared.id, window: session.window, index: 7 });
+  const renamedWindow = await client.renameWindow(link.window, "node:shared.1");
+  expect(renamedWindow).toMatchObject({ id: session.window, name: "node:shared.1" });
+  expect((await client.window(session.window)).name).toBe("node:shared.1");
+  await expect(client.renameWindow(link.window, "invalid\n")).rejects.toMatchObject({
+    code: "invalid_argument",
+    operation: "window.rename",
+  });
   expect(
     (await client.windowLinks(shared.id)).map(
       /** Compare ordered indices owned by the destination session. */

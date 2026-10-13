@@ -83,6 +83,10 @@ class Server {
     Result<std::vector<WindowLinkSnapshot>> window_links(SessionId session) const;
     /** @brief Materialize a shared window's name, selected pane, and mutation revision. */
     Result<WindowSnapshot> window(WindowId window) const;
+    /** @copybrief tmux_cxx::ServerConnection::rename_window
+     *
+     * An unchanged name preserves the revision. Name constraints match create_window. */
+    Result<WindowSnapshot> rename_window(WindowId window, std::string name);
     /** @copybrief tmux_cxx::ServerConnection::create_window
      *
      * Names require UTF-8, at most 128 bytes, and no ASCII controls or DEL. */

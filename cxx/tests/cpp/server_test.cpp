@@ -8,6 +8,7 @@
 #include "session/session_event_reader.hpp"
 #include "window/layout.hpp"
 #include <tmux_cxx/window/operations/create_window.hpp>
+#include <tmux_cxx/window/operations/rename_window.hpp>
 
 #include <array>
 #include <gtest/gtest.h>
@@ -185,6 +186,64 @@ TEST(ServerWindows, RejectedCreationPreservesGraphAndPrograms) {
     ASSERT_FALSE(stale);
     EXPECT_EQ(stale.error().code, TmuxErrorCode::not_found);
     EXPECT_EQ(server.sessions().front().link, session->link);
+}
+
+/** @brief Shared-window names change once, preserve memberships, and reject invalid or stale
+ * requests. */
+TEST(ServerWindows, RenamePreservesMembershipsAndRejectsInvalidNames) {
+    Server server;
+    const auto first = server.create_session("first", "/bin/cat");
+    const auto second = server.create_session("second", "/bin/cat");
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+    const auto link = server.link_window(first->window, second->id, 7);
+    ASSERT_TRUE(link);
+    const auto before = server.window(first->window);
+    ASSERT_TRUE(before);
+    const auto selected_before = server.sessions();
+
+    const auto renamed = server.rename_window(first->window, "tools:build.1");
+    ASSERT_TRUE(renamed);
+    EXPECT_EQ(renamed->id, first->window);
+    EXPECT_EQ(renamed->pane, first->pane);
+    EXPECT_EQ(renamed->name, "tools:build.1");
+    EXPECT_GT(renamed->revision, before->revision);
+    EXPECT_EQ(server.window(link->window)->name, renamed->name);
+    EXPECT_EQ(server.sessions()[0].link, selected_before[0].link);
+    EXPECT_EQ(server.sessions()[1].link, selected_before[1].link);
+    EXPECT_EQ(server.window_links(second->id)->back().id, link->id);
+    const auto repeated = server.rename_window(first->window, renamed->name);
+    ASSERT_TRUE(repeated);
+    EXPECT_EQ(repeated->revision, renamed->revision);
+
+    const std::array invalid_names{std::string{}, std::string(129, 'x'), std::string("control\n"),
+                                   std::string(1, static_cast<char>(0xff)),
+                                   std::string("nul\0", 4)};
+    for (const auto &invalid : invalid_names) {
+        const auto rejected = server.rename_window(first->window, invalid);
+        ASSERT_FALSE(rejected);
+        EXPECT_EQ(rejected.error().code, TmuxErrorCode::invalid_argument);
+        EXPECT_EQ(server.window(first->window)->name, renamed->name);
+        EXPECT_EQ(server.window(first->window)->revision, renamed->revision);
+    }
+    const auto catalogs = build_server_api_catalogs();
+    ASSERT_TRUE(catalogs);
+    protocol::native::NativePayloadWriter malformed;
+    malformed.u64(first->window.value);
+    malformed.string("must-not-rename");
+    malformed.bytes.push_back(0);
+    const auto rejected =
+        catalogs->native_operations.invoke(RenameWindow::description.id, server, malformed.bytes);
+    ASSERT_FALSE(rejected);
+    EXPECT_EQ(rejected.error().code, TmuxErrorCode::protocol);
+    EXPECT_EQ(server.window(first->window)->name, renamed->name);
+
+    ASSERT_TRUE(server.kill_session(first->id));
+    ASSERT_TRUE(server.unlink_window(link->id));
+    const auto stale = server.rename_window(first->window, "stale");
+    ASSERT_FALSE(stale);
+    EXPECT_EQ(stale.error().code, TmuxErrorCode::not_found);
+    EXPECT_EQ(server.window(second->window)->name, "second");
 }
 
 /** @brief Linked windows keep their panes alive until the final session membership is removed. */

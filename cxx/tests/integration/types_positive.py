@@ -8,6 +8,7 @@ from tmux_cxx import (
     SessionObservation,
     SessionSnapshot,
     StockConnectionCompatibility,
+    WindowSnapshot,
 )
 
 
@@ -36,6 +37,8 @@ def consumer(client: ServerConnection) -> SessionSnapshot:
     event: SessionEventRecord | SessionEventGap | None = stream.next()
     compatibility: StockConnectionCompatibility = client.stock_client_compatibility(1)
     client.rename_session(created.id, "next")
+    renamed_window: WindowSnapshot = client.rename_window(created.window, "typed-window")
+    assert renamed_window.name
     assert compatibility.profile
     assert baseline.next_event.server_instance
     if isinstance(event, SessionEventRecord):

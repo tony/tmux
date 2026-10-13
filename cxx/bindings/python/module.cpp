@@ -392,6 +392,13 @@ NB_MODULE(_native, module) {
             },
             nb::arg("id"), docs::window, nb::call_guard<nb::gil_scoped_release>())
         .def(
+            "rename_window", /** @copybrief tmux_cxx::ServerConnection::rename_window */
+            [](ServerConnection &self, std::uint64_t window, std::string name) {
+                return unwrap(self.rename_window(tmux_cxx::WindowId{window}, std::move(name)));
+            },
+            nb::arg("window"), nb::arg("name"), docs::rename_window,
+            nb::call_guard<nb::gil_scoped_release>())
+        .def(
             "create_window", /** @copybrief tmux_cxx::ServerConnection::create_window */
             [](ServerConnection &self, std::uint64_t session, std::uint32_t index, std::string name,
                std::string command) {

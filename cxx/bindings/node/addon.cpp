@@ -667,6 +667,7 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
                     InstanceMethod("unlinkWindow", &NodeServerConnection::unlink_window),
                     InstanceMethod("windowLinks", &NodeServerConnection::window_links),
                     InstanceMethod("window", &NodeServerConnection::window),
+                    InstanceMethod("renameWindow", &NodeServerConnection::rename_window),
                     InstanceMethod("createWindow", &NodeServerConnection::create_window),
                     InstanceMethod("selectWindow", &NodeServerConnection::select_window),
                     InstanceMethod("splitPane", &NodeServerConnection::split_pane),
@@ -842,6 +843,16 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
                                [id](tmux_cxx::ServerConnection &connection) {
                                    return to_node_result(connection.window(id));
                                });
+    }
+    /** @brief Copy a window identity and name before queuing the shared rename operation. */
+    Napi::Value rename_window(const Napi::CallbackInfo &info) {
+        const auto window = tmux_cxx::WindowId{id_arg(info, 0)};
+        auto name = string_arg(info, 1);
+        return queue_operation(
+            info, /** @copybrief tmux_cxx::ServerConnection::rename_window */
+            [window, name = std::move(name)](tmux_cxx::ServerConnection &connection) mutable {
+                return to_node_result(connection.rename_window(window, std::move(name)));
+            });
     }
     /** @brief Copy creation arguments before queuing a PTY-backed window at an explicit session
      * index. */

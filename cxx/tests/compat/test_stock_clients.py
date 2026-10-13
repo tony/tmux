@@ -230,7 +230,7 @@ def test_registered_stock_command_subset(server: str, fixture: str) -> None:
 
 @pytest.mark.parametrize("fixture", ["TMUX_CXX_STOCK_CLIENT", "TMUX_CXX_MODERN_STOCK_CLIENT"])
 def test_stock_window_creation_and_selection(server: str, fixture: str) -> None:
-    """Real clients create detached windows, choose free indices, and select memberships."""
+    """Real clients create, rename, and select live shared windows through explicit targets."""
     base = [os.environ[fixture], "-N", "-f", "/dev/null", "-S", server]
     environment = stock_fixture_environment(os.environ[fixture])
     with tmux_cxx.ServerConnection(server) as observer:
@@ -245,6 +245,24 @@ def test_stock_window_creation_and_selection(server: str, fixture: str) -> None:
         links = observer.window_links(session.id)
         assert [link.index for link in links] == [0, 7]
         assert observer.sessions()[0].link == session.link
+        subprocess.run(
+            [*base, "renamew", "-t", "windows:7", "stock:shared.1"],
+            env=environment,
+            check=True,
+            capture_output=True,
+            timeout=0.9,
+        )
+        assert observer.window(links[1].window).name == "stock:shared.1"
+        before_rename_rejection = observer.window(links[1].window)
+        rejected_rename = subprocess.run(
+            [*base, "rename-window", "-t", "windows:7", "#{pane_current_command}"],
+            env=environment,
+            capture_output=True,
+            timeout=0.9,
+        )
+        assert rejected_rename.returncode != 0
+        assert observer.window(links[1].window).name == before_rename_rejection.name
+        assert observer.window(links[1].window).revision == before_rename_rejection.revision
         subprocess.run(
             [*base, "selectw", "-t", "windows:7"],
             env=environment,

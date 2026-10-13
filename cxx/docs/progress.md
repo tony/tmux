@@ -1152,3 +1152,39 @@ This bounds routing decisions, not an individual operation's duration.
 Global fairness, command queues, broader interactive behavior, and the
 remaining full objective stay open. Further commits remain local under the
 current no-push instruction.
+
+## 2026-10-13: Shared window names
+
+`RenameWindow` owns native identity 31 and the `window_names` capability.
+It resolves a live shared window, validates the replacement name, and
+returns `WindowSnapshot`. Memberships and session selections remain intact;
+an unchanged name preserves the revision. Creation and renaming share
+nonempty UTF-8 names bounded to 128 bytes without ASCII controls or DEL.
+
+Registered `rename-window`/`renamew` resolves an exact `session:index`
+membership at execution, then invokes the shared operation. Python and Node
+use the compiled connection adapter and generated declarations. Format
+expressions, implicit targets, automatic names, hooks, rename notifications,
+and interactive rename prompts remain unsupported in compatibility reports.
+
+Native and real-client tests failed before registration; Python and Node
+failed before their methods existed. The restored paths rename shared state
+and preserve retained programs. Removing name validation fails the native
+rejection assertion. Malformed native traffic and stock format expressions
+fail before mutation. The installed C++ consumer also performs a rename.
+
+| Gate | Result | Whole-command wall time |
+|---|---|---:|
+| Name-validation negative and restored native window/command cases | PASS; 11 cases | 2.48 s |
+| Configured mid loop | PASS; 90 native cases | 5.17 s |
+| GCC 15 native and both binding CTest suites | PASS; 95 tests | 2.81 s |
+| C++26 native and both binding CTest suites | PASS; 95 tests | 4.19 s |
+| ASan/UBSan/LeakSanitizer and controlled negatives | PASS | 69.53 s |
+| Bounded native, tmux, and terminal fuzz replay | PASS; 6,000 runs | 2.94 s |
+| Doxygen/compiler/language documentation and negatives | PASS | 171.28 s |
+| clang-tidy and fatal negative probe | PASS | 131.66 s |
+| Offline wheel/sdist/npm consumers | PASS | 95.00 s |
+| Standalone source, install, adapters, and native rename consumer | PASS | 118.54 s |
+
+The full objective remains incomplete. This slice is committed locally;
+the no-push instruction remains in effect.

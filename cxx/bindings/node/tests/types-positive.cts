@@ -5,6 +5,7 @@ import {
   type SessionEventStreamItem,
   type SessionSnapshot,
   type StockConnectionCompatibility,
+  type WindowSnapshot,
 } from "tmux-cxx";
 
 /** Exercise promise results, byte arrays, bigint identities, and session values. */
@@ -26,6 +27,8 @@ async function consumer(client: ServerConnection): Promise<SessionSnapshot> {
   stream.close();
   const compatibility: Promise<StockConnectionCompatibility> = client.stockClientCompatibility(1n);
   await client.renameSession(session.id, row + output.toString("utf8"));
+  const renamedWindow: WindowSnapshot = await client.renameWindow(session.window, "typed-window");
+  void renamedWindow;
   void event;
   void compatibility;
   return sessions[0];

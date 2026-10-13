@@ -39,8 +39,11 @@ StockConnectionCompatibility TmuxCompatibilityPolicy::assess(const TmuxProtocolP
         "select-window supports only exact -t session:index targets; window names, @identities, "
         "relative targets, and navigation flags are unsupported");
     report.limitations.push_back(
-        "window names require UTF-8, at most 128 bytes, and no control characters; hooks and "
-        "window-selection notifications remain unsupported");
+        "rename-window supports only -t session:index literal-name; formats, implicit targets, "
+        "automatic naming, and window-rename notifications remain unsupported");
+    report.limitations.push_back(
+        "window names require nonempty UTF-8, at most 128 bytes, and no ASCII controls or DEL; "
+        "hooks and window-selection notifications remain unsupported");
     report.limitations.push_back(
         "paste-buffer requires -b name and -t %pane; delete-after, custom separators, raw "
         "paste, and bracketed paste are unsupported");

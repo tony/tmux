@@ -2,9 +2,8 @@
 
 #include "protocol/native/framing.hpp"
 #include "server/state.hpp"
-#include "text/utf8.hpp"
+#include "window/window_name.hpp"
 
-#include <algorithm>
 #include <limits>
 
 namespace tmux_cxx {
@@ -14,11 +13,8 @@ Result<WindowLinkSnapshot> Server::create_window(SessionId session_id, std::uint
     if (session == state_->sessions.end()) {
         return std::unexpected(TmuxError{TmuxErrorCode::not_found, "session no longer exists"});
     }
-    if (index > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) || name.empty() ||
-        name.size() > 128 || !text::valid_utf8(name) ||
-        std::ranges::any_of(name, /** @brief Reject control bytes in explicit window names. */
-                            [](unsigned char byte) { return byte < 0x20 || byte == 0x7f; }) ||
-        command.empty() || command.find('\0') != command.npos) {
+    if (index > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+        !valid_window_name(name) || command.empty() || command.find('\0') != command.npos) {
         return std::unexpected(
             TmuxError{TmuxErrorCode::invalid_argument, "invalid window index, name, or command"});
     }

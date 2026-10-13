@@ -507,6 +507,11 @@ class ServerConnection:
         Materialize shared window state independently of its session memberships.
         """
 
+    def rename_window(self, window: int, name: str) -> WindowSnapshot:
+        """
+        Rename a shared window while preserving every session membership and selection.
+        """
+
     def create_window(
         self, session: int, index: int, name: str, command: str = "/bin/sh"
     ) -> WindowLinkSnapshot:
