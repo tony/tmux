@@ -474,6 +474,25 @@ if(BUILD_TESTING)
     add_test(NAME python-stock-compatibility COMMAND "${Python_EXECUTABLE}" -m pytest -q
       --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-stock"
       "${CMAKE_SOURCE_DIR}/tests/compat/test_stock_clients.py")
+    add_test(NAME python-stock-commands COMMAND "${Python_EXECUTABLE}" -m pytest -q
+      --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-command"
+      "${CMAKE_SOURCE_DIR}/tests/compat/test_stock_commands.py")
+    # Layout reference matrices retain five-second bounds outside the mid loop.
+    function(tmux_cxx_add_layout_reference_test name case)
+      add_test(NAME "python-layout-${name}" COMMAND "${Python_EXECUTABLE}" -m pytest -q
+        --basetemp "${CMAKE_BINARY_DIR}/test_tmp/pl-${name}"
+        "${CMAKE_SOURCE_DIR}/tests/compat/test_stock_layouts.py::${case}")
+      set_tests_properties("python-layout-${name}" PROPERTIES
+        ENVIRONMENT "${test_environment}" TIMEOUT 5 LABELS "outer"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    endfunction()
+    tmux_cxx_add_layout_reference_test(legacy
+      "test_named_layouts_follow_modern_geometry_through_stock_clients[TMUX_CXX_STOCK_CLIENT]")
+    tmux_cxx_add_layout_reference_test(modern
+      "test_named_layouts_follow_modern_geometry_through_stock_clients[TMUX_CXX_MODERN_STOCK_CLIENT]")
+    tmux_cxx_add_layout_reference_test(residual
+      test_tmux_34_layout_remainders_are_an_explicit_compatibility_limit)
+    tmux_cxx_add_layout_reference_test(border test_pane_border_resizing_matches_stock_layouts)
     add_test(NAME python-tooling COMMAND "${Python_EXECUTABLE}" -m pytest -q
       --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-tooling"
       "${CMAKE_SOURCE_DIR}/tests/tooling/test_bootstrap.py")
@@ -483,7 +502,8 @@ if(BUILD_TESTING)
     add_test(NAME node-server-lts COMMAND "${CMAKE_SOURCE_DIR}/_build/tools/node_lts/bin/node"
       "${CMAKE_SOURCE_DIR}/bindings/node/node_modules/vitest/vitest.mjs" run
       --root "${CMAKE_SOURCE_DIR}/bindings/node")
-    set_tests_properties(python-server python-native-protocol python-stock-compatibility python-tooling
+    set_tests_properties(python-server python-native-protocol python-stock-compatibility
+      python-stock-commands python-tooling
       node-server node-server-lts PROPERTIES
       ENVIRONMENT "${test_environment}" TIMEOUT 5 LABELS "mid"
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
