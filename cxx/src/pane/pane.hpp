@@ -8,6 +8,7 @@
 #include <tmux_cxx/identity.hpp>
 #include <tmux_cxx/pane/pane_screen_snapshot.hpp>
 
+#include <optional>
 #include <string>
 
 namespace tmux_cxx {
@@ -24,8 +25,8 @@ struct Pane {
     /** @brief Deliver admitted input and terminal replies while consuming the shared remaining
      * byte budget. */
     Result<void> flush_program_input(std::size_t &remaining_bytes);
-    /** @brief Return bytes safely readable from a client before all could enter the input queue. */
-    std::size_t client_program_input_capacity() const;
+    /** @brief Return safe admission bytes, or no value once program input permanently closes. */
+    std::optional<std::size_t> client_program_input_capacity() const;
     /** @brief Resize retained terminal state and notify the live PTY program. */
     Result<void> resize_terminal(terminal::CellSize size);
     /** @brief Copy the pane's displayed cells and cursor without exposing parser or program facts.

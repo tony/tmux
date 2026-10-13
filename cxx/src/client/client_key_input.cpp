@@ -27,7 +27,7 @@ bool ClientKeyInput::routing_deferred() const {
 Result<key_table::KeyBindingEffect>
 ClientKeyInput::route_pending(Server &server, ClientId client, ClientSelection selection,
                               const SessionPrefixKeys &prefix_keys,
-                              std::size_t program_input_capacity,
+                              std::optional<std::size_t> program_input_capacity,
                               const key_table::KeyTableCatalog &key_tables) {
     key_table::KeyBindingInvocation invocation{server, client, selection, prefix_keys.prefix};
     while (!pending_bytes_.empty()) {
@@ -94,7 +94,12 @@ ClientKeyInput::route_pending(Server &server, ClientId client, ClientSelection s
             }
             ++passthrough_bytes;
         }
-        const auto admitted_bytes = std::min(passthrough_bytes, program_input_capacity);
+        if (!program_input_capacity) {
+            --remaining_routing_steps_;
+            pending_bytes_.erase(0, passthrough_bytes);
+            continue;
+        }
+        const auto admitted_bytes = std::min(passthrough_bytes, *program_input_capacity);
         if (admitted_bytes == 0) {
             return key_table::KeyBindingEffect::client_selection_unchanged;
         }
@@ -105,7 +110,7 @@ ClientKeyInput::route_pending(Server &server, ClientId client, ClientSelection s
         }
         --remaining_routing_steps_;
         pending_bytes_.erase(0, admitted_bytes);
-        program_input_capacity -= admitted_bytes;
+        *program_input_capacity -= admitted_bytes;
     }
     return key_table::KeyBindingEffect::client_selection_unchanged;
 }

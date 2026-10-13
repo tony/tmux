@@ -42,6 +42,12 @@ A `PasteBuffer` owns its name, arbitrary bytes, automatic classification, and st
 
 Each `ClientKeyInput` retains a 64-decision allowance for one daemon turn, shared across selection and input-capacity changes. Prefix transitions, matched bindings, and passthrough segments consume it. Exhaustion preserves bytes and table state; `ClientTerminalRoute::key_routing_deferred` schedules another turn without descriptor readiness. A rejected admission consumes no decision and does not request that continuation. Program backpressure instead waits for queue capacity from PTY progress.
 
+Client admission capacity distinguishes a permanently closed program from an
+accepting queue with no space. Temporary backpressure retains unbound input.
+Permanent closure discards only unbound program spans, charging the same
+routing allowance, so later prefix controls remain reachable. Native input
+operations still return `closed`; observed PTY EOF retains terminal state.
+
 `PaneProgramInput` admits requests atomically into a 256-KiB queue and retains write remainders across writable readiness. `Pane::advance_pty_io` owns separate 64-KiB read/write allowances shared across all nested flushes in one servicing pass. Operations admit input without writing outside that pass. Earlier terminal replies must enter the queue before later user input or output parsing. PTY failure or output EOF closes input admission. Delivery failures retain undelivered bytes and report that a delivered prefix may have taken effect. Accepted input can remain pending after operation completion.
 
 `PaneScreenSnapshot` carries the pane's displayed cells, cursor, dimensions, completeness, and display revision. Client composition consumes this value rather than the program parser snapshot. The current display is the program screen; copy mode will supply a frozen display with its own invalidation. Parser freshness and mode-view freshness must remain distinct.

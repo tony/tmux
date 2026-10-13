@@ -79,9 +79,11 @@ Result<void> Pane::flush_program_input(std::size_t &remaining_bytes) {
     return {};
 }
 
-std::size_t Pane::client_program_input_capacity() const {
-    if (!program_input.accepting_input() ||
-        terminal_replies.size() > program_input.remaining_capacity()) {
+std::optional<std::size_t> Pane::client_program_input_capacity() const {
+    if (!program_input.accepting_input()) {
+        return std::nullopt;
+    }
+    if (terminal_replies.size() > program_input.remaining_capacity()) {
         return 0;
     }
     return program_input.remaining_capacity() - terminal_replies.size();

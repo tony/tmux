@@ -2,6 +2,7 @@
 #include "client/operations/detach_client_key_binding.hpp"
 #include "key_table/key_binding_registry.hpp"
 #include "pane/operations/select_next_pane_key_binding.hpp"
+#include "pane/pane.hpp"
 #include "protocol/native/operation_registry.hpp"
 #include "server/api_catalogs.hpp"
 #include "window_link/operations/select_window_key_binding.hpp"
@@ -15,7 +16,11 @@
 
 #include <algorithm>
 #include <array>
+#include <fcntl.h>
 #include <gtest/gtest.h>
+#include <pty.h>
+#include <termios.h>
+#include <unistd.h>
 #include <utility>
 
 namespace tmux_cxx::key_table {
@@ -151,6 +156,83 @@ TEST(ClientKeyInput, BindingBackpressurePreservesPrefixTable) {
     ASSERT_TRUE(retried);
     EXPECT_EQ(*retried, KeyBindingEffect::client_selection_unchanged);
     EXPECT_EQ(retryable_binding_calls, 2);
+}
+
+/** @brief Program EOF releases blocked passthrough while preserving later prefix controls and their
+ * suffix. */
+TEST(ClientKeyInput, ProgramEofReleasesPassthroughBeforePrefix) {
+    int master = -1;
+    int slave = -1;
+    ASSERT_EQ(::openpty(&master, &slave, nullptr, nullptr, nullptr), 0);
+    Pane pane(PaneId{1}, WindowId{1}, {24, 80});
+    pane.pty.reset(master);
+    posix::OwnedFd slave_owner(slave);
+    ASSERT_EQ(::fcntl(pane.pty.get(), F_SETFL, O_NONBLOCK), 0);
+    termios mode{};
+    ASSERT_EQ(::tcgetattr(slave_owner.get(), &mode), 0);
+    mode.c_lflag &= ~ECHO;
+    ASSERT_EQ(::tcsetattr(slave_owner.get(), TCSANOW, &mode), 0);
+    ASSERT_TRUE(pane.admit_program_input(std::string(262144, 'a')));
+
+    protocol::native::OperationRegistry operations;
+    ASSERT_TRUE(operations.add<DetachClient>());
+    auto operation_catalog = std::move(operations).freeze();
+    ASSERT_TRUE(operation_catalog);
+    KeyBindingRegistry registry;
+    ASSERT_TRUE(registry.add<RootFallbackBinding>());
+    const auto key_tables = std::move(registry).freeze(*operation_catalog);
+    ASSERT_TRUE(key_tables);
+    Server server;
+    ClientKeyInput input;
+    const auto empty_capacity = input.read_capacity();
+    const ClientSelection selection{SessionId{1}, WindowLinkId{1}, WindowId{1}, PaneId{1}};
+    ASSERT_TRUE(input.append("drop\x02xkeep"));
+    const auto queued_capacity = input.read_capacity();
+    const auto backpressured =
+        input.route_pending(server, ClientId{1}, selection, default_prefixes,
+                            pane.client_program_input_capacity(), *key_tables);
+    ASSERT_TRUE(backpressured);
+    EXPECT_EQ(*backpressured, KeyBindingEffect::client_selection_unchanged);
+    EXPECT_EQ(input.read_capacity(), queued_capacity);
+    EXPECT_FALSE(input.routing_deferred());
+
+    ASSERT_EQ(::write(slave_owner.get(), "retained", 8), 8);
+    slave_owner.reset();
+    pane.advance_pty_io();
+    ASSERT_EQ(pane.pty.get(), -1);
+    ASSERT_FALSE(pane.program_input.accepting_input());
+    ASSERT_EQ(pane.output.retained_bytes(), "retained");
+
+    const auto control = input.route_pending(server, ClientId{1}, selection, default_prefixes,
+                                             pane.client_program_input_capacity(), *key_tables);
+    ASSERT_TRUE(control);
+    EXPECT_EQ(*control, KeyBindingEffect::client_selection_changed);
+    EXPECT_EQ(input.read_capacity(), empty_capacity - 4);
+    const auto suffix = input.route_pending(server, ClientId{1}, selection, default_prefixes,
+                                            pane.client_program_input_capacity(), *key_tables);
+    ASSERT_TRUE(suffix);
+    EXPECT_EQ(*suffix, KeyBindingEffect::client_selection_unchanged);
+    EXPECT_EQ(input.read_capacity(), empty_capacity);
+
+    std::string burst;
+    for (unsigned int index = 0; index < 64; ++index) {
+        burst.append("drop\x02!");
+    }
+    ASSERT_TRUE(input.append(burst));
+    const auto buffered_capacity = input.read_capacity();
+    input.begin_routing_turn();
+    ASSERT_TRUE(input.route_pending(server, ClientId{1}, selection, default_prefixes,
+                                    pane.client_program_input_capacity(), *key_tables));
+    EXPECT_TRUE(input.routing_deferred());
+    // 64 decisions consume 21 complete groups and the next passthrough.
+    EXPECT_EQ(input.read_capacity(), buffered_capacity + 21 * 6 + 4);
+    for (unsigned int turn = 0; turn < 3 && input.routing_deferred(); ++turn) {
+        input.begin_routing_turn();
+        ASSERT_TRUE(input.route_pending(server, ClientId{1}, selection, default_prefixes,
+                                        pane.client_program_input_capacity(), *key_tables));
+    }
+    EXPECT_EQ(input.read_capacity(), empty_capacity);
+    EXPECT_FALSE(input.routing_deferred());
 }
 
 /** @brief Input-producing bindings preserve coalesced ordinary bytes until capacity is resolved

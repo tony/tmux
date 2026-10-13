@@ -6,6 +6,7 @@
 #include <tmux_cxx/session/session_prefix_keys.hpp>
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -24,13 +25,16 @@ class ClientKeyInput {
     /** @brief Report queued input deferred by the exhausted allowance, excluding program
      * backpressure. */
     bool routing_deferred() const;
-    /** @brief Route queued bytes within this turn's allowance until selection changes or
-     * attachment ends. */
-    Result<key_table::KeyBindingEffect> route_pending(Server &server, ClientId client,
-                                                      ClientSelection selection,
-                                                      const SessionPrefixKeys &prefix_keys,
-                                                      std::size_t program_input_capacity,
-                                                      const key_table::KeyTableCatalog &key_tables);
+    /** @brief Route controls despite closed program input; defer passthrough only while accepting
+     * input lacks capacity.
+     *
+     * Absent capacity discards unbound program bytes; zero capacity retains them for retry.
+     * Input admission or selection changes return before processing the retained suffix. */
+    Result<key_table::KeyBindingEffect>
+    route_pending(Server &server, ClientId client, ClientSelection selection,
+                  const SessionPrefixKeys &prefix_keys,
+                  std::optional<std::size_t> program_input_capacity,
+                  const key_table::KeyTableCatalog &key_tables);
 
   private:
     static constexpr std::size_t maximum_pending_bytes = 65536; ///< Per-client input bound.
