@@ -74,3 +74,44 @@ def test_deb_bundle_provisioning_rejects_a_mismatched_package(
     }
     with pytest.raises(RuntimeError, match="gcc/compiler: package hash mismatch"):
         bootstrap.provision_deb_bundle("gcc", record)
+
+
+def test_python_provisioning_replaces_stale_uv_and_selects_locked_python(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Provisioning replaces stale uv and selects the locked workspace interpreter."""
+    monkeypatch.setattr(bootstrap, "ROOT", tmp_path)
+    monkeypatch.setattr(bootstrap, "BUILD", tmp_path / "_build")
+
+    def available_uv(_name: str) -> str:
+        """Locate the bootstrap executable independently of the stale project tool."""
+        return "bootstrap-uv"
+
+    monkeypatch.setattr(bootstrap.shutil, "which", available_uv)
+    uv = tmp_path / "_build/tools/uv-env/bin/uv"
+    uv.parent.mkdir(parents=True)
+    uv.touch()
+    (tmp_path / ".venv").mkdir()
+    python = str(tmp_path / "_build/tools/python/bin/python3.15")
+    commands: list[list[str]] = []
+    environments: list[dict[str, str]] = []
+
+    def capture(arguments: list[str], *, env: dict[str, str]) -> None:
+        """Capture explicit provisioning commands without downloading or installing tools."""
+        commands.append(arguments)
+        environments.append(env)
+
+    def installed_output(arguments: list[str], **_: object) -> str:
+        """Report a stale uv and the requested managed Python executable."""
+        return "uv 0.12.23\n" if arguments[-1] == "--version" else python + "\n"
+
+    monkeypatch.setattr(bootstrap, "run", capture)
+    monkeypatch.setattr(bootstrap.subprocess, "check_output", installed_output)
+    bootstrap.provision_python({"uv": {"version": "0.13.0"}, "python": {"version": "3.15.0"}})
+    assert any("uv==0.13.0" in command for command in commands)
+    sync = next(command for command in commands if "sync" in command)
+    assert sync[sync.index("--python") + 1] == python
+    assert all(
+        environment.get("UV_PYTHON_BIN_DIR") == str(tmp_path / "_build/tools/python-bin")
+        for environment in environments
+    )

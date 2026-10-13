@@ -278,11 +278,16 @@ def provision_python(lock: dict[str, object]) -> None:
         os.environ,
         UV_CACHE_DIR=str(BUILD / "cache/uv"),
         UV_PYTHON_INSTALL_DIR=str(BUILD / "tools/python"),
+        UV_PYTHON_BIN_DIR=str(BUILD / "tools/python-bin"),
     )
-    if not (toolenv / "bin/uv").exists():
+    uv = str(toolenv / "bin/uv")
+    uv_record = lock["uv"]
+    assert isinstance(uv_record, dict)
+    if not Path(uv).exists():
         run([uv_bootstrap, "venv", str(toolenv)], env=env)
-        uv_record = lock["uv"]
-        assert isinstance(uv_record, dict)
+    if not Path(uv).exists() or subprocess.check_output([uv, "--version"], text=True).strip() != (
+        f"uv {uv_record['version']}"
+    ):
         run(
             [
                 uv_bootstrap,
@@ -294,7 +299,6 @@ def provision_python(lock: dict[str, object]) -> None:
             ],
             env=env,
         )
-    uv = str(toolenv / "bin/uv")
     python_record = lock["python"]
     assert isinstance(python_record, dict)
     version = str(python_record["version"])
@@ -304,7 +308,7 @@ def provision_python(lock: dict[str, object]) -> None:
     ).strip()
     if not (ROOT / ".venv").exists():
         run([uv, "venv", "--python", python, ".venv"], env=env)
-    run([uv, "sync", "--locked", "--no-install-project"], env=env)
+    run([uv, "sync", "--locked", "--no-install-project", "--python", python], env=env)
 
 
 def provision_clang_python(record: dict[str, str]) -> None:
