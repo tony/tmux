@@ -1274,3 +1274,36 @@ Absolute sizes, zoom, mouse resizing, resize keys, and layout notifications
 remain open. Copy mode, broader command/configuration support, protocol
 subsets, binding lifetimes, installed binding behavior, platform evidence,
 and the full objective also remain unfinished. This checkpoint stays local.
+
+## Installed bindings verified against the packaged daemon
+
+Earlier package checks inherited build-tree loader overrides. Python could
+therefore import the development extension while an installed wheel was
+present. Those import/type results did not establish installed runtime
+behavior. Consumer processes now remove loader overrides; Python also uses
+isolated mode. Both adapters must resolve beneath their fresh installation.
+
+The wheel is rebuilt from the source distribution. Its executable daemon
+signals readiness through an owned pipe. Installed Python creates and renames
+a persistent shell session; the same installed npm addon under Node Current
+and LTS observes its server identity, renames it, exchanges actual PTY bytes,
+and checks missing-entity and closed-connection errors. Python reconnects and
+verifies both runtimes' distinct output and retained session identity.
+
+A negative check first proves that a working development addon can conceal
+a missing installed addon, then requires rejection with loader overrides
+removed. Deliberately disabling that isolation failed the gate. The original
+Python import also failed the new provenance assertion. Cleanup owns the
+daemon PID and has bounded graceful shutdown and forced reaping. Runtime
+success is reported after cleanup; the package transcript is retained.
+
+| Gate | Result | Whole-command wall time |
+|---|---|---:|
+| Configured mid loop | PASS | 5.44 s |
+| Documentation inventories and controlled negatives | PASS | 9.68 s |
+| Offline installed Python and Node Current/LTS runtime consumers | PASS | 32.96 s |
+
+An independent review found no blocking issue. Automatic daemon discovery,
+the full Python interpreter matrix, broader lifetimes, and the remaining
+objective still require work. This checkpoint remains local; nothing is
+pushed.

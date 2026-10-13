@@ -294,7 +294,10 @@ def fuzzing() -> None:
 
 def packages() -> None:
     """Rebuild and consume the Python and Node artifacts without network access."""
-    run([str(PYTHON), "support/check_packages.py"])
+    run(
+        [str(PYTHON), "support/check_packages.py"],
+        report=ROOT / "_build/reports/packages.log",
+    )
 
 
 def standalone() -> None:

@@ -105,7 +105,12 @@ dependency trees; the npm package installs its prebuilt addon without runtime
 dependencies. A clean source copy builds both bindings and an installed native
 consumer without borrowing first-party sources from the working tree. Current
 upstream GCC, broader binding lifetimes, and daemon discovery remain open.
-The same addon runs against locked Node Current and LTS binaries.
+The package check installs an sdist-built Python wheel and the npm artifact
+into separate consumers, rejects build-tree loader overrides, and runs both
+bindings against the wheel's packaged daemon. Python and the same addon under
+locked Node Current and LTS verify shared mutations, real shell output,
+errors, and session persistence. The transcript is retained in
+`_build/reports/packages.log`.
 
 ## Window keys
 

@@ -6,10 +6,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import selectors
 import shutil
+import signal
 import subprocess
 import tarfile
 import tomllib
+import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -18,18 +22,45 @@ BUILD = ROOT / "_build"
 PYTHON = ROOT / ".venv/bin/python"
 UV = ROOT / ".venv/bin/uv"
 NODE = ROOT / "_build/tools/node_current/bin/node"
+NODE_LTS = ROOT / "_build/tools/node_lts/bin/node"
 NPM = ROOT / "_build/tools/npm/bin/npm-cli.js"
 TY = ROOT / ".venv/bin/ty"
 VTERM_ARCHIVE = "third_party/libvterm/libvterm-0.3.3.tar.gz"
 MAXIMUM_SDIST_BYTES = 5 * 1024 * 1024
 
 
+@dataclass(frozen=True)
+class InstalledPython:
+    """Locate one fresh wheel consumer and its packaged daemon."""
+
+    executable: Path
+    prefix: Path
+    daemon: Path
+
+
+def consumer_environment(environment: dict[str, str]) -> dict[str, str]:
+    """Remove source-tree loader overrides while preserving package-build tool settings."""
+    overrides = {
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "TMUX_CXX_ADDON",
+        "TMUX_CXX_DAEMON",
+        "NODE_PATH",
+        "NODE_OPTIONS",
+    }
+    return {name: value for name, value in environment.items() if name not in overrides}
+
+
 def run(
-    arguments: list[str], *, cwd: Path = ROOT, environment: dict[str, str] | None = None
+    arguments: list[str],
+    *,
+    cwd: Path = ROOT,
+    environment: dict[str, str] | None = None,
+    timeout_seconds: float | None = None,
 ) -> None:
     """Run one package step and reject any nonzero exit status."""
     print("+", " ".join(arguments), flush=True)
-    subprocess.run(arguments, cwd=cwd, env=environment, check=True)
+    subprocess.run(arguments, cwd=cwd, env=environment, check=True, timeout=timeout_seconds)
 
 
 def require_rejection(
@@ -38,6 +69,7 @@ def require_rejection(
     *,
     cwd: Path = ROOT,
     environment: dict[str, str] | None = None,
+    timeout_seconds: float | None = None,
 ) -> None:
     """Require one failing consumer and every expected type diagnostic."""
     completed = subprocess.run(
@@ -47,6 +79,7 @@ def require_rejection(
         text=True,
         capture_output=True,
         check=False,
+        timeout=timeout_seconds,
     )
     output = completed.stdout + completed.stderr
     if completed.returncode == 0 or any(diagnostic not in output for diagnostic in diagnostics):
@@ -104,8 +137,8 @@ def extract_source_distribution(archive: Path, destination: Path) -> Path:
     return projects[0]
 
 
-def check_python_package(workspace: Path) -> None:
-    """Rebuild and import a wheel using only the emitted source distribution."""
+def check_python_package(workspace: Path) -> InstalledPython:
+    """Build an sdist-only wheel and verify its independently installed types and payload."""
     environment = offline_environment()
     environment["CXX"] = str(BUILD / "tools/llvm/bin/clang++")
     distributions = workspace / "python"
@@ -142,6 +175,10 @@ def check_python_package(workspace: Path) -> None:
         environment=environment,
     )
     wheel = only_file(wheels, "*.whl")
+    with zipfile.ZipFile(wheel) as package:
+        members = package.namelist()
+        if "bin/tmux-cxx" not in members:
+            raise RuntimeError("Python wheel is missing its bin/tmux-cxx daemon")
 
     environment_dir = workspace / "python-consumer"
     run([str(UV), "venv", "--python", str(PYTHON), str(environment_dir)], environment=environment)
@@ -150,15 +187,21 @@ def check_python_package(workspace: Path) -> None:
         [str(UV), "pip", "install", "--python", str(consumer_python), "--no-deps", str(wheel)],
         environment=environment,
     )
-    run(
+    installed_environment = consumer_environment(environment)
+    purelib = subprocess.check_output(
         [
             str(consumer_python),
+            "-I",
             "-c",
-            "import tmux_cxx; assert callable(tmux_cxx.ServerConnection)",
+            "import sysconfig; print(sysconfig.get_path('purelib'))",
         ],
         cwd=workspace,
-        environment=environment,
-    )
+        env=installed_environment,
+        text=True,
+    ).strip()
+    daemon = Path(purelib) / "bin/tmux-cxx"
+    if not daemon.is_file() or not os.access(daemon, os.X_OK):
+        raise RuntimeError("installed Python wheel has no executable daemon payload")
     type_project = workspace / "python-types"
     type_project.mkdir()
     (type_project / "pyproject.toml").write_text(
@@ -169,7 +212,7 @@ def check_python_package(workspace: Path) -> None:
     shutil.copy2(ROOT / "tests/integration/types_positive.py", positive)
     shutil.copy2(ROOT / "tests/integration/types_negative.py", negative)
     type_arguments = ["--project", str(type_project), "--python", str(consumer_python)]
-    run([str(TY), "check", *type_arguments, str(positive)], environment=environment)
+    run([str(TY), "check", *type_arguments, str(positive)], environment=installed_environment)
     require_rejection(
         [str(TY), "check", *type_arguments, "--output-format", "concise", str(negative)],
         (
@@ -177,8 +220,9 @@ def check_python_package(workspace: Path) -> None:
             "error[invalid-assignment]",
             "error[unresolved-attribute]",
         ),
-        environment=environment,
+        environment=installed_environment,
     )
+    return InstalledPython(consumer_python, environment_dir, daemon)
 
 
 def inspect_node_package(archive: Path) -> None:
@@ -202,8 +246,8 @@ def inspect_node_package(archive: Path) -> None:
         raise RuntimeError(f"npm package is missing: {', '.join(sorted(missing))}")
 
 
-def check_node_package(workspace: Path) -> None:
-    """Install and load the packed addon with an empty offline npm cache."""
+def check_node_package(workspace: Path) -> Path:
+    """Install the packed addon and check types through an empty offline npm cache."""
     environment = offline_environment()
     packages = workspace / "node"
     packages.mkdir()
@@ -239,16 +283,7 @@ def check_node_package(workspace: Path) -> None:
         ],
         environment=environment,
     )
-    run(
-        [
-            str(NODE),
-            "-e",
-            'const api = require("tmux-cxx"); '
-            'if (typeof api.ServerConnection !== "function") process.exit(1);',
-        ],
-        cwd=consumer,
-        environment=environment,
-    )
+    installed_environment = consumer_environment(environment)
     positive = consumer / "positive.cts"
     negative = consumer / "negative.cts"
     shutil.copy2(ROOT / "bindings/node/tests/types-positive.cts", positive)
@@ -269,13 +304,122 @@ def check_node_package(workspace: Path) -> None:
         "--typeRoots",
         str(ROOT / "bindings/node/node_modules/@types"),
     ]
-    run([*type_arguments, str(positive)], cwd=consumer, environment=environment)
+    run([*type_arguments, str(positive)], cwd=consumer, environment=installed_environment)
     require_rejection(
         [*type_arguments, str(negative)],
         ("TS2345", "TS2322", "TS2339"),
         cwd=consumer,
-        environment=environment,
+        environment=installed_environment,
     )
+    return consumer
+
+
+def require_installed_addon(consumer: Path, environment: dict[str, str]) -> None:
+    """Reject a missing installed addon even when a working build-tree override is supplied."""
+    addon = consumer / "node_modules/tmux-cxx/dist/tmux_cxx.node"
+    retained = addon.with_suffix(".retained")
+    fallback = BUILD / "dev/node/tmux_cxx.node"
+    if not fallback.is_file():
+        raise RuntimeError("missing build-tree addon for the loader-isolation negative")
+    addon.rename(retained)
+    try:
+        poison = dict(environment, TMUX_CXX_ADDON=str(fallback))
+        run(
+            [str(NODE), "-e", 'require("tmux-cxx")'],
+            cwd=consumer,
+            environment=poison,
+            timeout_seconds=0.9,
+        )
+        require_rejection(
+            [str(NODE), "-e", 'require("tmux-cxx")'],
+            ("Cannot find module './dist/tmux_cxx.node'",),
+            cwd=consumer,
+            environment=consumer_environment(poison),
+            timeout_seconds=0.9,
+        )
+    finally:
+        retained.rename(addon)
+
+
+def check_installed_runtime(workspace: Path, python: InstalledPython, node: Path) -> None:
+    """Mutate one packaged daemon through both installed bindings and verify owned cleanup."""
+    environment = consumer_environment(offline_environment())
+    python_script = workspace / "shared_server.py"
+    node_script = node / "shared_server.mts"
+    shutil.copy2(ROOT / "tests/installed/python/shared_server.py", python_script)
+    shutil.copy2(ROOT / "bindings/node/tests/installed_server.mts", node_script)
+    socket = workspace / "socket"
+    record = workspace / "session.txt"
+    python_arguments = [str(python.executable), "-I", str(python_script)]
+    consumer_arguments = [str(socket), str(python.prefix), str(record)]
+    run(
+        [*python_arguments, "probe", *consumer_arguments],
+        cwd=workspace,
+        environment=environment,
+        timeout_seconds=0.9,
+    )
+    require_installed_addon(node, environment)
+    read_fd, write_fd = os.pipe()
+    try:
+        daemon = subprocess.Popen(
+            [str(python.daemon), "serve", "--socket", str(socket), "--ready-fd", str(write_fd)],
+            cwd=workspace,
+            env=environment,
+            pass_fds=(write_fd,),
+        )
+    except BaseException:
+        os.close(read_fd)
+        raise
+    finally:
+        os.close(write_fd)
+    try:
+        with selectors.DefaultSelector() as readiness:
+            readiness.register(read_fd, selectors.EVENT_READ)
+            if not readiness.select(timeout=0.75) or os.read(read_fd, 1) != b"R":
+                raise RuntimeError("packaged daemon did not signal readiness")
+        run(
+            [*python_arguments, "create", *consumer_arguments],
+            cwd=workspace,
+            environment=environment,
+            timeout_seconds=0.9,
+        )
+        for runtime, expected_name, token in (
+            (NODE, "installed-python", "node-current-pty"),
+            (NODE_LTS, "installed-node", "node-lts-pty"),
+        ):
+            run(
+                [
+                    str(runtime),
+                    str(node_script),
+                    str(socket),
+                    str(record),
+                    str(node),
+                    expected_name,
+                    token,
+                ],
+                cwd=node,
+                environment=environment,
+                timeout_seconds=0.9,
+            )
+        run(
+            [*python_arguments, "observe", *consumer_arguments],
+            cwd=workspace,
+            environment=environment,
+            timeout_seconds=0.9,
+        )
+    finally:
+        os.close(read_fd)
+        if daemon.poll() is None:
+            daemon.send_signal(signal.SIGTERM)
+        try:
+            code = daemon.wait(timeout=0.85)
+        except subprocess.TimeoutExpired:
+            daemon.kill()
+            daemon.wait(timeout=0.15)
+            raise RuntimeError("packaged daemon exceeded its shutdown bound") from None
+        if code != 0:
+            raise RuntimeError(f"packaged daemon exited with status {code}")
+    print("PASS installed Python/Node shared-daemon mutations, PTY traffic, errors, persistence")
 
 
 def main() -> None:
@@ -284,8 +428,9 @@ def main() -> None:
     probes.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(prefix="packages-", dir=probes) as temporary:
         workspace = Path(temporary)
-        check_python_package(workspace)
-        check_node_package(workspace)
+        python = check_python_package(workspace)
+        node = check_node_package(workspace)
+        check_installed_runtime(workspace, python, node)
 
 
 if __name__ == "__main__":
