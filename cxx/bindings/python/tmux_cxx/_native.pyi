@@ -14,6 +14,21 @@ class PaneResizeDirection(enum.Enum):
 
     DOWN = 3
 
+class WindowLayoutPreset(enum.Enum):
+    EVEN_HORIZONTAL = 0
+
+    EVEN_VERTICAL = 1
+
+    MAIN_HORIZONTAL = 2
+
+    MAIN_HORIZONTAL_MIRRORED = 3
+
+    MAIN_VERTICAL = 4
+
+    MAIN_VERTICAL_MIRRORED = 5
+
+    TILED = 6
+
 class TmuxError(RuntimeError):
     code: str
     operation: str
@@ -521,6 +536,11 @@ class ServerConnection:
         Rename a shared window while preserving every session membership and selection.
         """
 
+    def select_layout(self, window: int, preset: WindowLayoutPreset) -> WindowSnapshot:
+        """
+        Arrange a shared window using a named tmux preset, preserving pane order and selection.
+        """
+
     def create_window(
         self, session: int, index: int, name: str, command: str = "/bin/sh"
     ) -> WindowLinkSnapshot:
@@ -557,7 +577,7 @@ class ServerConnection:
         """Select one live pane in its shared window and materialize the result."""
 
     def panes(self, window: int) -> list[PaneSnapshot]:
-        """Materialize a shared window's panes in layout order."""
+        """Materialize a shared window's panes in logical pane order."""
 
     def set_paste_buffer(self, name: str, bytes: bytes) -> None:
         """Store up to 256 KiB under an explicit server-global paste-buffer name."""

@@ -346,6 +346,61 @@ def test_split_pane_exposes_layout_and_both_programs(server: str) -> None:
         assert b"left-program" in connection.wait_pane_output(session.pane, b"left-program", 500)
 
 
+def test_select_layout_preserves_panes_and_resets_manual_geometry(server: str) -> None:
+    """Layouts preserve pane order, insertion, programs, selection, and no-op revisions."""
+    with tmux_cxx.ServerConnection(server) as connection:
+        assert callable(getattr(connection, "select_layout", None)), (
+            "Python must expose SelectLayout"
+        )
+        session = connection.create_session("layout-presets", "/bin/cat")
+        second = connection.split_pane(session.pane, tmux_cxx.PaneSplitOrientation.LEFT_RIGHT)
+        third = connection.split_pane(second.id, tmux_cxx.PaneSplitOrientation.TOP_BOTTOM)
+        mirrored = connection.select_layout(
+            session.window, tmux_cxx.WindowLayoutPreset.MAIN_VERTICAL_MIRRORED
+        )
+        panes = connection.panes(session.window)
+        assert [pane.id for pane in panes] == [session.pane, second.id, third.id]
+        assert panes[0].left > panes[1].left == panes[2].left
+        assert mirrored.pane == third.id
+        inserted = connection.split_pane(session.pane, tmux_cxx.PaneSplitOrientation.TOP_BOTTOM)
+        assert [pane.id for pane in connection.panes(session.window)] == [
+            session.pane,
+            inserted.id,
+            second.id,
+            third.id,
+        ]
+        arranged = connection.select_layout(
+            session.window, tmux_cxx.WindowLayoutPreset.EVEN_HORIZONTAL
+        )
+        assert arranged.pane == inserted.id
+        connection.resize_pane(session.pane, tmux_cxx.PaneResizeDirection.RIGHT, 3)
+        restored = connection.select_layout(
+            session.window, tmux_cxx.WindowLayoutPreset.EVEN_HORIZONTAL
+        )
+        assert [pane.columns for pane in connection.panes(session.window)] == [20, 19, 19, 19]
+        assert restored.revision > arranged.revision
+        assert (
+            connection.select_layout(
+                session.window, tmux_cxx.WindowLayoutPreset.EVEN_HORIZONTAL
+            ).revision
+            == restored.revision
+        )
+        with pytest.raises(TypeError):
+            connection.select_layout(-1, tmux_cxx.WindowLayoutPreset.TILED)
+        with pytest.raises(ValueError):
+            tmux_cxx.WindowLayoutPreset(999999)
+        assert connection.window(session.window).revision == restored.revision
+        connection.send_pane_input(second.id, b"printf 'layout-%s\\n' 'python-pty'\n")
+        assert b"layout-python-pty" in connection.wait_pane_output(second.id, b"layout-python-pty")
+        connection.kill_session(session.id)
+        with pytest.raises(tmux_cxx.TmuxError) as stale:
+            connection.select_layout(session.window, tmux_cxx.WindowLayoutPreset.TILED)
+        assert stale.value.code == "not_found"
+    with pytest.raises(tmux_cxx.TmuxError) as closed:
+        connection.select_layout(session.window, tmux_cxx.WindowLayoutPreset.TILED)
+    assert closed.value.code == "closed"
+
+
 def test_named_paste_buffers_preserve_bytes_and_drive_panes(server: str) -> None:
     """Both storage and pane delivery use the compiled paste-buffer operations."""
     with tmux_cxx.ServerConnection(server) as connection:

@@ -49,6 +49,13 @@ StockConnectionCompatibility TmuxCompatibilityPolicy::assess(const TmuxProtocolP
         "absolute sizes, zoom, mouse resizing, implicit targets, and layout notifications are "
         "unsupported");
     report.limitations.push_back(
+        "select-layout requires exact -t session:index and one of seven named presets; "
+        "main sizes use defaults; prefixes, options, cycling, custom layouts, hooks, and "
+        "layout notifications are unsupported");
+    report.limitations.push_back(
+        "named layouts follow tmux 3.7 geometry; tmux 3.4 residual allocation to the final "
+        "pane in even layouts and secondary main-layout strips is not reproduced");
+    report.limitations.push_back(
         "window names require nonempty UTF-8, at most 128 bytes, and no ASCII controls or DEL; "
         "hooks and window-selection notifications remain unsupported");
     report.limitations.push_back(

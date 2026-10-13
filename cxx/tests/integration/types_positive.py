@@ -10,6 +10,7 @@ from tmux_cxx import (
     SessionObservation,
     SessionSnapshot,
     StockConnectionCompatibility,
+    WindowLayoutPreset,
     WindowSnapshot,
 )
 
@@ -41,6 +42,8 @@ def consumer(client: ServerConnection) -> SessionSnapshot:
     client.rename_session(created.id, "next")
     renamed_window: WindowSnapshot = client.rename_window(created.window, "typed-window")
     assert renamed_window.name
+    arranged: WindowSnapshot = client.select_layout(created.window, WindowLayoutPreset.TILED)
+    assert arranged.pane == pane
     next_window: SessionSnapshot = client.next_window(created.id)
     previous_window: SessionSnapshot = client.previous_window(created.id)
     assert next_window.id == previous_window.id

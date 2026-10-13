@@ -12,7 +12,7 @@ struct ListPanes {
     struct Request {
         WindowId window; ///< Window resolved when the query executes.
     };
-    using Response = std::vector<PaneSnapshot>; ///< Materialized panes in layout order.
+    using Response = std::vector<PaneSnapshot>; ///< Materialized panes in logical pane order.
     static constexpr protocol::native::OperationDescription description{
         protocol::native::OperationId{19}, "pane.list", protocol::native::OperationEffect::query,
         protocol::native::capability_mask(
@@ -21,7 +21,7 @@ struct ListPanes {
     static Request read(protocol::native::NativePayloadReader &reader);
     /** @copybrief tmux_cxx::Server::panes */
     static Result<Response> execute(Server &server, Request request);
-    /** @brief Encode bounded pane snapshots in layout order. */
+    /** @brief Encode bounded pane snapshots in logical pane order. */
     static protocol::native::OperationReply write(Response response);
 };
 } // namespace tmux_cxx

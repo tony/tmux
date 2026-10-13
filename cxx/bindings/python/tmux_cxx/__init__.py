@@ -17,6 +17,7 @@ from ._native import SessionRenamedEvent as SessionRenamedEvent
 from ._native import SessionSnapshot as SessionSnapshot
 from ._native import StockConnectionCompatibility as StockConnectionCompatibility
 from ._native import TmuxError as TmuxError
+from ._native import WindowLayoutPreset as WindowLayoutPreset
 from ._native import WindowLinkSnapshot as WindowLinkSnapshot
 from ._native import WindowSnapshot as WindowSnapshot
 from .server_connection import ServerConnection as ServerConnection
@@ -44,6 +45,7 @@ __all__ = [
     "SessionSnapshot",
     "StockConnectionCompatibility",
     "TmuxError",
+    "WindowLayoutPreset",
     "WindowLinkSnapshot",
     "WindowSnapshot",
 ]

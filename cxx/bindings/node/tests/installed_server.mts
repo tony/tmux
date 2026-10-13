@@ -33,6 +33,47 @@ async function exerciseInstalledServer(): Promise<void> {
     assert.equal(observation.sessions[0].id, session);
     assert.equal(observation.sessions[0].pane, pane);
     assert.equal(observation.sessions[0].name, expectedName);
+    const window = observation.sessions[0].window;
+    const previousPanes = await connection.panes(window);
+    assert.equal(previousPanes.length, 3);
+    const preset = outputToken === "node-current-pty" ? "even-horizontal" : "tiled";
+    const arranged = await connection.selectLayout(window, preset);
+    assert.equal(arranged.pane, pane);
+    const arrangedPanes = await connection.panes(window);
+    assert.deepEqual(
+      arrangedPanes.map(
+        /** Retain logical identities while applying an installed layout operation. */
+        (value) => value.id,
+      ),
+      previousPanes.map(
+        /** Copy the three persistent pane identities before rearrangement. */
+        (value) => value.id,
+      ),
+    );
+    assert.deepEqual(
+      arrangedPanes.map(
+        /** Preserve the original active pane across both installed Node runtimes. */
+        (value) => value.active,
+      ),
+      [true, false, false],
+    );
+    assert.deepEqual(
+      arrangedPanes.map(
+        /** Compare pane rectangles from the arranged layout snapshot. */
+        (value) => [value.top, value.left, value.rows, value.columns],
+      ),
+      preset === "even-horizontal"
+        ? [
+            [0, 0, 24, 26],
+            [0, 27, 24, 26],
+            [0, 54, 24, 26],
+          ]
+        : [
+            [0, 0, 11, 39],
+            [0, 40, 11, 40],
+            [12, 0, 12, 80],
+          ],
+    );
     await connection.renameSession(session, "installed-node");
     const output = Buffer.from(`installed-${outputToken}`);
     await connection.sendPaneInput(

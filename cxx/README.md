@@ -139,6 +139,23 @@ exact `-t %pane` target, and an optional count in `1..2147483647`. The count
 defaults to one. Absolute sizes, zoom, mouse resizing, implicit targets,
 resize keys, and layout notifications remain unfinished.
 
+`select_layout(window, WindowLayoutPreset.TILED)` in Python and
+`selectLayout(window, "tiled")` in Node arrange the shared window and return
+its copied state. Presets are `even-horizontal`, `even-vertical`,
+`main-horizontal`, `main-horizontal-mirrored`, `main-vertical`,
+`main-vertical-mirrored`, and `tiled`. Logical pane order, program identities,
+active selection, and window links survive rearrangement. Reapplying an
+identical tree preserves the revision.
+
+Stock `select-layout`/`selectl` requires `-t session:index` and an exact preset
+name. Main layouts use tmux's default main sizes of 24 rows or 80 columns.
+Configurable sizes, name prefixes, cycling, previous/custom layouts, border
+options, hooks, and layout notifications remain unfinished. Both tmux 3.4
+and 3.7 clients select all seven presets; geometry follows the 3.7 reference.
+Tmux 3.4 puts residual space in the last pane of even layouts and secondary
+main-layout strips. That older allocation is documented and tested, and is
+not reproduced by the C++ window.
+
 Large key batches yield between daemon turns. Retained keys resume without
 another keystroke; program backpressure waits for queue capacity to return.
 

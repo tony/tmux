@@ -5,9 +5,11 @@
 #include <tmux_cxx/pane/split_orientation.hpp>
 #include <tmux_cxx/terminal/terminal_snapshot.hpp>
 #include <tmux_cxx/tmux_error.hpp>
+#include <tmux_cxx/window/layout_preset.hpp>
 
 #include <memory>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace tmux_cxx {
@@ -22,7 +24,7 @@ struct PaneGeometry {
 /** @brief Own a window's ordered pane-partition tree and derived leaf geometry. */
 class WindowLayout {
   public:
-    /** @brief Internal tree cell exposed only to this implementation unit's algorithms. */
+    /** @brief Internal tree cell shared only by layout implementation algorithms. */
     struct Cell;
     /** @brief Create a single-leaf layout covering the complete window. */
     WindowLayout(PaneId pane, terminal::CellSize size);
@@ -43,7 +45,11 @@ class WindowLayout {
     /** @brief Move the nearest matching pane border, clamp at subtree minima, and report changed
      * geometry. */
     Result<bool> resize_pane(PaneId pane, PaneResizeDirection direction, std::uint32_t cells);
-    /** @brief Copy leaf geometry in pane-list order. */
+    /** @brief Rebuild a named layout from logical pane order and report structural changes.
+     *
+     * Invalid presets, membership, or terminal capacity leave this tree unchanged. */
+    Result<bool> arrange(WindowLayoutPreset preset, std::span<const PaneId> pane_order);
+    /** @brief Copy leaf geometry in geometric traversal order. */
     std::vector<PaneGeometry> panes() const;
     /** @brief Copy one pane's geometry when that pane belongs to this layout. */
     std::optional<PaneGeometry> pane(PaneId pane) const;

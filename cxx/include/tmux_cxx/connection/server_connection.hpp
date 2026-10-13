@@ -11,6 +11,7 @@
 #include <tmux_cxx/session/session_observation.hpp>
 #include <tmux_cxx/session/session_snapshot.hpp>
 #include <tmux_cxx/tmux_error.hpp>
+#include <tmux_cxx/window/layout_preset.hpp>
 #include <tmux_cxx/window/window_snapshot.hpp>
 #include <tmux_cxx/window_link/window_link_snapshot.hpp>
 
@@ -86,6 +87,11 @@ class ServerConnection {
     Result<SessionSnapshot> next_window(SessionId session);
     /** @brief Select the session's previous window index, wrapping before its first membership. */
     Result<SessionSnapshot> previous_window(SessionId session);
+    /** @brief Arrange a shared window using a named tmux preset, preserving pane order and
+     * selection.
+     *
+     * Main layouts use default sizes; configurable sizes and custom layouts are unsupported. */
+    Result<WindowSnapshot> select_layout(WindowId window, WindowLayoutPreset preset);
     /** @brief Split one pane, start its command, and materialize the selected new pane. */
     Result<PaneSnapshot> split_pane(PaneId pane, PaneSplitOrientation orientation,
                                     std::string command = "/bin/sh");
@@ -96,7 +102,7 @@ class ServerConnection {
                                      std::uint32_t cells = 1);
     /** @brief Select one live pane in its shared window and materialize the result. */
     Result<PaneSnapshot> select_pane(PaneId pane);
-    /** @brief Materialize a shared window's panes in layout order. */
+    /** @brief Materialize a shared window's panes in logical pane order. */
     Result<std::vector<PaneSnapshot>> panes(WindowId window);
     /** @brief Store up to 256 KiB under an explicit server-global paste-buffer name. */
     Result<void> set_paste_buffer(std::string name, std::string bytes);

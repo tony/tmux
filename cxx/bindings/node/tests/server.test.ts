@@ -204,7 +204,7 @@ async function serverOperations(): Promise<void> {
   const split = await client.splitPane(
     splitSession.pane,
     "left_right",
-    "printf 'right-ready\\n'; exec cat",
+    "printf 'right-ready\\n'; exec sh",
   );
   expect(
     (await client.panes(splitSession.window)).map(
@@ -238,6 +238,54 @@ async function serverOperations(): Promise<void> {
     () => client.resizePane(split.id, "right", Number.NaN),
   ).toThrow(RangeError);
   expect((await client.window(splitSession.window)).revision).toBe(resized.revision);
+  expect(typeof client.selectLayout).toBe("function");
+  const third = await client.splitPane(split.id, "top_bottom", "/bin/cat");
+  const mirrored = await client.selectLayout(splitSession.window, "main-vertical-mirrored");
+  const mirroredPanes = await client.panes(splitSession.window);
+  expect(
+    mirroredPanes.map(
+      /** Compare logical pane order independently of mirrored screen position. */
+      (pane) => pane.id,
+    ),
+  ).toEqual([splitSession.pane, split.id, third.id]);
+  expect(mirroredPanes[0].left).toBeGreaterThan(mirroredPanes[1].left);
+  expect(mirrored.pane).toBe(third.id);
+  const inserted = await client.splitPane(splitSession.pane, "top_bottom", "/bin/cat");
+  expect(
+    (await client.panes(splitSession.window)).map(
+      /** Keep insertion after the target in logical pane order after mirroring. */
+      (pane) => pane.id,
+    ),
+  ).toEqual([splitSession.pane, inserted.id, split.id, third.id]);
+  const arranged = await client.selectLayout(splitSession.window, "even-horizontal");
+  expect(arranged.pane).toBe(inserted.id);
+  await client.resizePane(splitSession.pane, "right", 3);
+  const restored = await client.selectLayout(splitSession.window, "even-horizontal");
+  expect(restored.revision).toBeGreaterThan(arranged.revision);
+  expect(
+    (await client.panes(splitSession.window)).map(
+      /** Observe the preset's reset of manually changed column allocations. */
+      (pane) => pane.columns,
+    ),
+  ).toEqual([20, 19, 19, 19]);
+  expect((await client.selectLayout(splitSession.window, "even-horizontal")).revision).toBe(
+    restored.revision,
+  );
+  expect(
+    /** Reject an out-of-range identity before queuing layout mutation. */
+    () => client.selectLayout(1n << 64n, "tiled"),
+  ).toThrow(RangeError);
+  expect((await client.window(splitSession.window)).revision).toBe(restored.revision);
+  await client.sendPaneInput(split.id, Buffer.from("printf 'layout-%s\\n' 'node-pty'\n"));
+  expect(
+    (await client.waitPaneOutput(split.id, Buffer.from("layout-node-pty"))).includes(
+      Buffer.from("layout-node-pty"),
+    ),
+  ).toBe(true);
+  await client.killSession(splitSession.id);
+  await expect(client.selectLayout(splitSession.window, "tiled")).rejects.toMatchObject({
+    code: "not_found",
+  });
   const pasteBytes = Buffer.from([0x62, 0x00, 0xff]);
   await client.setPasteBuffer("node-binary", pasteBytes);
   expect(await client.readPasteBuffer("node-binary")).toEqual(pasteBytes);
@@ -313,6 +361,9 @@ async function serverOperations(): Promise<void> {
     operation: "window.select",
   });
   client.close();
+  await expect(client.selectLayout(session.window, "tiled")).rejects.toMatchObject({
+    code: "closed",
+  });
   const observer = new ServerConnection(socket);
   expect((await observer.sessions())[0].id).toBe(session.id);
   await observer.killSession(session.id);

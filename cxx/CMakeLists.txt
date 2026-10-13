@@ -164,6 +164,7 @@ add_library(tmux_cxx_connection STATIC
   src/window/operations/read_window_native_adapter.cpp
   src/window/operations/create_window_native_adapter.cpp
   src/window/operations/rename_window_native_adapter.cpp
+  src/window/operations/select_layout_native_adapter.cpp
   src/window_link/operations/select_window_native_adapter.cpp
   src/window_link/operations/next_window_native_adapter.cpp
   src/window_link/operations/previous_window_native_adapter.cpp
@@ -263,11 +264,12 @@ add_library(tmux_cxx_server STATIC
   src/paste_buffer/operations/delete_buffer_command.cpp
   src/paste_buffer/operations/paste_buffer_command.cpp
   src/window/register_operations.cpp
-  src/window/layout.cpp src/window/window_size.cpp
+  src/window/layout.cpp src/window/layout_presets.cpp src/window/window_size.cpp
   src/window/window_name.cpp
   src/window/operations/read_window.cpp
   src/window/operations/create_window.cpp
   src/window/operations/rename_window.cpp src/window/operations/rename_window_command.cpp
+  src/window/operations/select_layout.cpp src/window/operations/select_layout_command.cpp
   src/window/register_commands.cpp src/window/operations/new_window_command.cpp
   src/window_link/register_operations.cpp
   src/window_link/register_commands.cpp src/window_link/window_target.cpp
@@ -406,6 +408,7 @@ if(BUILD_TESTING)
   tmux_cxx_target(gtest_main)
   include(GoogleTest)
   add_executable(server_test tests/cpp/server_test.cpp tests/cpp/operation_registry_test.cpp
+    tests/cpp/window_layout_test.cpp
     tests/cpp/command_registry_test.cpp tests/cpp/control_command_line_test.cpp
     tests/cpp/control_channel_test.cpp
     tests/cpp/key_table_test.cpp

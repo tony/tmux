@@ -12,6 +12,7 @@
 #include "session/register_commands.hpp"
 #include "session/register_operations.hpp"
 #include "window/operations/new_window_command.hpp"
+#include "window/operations/select_layout_command.hpp"
 #include <tmux_cxx/server/server.hpp>
 #include <tmux_cxx/session/operations/list_sessions.hpp>
 
@@ -27,6 +28,17 @@ TEST(CommandRegistry, NewWindowRequiresCreationAndSelection) {
     commands::CommandRegistry commands;
     ASSERT_TRUE(commands.add<NewWindowCommand>());
     EXPECT_FALSE(std::move(commands).freeze(*operation_catalog));
+}
+
+/** @brief Named layout commands require their declared operation before catalog publication. */
+TEST(CommandRegistry, SelectLayoutRequiresItsOperation) {
+    protocol::native::OperationRegistry operations;
+    ASSERT_TRUE(operations.add<ListSessions>());
+    const auto catalog = std::move(operations).freeze();
+    ASSERT_TRUE(catalog);
+    commands::CommandRegistry commands;
+    ASSERT_TRUE(commands.add<SelectLayoutCommand>());
+    EXPECT_FALSE(std::move(commands).freeze(*catalog));
 }
 
 /** @brief Window commands preserve detached creation and session-local selection of shared windows.

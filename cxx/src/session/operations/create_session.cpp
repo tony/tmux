@@ -29,6 +29,7 @@ Result<SessionSnapshot> Server::create_session(std::string name, std::string com
                                               name,
                                               WindowLayout{pane_id, initial_size},
                                               pane_id,
+                                              {pane_id},
                                               {link_id},
                                               initial_size,
                                               WindowSizePolicy::latest,

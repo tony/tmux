@@ -1,5 +1,6 @@
 #include "binding_documentation.hpp"
 #include <tmux_cxx/connection/server_connection.hpp>
+#include <tmux_cxx/window/layout_preset.hpp>
 
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/optional.h>
@@ -59,6 +60,7 @@ NB_MODULE(_native, module) {
     using tmux_cxx::SessionRenamedEvent;
     using tmux_cxx::SessionSnapshot;
     using tmux_cxx::StockConnectionCompatibility;
+    using tmux_cxx::WindowLayoutPreset;
     using tmux_cxx::WindowLinkSnapshot;
     using tmux_cxx::WindowSnapshot;
     nb::enum_<PaneSplitOrientation>(module, "PaneSplitOrientation")
@@ -69,6 +71,14 @@ NB_MODULE(_native, module) {
         .value("RIGHT", PaneResizeDirection::right)
         .value("UP", PaneResizeDirection::up)
         .value("DOWN", PaneResizeDirection::down);
+    nb::enum_<WindowLayoutPreset>(module, "WindowLayoutPreset")
+        .value("EVEN_HORIZONTAL", WindowLayoutPreset::even_horizontal)
+        .value("EVEN_VERTICAL", WindowLayoutPreset::even_vertical)
+        .value("MAIN_HORIZONTAL", WindowLayoutPreset::main_horizontal)
+        .value("MAIN_HORIZONTAL_MIRRORED", WindowLayoutPreset::main_horizontal_mirrored)
+        .value("MAIN_VERTICAL", WindowLayoutPreset::main_vertical)
+        .value("MAIN_VERTICAL_MIRRORED", WindowLayoutPreset::main_vertical_mirrored)
+        .value("TILED", WindowLayoutPreset::tiled);
     auto tmux_error_type = nb::exception<PythonTmuxError>(module, "TmuxError", PyExc_RuntimeError);
     nb::register_exception_translator(
         /** @brief Attach the native error classification and operation while holding the GIL. */
@@ -403,6 +413,13 @@ NB_MODULE(_native, module) {
                 return unwrap(self.rename_window(tmux_cxx::WindowId{window}, std::move(name)));
             },
             nb::arg("window"), nb::arg("name"), docs::rename_window,
+            nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "select_layout", /** @copybrief tmux_cxx::ServerConnection::select_layout */
+            [](ServerConnection &self, std::uint64_t window, WindowLayoutPreset preset) {
+                return unwrap(self.select_layout(tmux_cxx::WindowId{window}, preset));
+            },
+            nb::arg("window"), nb::arg("preset"), docs::select_layout,
             nb::call_guard<nb::gil_scoped_release>())
         .def(
             "create_window", /** @copybrief tmux_cxx::ServerConnection::create_window */

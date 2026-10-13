@@ -12,6 +12,7 @@
 #include "window/layout.hpp"
 #include <tmux_cxx/window/operations/create_window.hpp>
 #include <tmux_cxx/window/operations/rename_window.hpp>
+#include <tmux_cxx/window/operations/select_layout.hpp>
 
 #include <algorithm>
 #include <array>
@@ -367,6 +368,85 @@ TEST(ServerPanes, TopBottomSplitOwnsGeometry) {
     EXPECT_EQ(split->left, 0);
     EXPECT_EQ(split->rows, 11);
     EXPECT_EQ(split->columns, 80);
+}
+
+/** @brief Named layouts retain linked ownership and logical order while rejecting malformed native
+ * traffic. */
+TEST(ServerWindows, SelectLayoutPreservesPaneOrderAndMemberships) {
+    Server server;
+    const auto session = server.create_session("layout", "/bin/cat");
+    const auto other = server.create_session("layout-link", "/bin/cat");
+    ASSERT_TRUE(session);
+    ASSERT_TRUE(other);
+    const auto right =
+        server.split_pane(session->pane, PaneSplitOrientation::left_right, "/bin/cat");
+    const auto lower =
+        server.split_pane(session->pane, PaneSplitOrientation::top_bottom, "/bin/cat");
+    ASSERT_TRUE(right);
+    ASSERT_TRUE(lower);
+    const auto link = server.link_window(session->window, other->id, 7);
+    ASSERT_TRUE(link);
+    ASSERT_TRUE(server.select_pane(session->pane));
+    const auto arranged =
+        server.select_layout(session->window, WindowLayoutPreset::main_horizontal_mirrored);
+    ASSERT_TRUE(arranged);
+    const auto panes = server.panes(session->window);
+    ASSERT_TRUE(panes);
+    ASSERT_EQ(panes->size(), 3);
+    EXPECT_EQ(panes->at(0).id, session->pane);
+    EXPECT_EQ(panes->at(1).id, lower->id);
+    EXPECT_EQ(panes->at(2).id, right->id);
+    EXPECT_EQ(panes->at(0).top, 2);
+    EXPECT_EQ(arranged->pane, session->pane);
+    EXPECT_EQ(server.window(link->window)->revision, arranged->revision);
+    EXPECT_EQ(server.sessions().front().link, session->link);
+    EXPECT_EQ(server.sessions().back().link, other->link);
+    EXPECT_EQ(server.select_layout(session->window, WindowLayoutPreset::main_horizontal_mirrored)
+                  ->revision,
+              arranged->revision);
+
+    const auto inserted =
+        server.split_pane(lower->id, PaneSplitOrientation::left_right, "/bin/cat");
+    ASSERT_TRUE(inserted);
+    const auto reordered = server.panes(session->window);
+    ASSERT_TRUE(reordered);
+    ASSERT_EQ(reordered->size(), 4);
+    EXPECT_EQ(reordered->at(0).id, session->pane);
+    EXPECT_EQ(reordered->at(1).id, lower->id);
+    EXPECT_EQ(reordered->at(2).id, inserted->id);
+    EXPECT_EQ(reordered->at(3).id, right->id);
+    const auto even = server.select_layout(session->window, WindowLayoutPreset::even_horizontal);
+    ASSERT_TRUE(even);
+    EXPECT_EQ(even->pane, inserted->id);
+    for (const auto value : {std::uint32_t{7}, std::uint32_t{65536}}) {
+        const auto invalid =
+            server.select_layout(session->window, std::bit_cast<WindowLayoutPreset>(value));
+        ASSERT_FALSE(invalid);
+        EXPECT_EQ(invalid.error().code, TmuxErrorCode::invalid_argument);
+    }
+    const auto stale = server.select_layout(WindowId{999}, WindowLayoutPreset::tiled);
+    ASSERT_FALSE(stale);
+    EXPECT_EQ(stale.error().code, TmuxErrorCode::not_found);
+    ServerConnection unavailable("_build/layout-unreachable");
+    const auto narrowed = unavailable.select_layout(
+        session->window, std::bit_cast<WindowLayoutPreset>(std::uint32_t{65536}));
+    ASSERT_FALSE(narrowed);
+    EXPECT_EQ(narrowed.error().code, TmuxErrorCode::invalid_argument);
+    auto catalogs = build_server_api_catalogs();
+    ASSERT_TRUE(catalogs);
+    for (const auto preset : {std::uint16_t{7}, std::uint16_t{1}}) {
+        protocol::native::NativePayloadWriter request;
+        request.u64(session->window.value);
+        request.u16(preset);
+        if (preset == 1) {
+            request.bytes.push_back(0);
+        }
+        const auto rejected =
+            catalogs->native_operations.invoke(SelectLayout::description.id, server, request.bytes);
+        ASSERT_FALSE(rejected);
+        EXPECT_EQ(rejected.error().code, TmuxErrorCode::protocol);
+        EXPECT_EQ(server.window(session->window)->revision, even->revision);
+    }
 }
 
 /** @brief Shared-window resizing preserves selection and committed geometry through invalid traffic

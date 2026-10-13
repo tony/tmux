@@ -10,6 +10,7 @@
 #include <tmux_cxx/session/session_snapshot.hpp>
 #include <tmux_cxx/terminal/terminal_snapshot.hpp>
 #include <tmux_cxx/tmux_error.hpp>
+#include <tmux_cxx/window/layout_preset.hpp>
 #include <tmux_cxx/window/window_snapshot.hpp>
 #include <tmux_cxx/window_link/window_link_snapshot.hpp>
 
@@ -88,6 +89,10 @@ class Server {
      *
      * An unchanged name preserves the revision. Name constraints match create_window. */
     Result<WindowSnapshot> rename_window(WindowId window, std::string name);
+    /** @copybrief tmux_cxx::ServerConnection::select_layout
+     *
+     * An identical partition tree preserves the revision. */
+    Result<WindowSnapshot> select_layout(WindowId window, WindowLayoutPreset preset);
     /** @copybrief tmux_cxx::ServerConnection::create_window
      *
      * Names require UTF-8, at most 128 bytes, and no ASCII controls or DEL. */
@@ -110,7 +115,7 @@ class Server {
                                      std::uint32_t cells = 1);
     /** @brief Select one live pane in its shared window without changing layout geometry. */
     Result<PaneSnapshot> select_pane(PaneId pane);
-    /** @brief Materialize one window's panes in layout order. */
+    /** @brief Materialize one window's panes in logical pane order. */
     Result<std::vector<PaneSnapshot>> panes(WindowId window) const;
     /** @brief Store up to 256 KiB under an explicit server-global paste-buffer name.
      *

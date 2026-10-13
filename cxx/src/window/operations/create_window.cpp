@@ -35,6 +35,7 @@ Result<WindowLinkSnapshot> Server::create_window(SessionId session_id, std::uint
                                               std::move(name),
                                               WindowLayout{pane_id, size},
                                               pane_id,
+                                              {pane_id},
                                               {link_id},
                                               size,
                                               WindowSizePolicy::latest,

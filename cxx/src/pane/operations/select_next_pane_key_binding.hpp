@@ -4,7 +4,7 @@
 #include <tmux_cxx/pane/operations/select_pane.hpp>
 
 namespace tmux_cxx {
-/** @brief Bind prefix-o to the next pane in the selected window's layout order. */
+/** @brief Bind prefix-o to the next logical pane in the selected window. */
 struct SelectNextPaneKeyBinding {
     /** @brief Declare tmux's default prefix-o mapping and pane-selection dependency. */
     static constexpr key_table::KeyBindingDescription description{

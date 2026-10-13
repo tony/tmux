@@ -20,10 +20,24 @@ def installed_provenance(prefix: Path) -> None:
 
 
 def create_session(socket: str, record: Path) -> None:
-    """Create and rename a persistent shell, then close admission without deleting it."""
+    """Create three persistent shells, arrange their shared window, and close local admission."""
     with tmux_cxx.ServerConnection(socket) as connection:
         session = connection.create_session("installed", "/bin/sh")
         connection.rename_session(session.id, "installed-python")
+        second = connection.split_pane(session.pane, tmux_cxx.PaneSplitOrientation.LEFT_RIGHT)
+        third = connection.split_pane(second.id, tmux_cxx.PaneSplitOrientation.TOP_BOTTOM)
+        connection.select_pane(session.pane)
+        arranged = connection.select_layout(
+            session.window, tmux_cxx.WindowLayoutPreset.MAIN_VERTICAL_MIRRORED
+        )
+        assert arranged.pane == session.pane
+        panes = connection.panes(session.window)
+        assert [pane.id for pane in panes] == [session.pane, second.id, third.id]
+        assert [(pane.top, pane.left, pane.rows, pane.columns) for pane in panes] == [
+            (0, 2, 24, 78),
+            (0, 0, 12, 1),
+            (13, 0, 11, 1),
+        ]
         owner = connection.observe_sessions().next_event.server_instance
         record.write_text(f"{session.id} {session.pane} {owner}\n")
     try:
@@ -45,6 +59,16 @@ def observe_session(socket: str, record: Path) -> None:
         assert observation.sessions[0].id == session_id
         assert observation.sessions[0].name == "installed-node"
         assert observation.sessions[0].pane == pane_id
+        window = observation.sessions[0].window
+        panes = observer.panes(window)
+        assert len(panes) == 3
+        assert panes[0].id == pane_id
+        assert [pane.active for pane in panes] == [True, False, False]
+        assert [(pane.top, pane.left, pane.rows, pane.columns) for pane in panes] == [
+            (0, 0, 11, 39),
+            (0, 40, 11, 40),
+            (12, 0, 12, 80),
+        ]
         output = observer.read_pane_output(pane_id)
         assert b"installed-node-current-pty" in output
         assert b"installed-node-lts-pty" in output

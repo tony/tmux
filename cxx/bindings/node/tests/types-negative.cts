@@ -3,6 +3,7 @@ import { ServerConnection } from "tmux-cxx";
 /** Require argument, return-assignment, and missing-export diagnostics. */
 async function consumer(client: ServerConnection): Promise<void> {
   await client.renameSession(1, "bad-number-id");
+  await client.selectLayout(1n, "even_horizontal");
   const stream = await client.subscribeSessions();
   await stream.next({ timeoutMs: "bad-timeout" });
   const wrong: string = await client.sessions();

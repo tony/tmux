@@ -30,6 +30,11 @@ async function consumer(client: ServerConnection): Promise<SessionSnapshot> {
   await client.renameSession(session.id, row + output.toString("utf8"));
   const renamedWindow: WindowSnapshot = await client.renameWindow(session.window, "typed-window");
   void renamedWindow;
+  const arranged: WindowSnapshot = await client.selectLayout(
+    session.window,
+    "main-horizontal-mirrored",
+  );
+  void arranged;
   const nextWindow: SessionSnapshot = await client.nextWindow(session.id);
   const previousWindow: SessionSnapshot = await client.previousWindow(session.id);
   const resized: PaneSnapshot = await client.resizePane(pane, "right");

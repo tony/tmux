@@ -1307,3 +1307,66 @@ An independent review found no blocking issue. Automatic daemon discovery,
 the full Python interpreter matrix, broader lifetimes, and the remaining
 objective still require work. This checkpoint remains local; nothing is
 pushed.
+
+## Seven named layouts with independent logical pane order
+
+`Window::pane_order` now owns tmux's logical pane list independently of
+geometric tree traversal. Splitting prepares insertion after the target
+before program effects and commits it with the candidate layout. Pane
+listing and next-pane selection consume that order. Mirrored layouts can
+therefore move the main pane while retaining identities and selection.
+
+Registered `SelectLayout` has native identity 35, `window.select_layout`.
+Its enum and immutable name catalog declare seven presets; the stock
+`select-layout`/`selectl` adapter and Node resolve exact names through that
+catalog. Python exposes `WindowLayoutPreset`. Generated C++ assertions check
+Node's declared names against the catalog; a deliberate spelling change
+now fails compilation. No new transport dispatch branch is required.
+
+Preset builders retain tmux's border, main-size, tiled-grid, and residual
+rules. They validate membership and bounded dimensions before changing
+the candidate tree or resizing PTYs. A structural comparison makes an
+identical tree a no-op; reselecting after manual resizing restores the
+arrangement. Shared window links and active pane identity remain intact.
+
+The real comparison exposed a release difference: tmux 3.4 assigns all
+residual cells to the final child of even layouts and secondary main
+strips; 3.7 distributes them from the first child. C++ follows the modern
+rules consistently across clients. Both stock versions select all seven
+presets and match an owned 3.7 reference exactly. Separate 3.4 reference
+cases characterize all five older presets and reject mirrored names.
+The compatibility report declares the rounding limit; tiled retains the
+same final-pane/final-row rule in both releases. No tolerance hides it.
+
+Focused native and both binding tests failed before implementation. They
+now cover mirrors, logical insertion, linked ownership, reapplication,
+residual cells, minimum expansion, capacity rejection, malformed traffic
+before effects, and persistent program traffic. Installed Python and one
+npm addon under Node Current/LTS rearrange the same packaged daemon's
+three panes and verify copied geometry, selection, and real shell output.
+The installed C++ consumer also exercises a mirrored layout.
+
+| Gate | Result | Whole-command wall time |
+|---|---|---:|
+| Focused native layout, ownership, and catalog cases | PASS; 10 cases | 0.01 s |
+| Configured mid loop | PASS; 100 native cases | 6.60 s |
+| GCC 15 native and both binding CTest suites | PASS; 105 tests | 4.77 s |
+| C++26 native and both binding CTest suites | PASS; 105 tests | 4.29 s |
+| ASan/UBSan/LeakSanitizer and controlled negatives | PASS | 52.92 s |
+| Bounded native, tmux, and terminal fuzz replay | PASS; 6,000 runs | 2.07 s |
+| Doxygen/compiler/language documentation and negatives | PASS | 237.00 s |
+| clang-tidy and fatal negative probe | PASS | 142.62 s |
+| Offline installed Python and Node Current/LTS runtime consumers | PASS | 49.13 s |
+| Fresh source build/install and native layout consumer | PASS | 56.62 s |
+
+One GCC protocol run reached its five-second deadline during concurrent
+compilation and analysis. An isolated exact-environment diagnostic passed
+52 protocol cases in 2.30 seconds; subsequent full compiler suites ran
+without competing builds and passed. No deadline or assertion was weakened.
+Independent review found no blocking issue; the compatibility wording was
+qualified to exclude tiled allocation from the older rounding difference.
+
+Configurable layout sizes, cycling, previous/custom layouts, border options,
+hooks, notifications, absolute pane sizes, copy mode, daemon discovery,
+broader protocol and binding contracts, platform evidence, and the full
+objective remain open. This checkpoint remains local; nothing is pushed.

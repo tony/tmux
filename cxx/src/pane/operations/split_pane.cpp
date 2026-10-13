@@ -29,6 +29,13 @@ Result<PaneSnapshot> Server::split_pane(PaneId target, PaneSplitOrientation orie
     auto &window = window_entry->second;
     auto candidate_layout = window.layout;
     const PaneId new_pane{state_->next_pane_identity++};
+    auto candidate_order = window.pane_order;
+    const auto target_position = std::ranges::find(candidate_order, target);
+    if (target_position == candidate_order.end()) {
+        return std::unexpected(
+            TmuxError{TmuxErrorCode::protocol, "split target is absent from window pane order"});
+    }
+    candidate_order.insert(std::next(target_position), new_pane);
     if (auto split = candidate_layout.split(target, new_pane, orientation); !split) {
         return std::unexpected(split.error());
     }
@@ -53,6 +60,7 @@ Result<PaneSnapshot> Server::split_pane(PaneId target, PaneSplitOrientation orie
         return std::unexpected(spawned.error());
     }
     window.layout = std::move(candidate_layout);
+    window.pane_order = std::move(candidate_order);
     window.active = new_pane;
     window.revision = ++state_->revision;
     return state_->pane_snapshot(window, *new_geometry);

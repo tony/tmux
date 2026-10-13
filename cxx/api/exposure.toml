@@ -181,6 +181,16 @@ result = "session"
 parameters = [{ name = "session", kind = "session_id" }]
 
 [[operations]]
+type = "SelectLayout"
+header = "window/operations/select_layout.hpp"
+method = "select_layout"
+node = "selectLayout"
+id = 35
+identity = "window.select_layout"
+result = "window"
+parameters = [{ name = "window", kind = "window_id" }, { name = "preset", kind = "window_layout_preset" }]
+
+[[operations]]
 type = "PreviousWindow"
 header = "window_link/operations/previous_window.hpp"
 method = "previous_window"

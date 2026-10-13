@@ -1,4 +1,5 @@
 #include <tmux_cxx/connection/server_connection.hpp>
+#include <tmux_cxx/window/layout_preset.hpp>
 
 #include <napi.h>
 
@@ -507,6 +508,18 @@ tmux_cxx::PaneResizeDirection pane_resize_direction_arg(const Napi::CallbackInfo
                                 "pane resize direction must be left, right, up, or down");
 }
 
+/** @brief Resolve an exact tmux layout name through the immutable C++ preset catalog. */
+tmux_cxx::WindowLayoutPreset window_layout_preset_arg(const Napi::CallbackInfo &info,
+                                                      std::size_t index) {
+    const auto name = string_arg(info, index);
+    for (const auto &layout : tmux_cxx::window_layout_presets) {
+        if (layout.name == name) {
+            return layout.preset;
+        }
+    }
+    throw Napi::RangeError::New(info.Env(), "unknown window layout preset");
+}
+
 /** @brief Copy a byte array on the JavaScript thread before admitting asynchronous work. */
 std::string bytes_arg(const Napi::CallbackInfo &info, std::size_t index) {
     if (index >= info.Length() || !info[index].IsTypedArray()) {
@@ -688,6 +701,7 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
                     InstanceMethod("windowLinks", &NodeServerConnection::window_links),
                     InstanceMethod("window", &NodeServerConnection::window),
                     InstanceMethod("renameWindow", &NodeServerConnection::rename_window),
+                    InstanceMethod("selectLayout", &NodeServerConnection::select_layout),
                     InstanceMethod("createWindow", &NodeServerConnection::create_window),
                     InstanceMethod("selectWindow", &NodeServerConnection::select_window),
                     InstanceMethod("nextWindow", &NodeServerConnection::next_window),
@@ -876,6 +890,15 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
             [window, name = std::move(name)](tmux_cxx::ServerConnection &connection) mutable {
                 return to_node_result(connection.rename_window(window, std::move(name)));
             });
+    }
+    /** @brief Validate window identity and preset before queuing shared layout selection. */
+    Napi::Value select_layout(const Napi::CallbackInfo &info) {
+        const auto window = tmux_cxx::WindowId{id_arg(info, 0)};
+        const auto preset = window_layout_preset_arg(info, 1);
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::select_layout */
+                               [window, preset](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(connection.select_layout(window, preset));
+                               });
     }
     /** @brief Copy creation arguments before queuing a PTY-backed window at an explicit session
      * index. */

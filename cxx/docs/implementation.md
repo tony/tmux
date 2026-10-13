@@ -199,6 +199,26 @@ invalid-before-effects behavior. Compare geometry against owned tmux
 Run focused RED/GREEN checks, mid checks, and all configured outer gates
 before committing this slice locally.
 
+## Named window layout slice
+
+`Window` owns logical pane order independently of `WindowLayout` geometry.
+Splitting inserts after the target in that order. Mirrored layouts move
+the main pane without reordering pane identities or changing selection.
+
+Register `SelectLayout` and `select-layout`/`selectl` under the window
+component. A fixed enum and immutable name catalog declare all seven
+presets. Build and validate a candidate partition tree before resizing
+PTYs, then adopt geometry and revision together. Repeated identical trees
+preserve the revision; a manual border move can be reset by reselecting.
+
+Compare all seven presets with tmux 3.7 using both stock client versions,
+owned servers, correlated pane identities, and actual program dimensions.
+Characterize 3.4's older residual allocation as an explicit limit. Cover
+residual cells, minimum expansion, invalid traffic before effects, linked
+ownership, and splitting after a mirror. Expose the same operation through
+Python and Node. Configurable main sizes, layout cycling, custom layouts,
+border options, hooks, and notifications remain subsequent work.
+
 ## Architecture progress
 
 Named server/session/window/pane components, entity-local operation descriptions, and validated immutable native lookup now replace the generic domain module and operation switch. The public facade is `ServerConnection`, snapshots are values, and recoverable failures are `TmuxError`. Session/window membership and pane-program cleanup have real ownership models.

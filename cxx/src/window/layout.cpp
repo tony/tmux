@@ -16,7 +16,7 @@
  * OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "window/layout.hpp"
+#include "window/layout_cell.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -26,27 +26,11 @@ namespace tmux_cxx {
 namespace {
 constexpr std::size_t max_layout_panes = 256; ///< Bound tree depth, traversal, and process count.
 
-/** @brief Distinguish layout leaves from the two ordered container arrangements. */
-enum class CellKind { leaf, left_right, top_bottom };
-
 /** @brief Translate the public split choice into its owning container kind. */
-CellKind container_kind(PaneSplitOrientation orientation) {
-    return orientation == PaneSplitOrientation::left_right ? CellKind::left_right
-                                                           : CellKind::top_bottom;
+WindowLayoutCellKind container_kind(PaneSplitOrientation orientation) {
+    return orientation == PaneSplitOrientation::left_right ? WindowLayoutCellKind::left_right
+                                                           : WindowLayoutCellKind::top_bottom;
 }
-} // namespace
-
-/** @brief Retain one layout leaf or ordered container with derived geometry. */
-struct WindowLayout::Cell {
-    CellKind kind = CellKind::leaf; ///< Leaf or arrangement owned by this cell.
-    terminal::CellSize size{};      ///< Interior extent governed by the parent invariant.
-    std::uint32_t top = 0;          ///< Derived top row within the window.
-    std::uint32_t left = 0;         ///< Derived left column within the window.
-    PaneId pane{};                  ///< Leaf pane; zero for containers.
-    std::vector<std::unique_ptr<Cell>> children; ///< Ordered children; empty for leaves.
-};
-
-namespace {
 /** @brief Deep-copy one layout subtree while retaining its derived geometry. */
 std::unique_ptr<WindowLayout::Cell> clone_cell(const WindowLayout::Cell &source) {
     auto copy = std::make_unique<WindowLayout::Cell>();
@@ -64,7 +48,7 @@ std::unique_ptr<WindowLayout::Cell> clone_cell(const WindowLayout::Cell &source)
 
 /** @brief Count leaves without materializing their geometry. */
 std::size_t leaf_count(const WindowLayout::Cell &cell) {
-    if (cell.kind == CellKind::leaf) {
+    if (cell.kind == WindowLayoutCellKind::leaf) {
         return 1;
     }
     std::size_t count = 0;
@@ -74,39 +58,40 @@ std::size_t leaf_count(const WindowLayout::Cell &cell) {
     return count;
 }
 
-/** @brief Recompute every descendant offset from sizes and one-cell sibling borders. */
-void derive_offsets(WindowLayout::Cell &cell, std::uint32_t top, std::uint32_t left) {
+} // namespace
+
+void derive_layout_offsets(WindowLayout::Cell &cell, std::uint32_t top, std::uint32_t left) {
     cell.top = top;
     cell.left = left;
     std::uint32_t child_top = top;
     std::uint32_t child_left = left;
     for (auto &child : cell.children) {
-        derive_offsets(*child, child_top, child_left);
-        if (cell.kind == CellKind::left_right) {
+        derive_layout_offsets(*child, child_top, child_left);
+        if (cell.kind == WindowLayoutCellKind::left_right) {
             child_left += child->size.columns + 1;
-        } else if (cell.kind == CellKind::top_bottom) {
+        } else if (cell.kind == WindowLayoutCellKind::top_bottom) {
             child_top += child->size.rows + 1;
         }
     }
 }
 
-/** @brief Create a leaf at the supplied pane and geometry. */
-std::unique_ptr<WindowLayout::Cell> leaf(PaneId pane, terminal::CellSize size) {
+std::unique_ptr<WindowLayout::Cell> make_layout_leaf(PaneId pane, terminal::CellSize size) {
     auto cell = std::make_unique<WindowLayout::Cell>();
     cell->size = size;
     cell->pane = pane;
     return cell;
 }
 
+namespace {
 /** @brief Divide the target leaf or insert beside it in a matching parent container. */
-bool split_cell(WindowLayout::Cell &cell, PaneId target, PaneId new_pane, CellKind arrangement,
-                bool &too_small) {
-    if (cell.kind == CellKind::leaf) {
+bool split_cell(WindowLayout::Cell &cell, PaneId target, PaneId new_pane,
+                WindowLayoutCellKind arrangement, bool &too_small) {
+    if (cell.kind == WindowLayoutCellKind::leaf) {
         if (cell.pane != target) {
             return false;
         }
         const auto extent =
-            arrangement == CellKind::left_right ? cell.size.columns : cell.size.rows;
+            arrangement == WindowLayoutCellKind::left_right ? cell.size.columns : cell.size.rows;
         if (extent < 3) {
             too_small = true;
             return false;
@@ -115,7 +100,7 @@ bool split_cell(WindowLayout::Cell &cell, PaneId target, PaneId new_pane, CellKi
         const auto old_extent = extent - new_extent - 1;
         auto old_size = cell.size;
         auto new_size = cell.size;
-        if (arrangement == CellKind::left_right) {
+        if (arrangement == WindowLayoutCellKind::left_right) {
             old_size.columns = old_extent;
             new_size.columns = new_extent;
         } else {
@@ -125,32 +110,34 @@ bool split_cell(WindowLayout::Cell &cell, PaneId target, PaneId new_pane, CellKi
         const auto old_pane = cell.pane;
         cell.kind = arrangement;
         cell.pane = {};
-        cell.children.push_back(leaf(old_pane, old_size));
-        cell.children.push_back(leaf(new_pane, new_size));
+        cell.children.push_back(make_layout_leaf(old_pane, old_size));
+        cell.children.push_back(make_layout_leaf(new_pane, new_size));
         return true;
     }
     for (std::size_t index = 0; index < cell.children.size(); ++index) {
         auto &child = cell.children[index];
-        if (cell.kind == arrangement && child->kind == CellKind::leaf && child->pane == target) {
-            const auto extent =
-                arrangement == CellKind::left_right ? child->size.columns : child->size.rows;
+        if (cell.kind == arrangement && child->kind == WindowLayoutCellKind::leaf &&
+            child->pane == target) {
+            const auto extent = arrangement == WindowLayoutCellKind::left_right
+                                    ? child->size.columns
+                                    : child->size.rows;
             if (extent < 3) {
                 too_small = true;
                 return false;
             }
             const auto new_extent = (extent + 1) / 2 - 1;
-            if (arrangement == CellKind::left_right) {
+            if (arrangement == WindowLayoutCellKind::left_right) {
                 child->size.columns = extent - new_extent - 1;
                 auto new_size = child->size;
                 new_size.columns = new_extent;
                 cell.children.insert(cell.children.begin() + static_cast<std::ptrdiff_t>(index + 1),
-                                     leaf(new_pane, new_size));
+                                     make_layout_leaf(new_pane, new_size));
             } else {
                 child->size.rows = extent - new_extent - 1;
                 auto new_size = child->size;
                 new_size.rows = new_extent;
                 cell.children.insert(cell.children.begin() + static_cast<std::ptrdiff_t>(index + 1),
-                                     leaf(new_pane, new_size));
+                                     make_layout_leaf(new_pane, new_size));
             }
             return true;
         }
@@ -166,13 +153,13 @@ bool split_cell(WindowLayout::Cell &cell, PaneId target, PaneId new_pane, CellKi
 
 /** @brief Compute the minimum root size that retains every leaf and sibling border. */
 terminal::CellSize minimum_size(const WindowLayout::Cell &cell) {
-    if (cell.kind == CellKind::leaf) {
+    if (cell.kind == WindowLayoutCellKind::leaf) {
         return {1, 1};
     }
     terminal::CellSize minimum{};
     for (const auto &child : cell.children) {
         const auto child_minimum = minimum_size(*child);
-        if (cell.kind == CellKind::left_right) {
+        if (cell.kind == WindowLayoutCellKind::left_right) {
             minimum.rows = std::max(minimum.rows, child_minimum.rows);
             minimum.columns += child_minimum.columns;
         } else {
@@ -180,7 +167,7 @@ terminal::CellSize minimum_size(const WindowLayout::Cell &cell) {
             minimum.columns = std::max(minimum.columns, child_minimum.columns);
         }
     }
-    if (cell.kind == CellKind::left_right) {
+    if (cell.kind == WindowLayoutCellKind::left_right) {
         minimum.columns += static_cast<std::uint32_t>(cell.children.size() - 1);
     } else {
         minimum.rows += static_cast<std::uint32_t>(cell.children.size() - 1);
@@ -207,8 +194,8 @@ void set_extent(WindowLayout::Cell &cell, LayoutAxis axis, std::uint16_t value) 
 
 /** @brief Report whether this container partitions its children along the changed axis. */
 bool partitions_axis(const WindowLayout::Cell &cell, LayoutAxis axis) {
-    return (axis == LayoutAxis::rows && cell.kind == CellKind::top_bottom) ||
-           (axis == LayoutAxis::columns && cell.kind == CellKind::left_right);
+    return (axis == LayoutAxis::rows && cell.kind == WindowLayoutCellKind::top_bottom) ||
+           (axis == LayoutAxis::columns && cell.kind == WindowLayoutCellKind::left_right);
 }
 
 /** @brief Borrow a sibling boundary only for the lifetime of its candidate layout. */
@@ -223,7 +210,7 @@ struct PaneBorderSearch {
 };
 /** @brief Locate the closest matching ancestor and use the preceding border for a final child. */
 PaneBorderSearch pane_border(WindowLayout::Cell &cell, PaneId pane, LayoutAxis axis) {
-    if (cell.kind == CellKind::leaf) {
+    if (cell.kind == WindowLayoutCellKind::leaf) {
         return {cell.pane == pane, std::nullopt};
     }
     for (std::size_t index = 0; index < cell.children.size(); ++index) {
@@ -269,7 +256,7 @@ bool resize_axis(WindowLayout::Cell &cell, LayoutAxis axis, std::int32_t change)
     }
     const auto changed_extent =
         static_cast<std::uint16_t>(static_cast<std::int32_t>(extent(cell, axis)) + change);
-    if (cell.kind == CellKind::leaf) {
+    if (cell.kind == WindowLayoutCellKind::leaf) {
         set_extent(cell, axis, changed_extent);
         return true;
     }
@@ -307,9 +294,9 @@ bool resize_axis(WindowLayout::Cell &cell, LayoutAxis axis, std::int32_t change)
     return true;
 }
 
-/** @brief Append leaf geometry in stable depth-first pane-list order. */
+/** @brief Append leaf geometry in depth-first geometric traversal order. */
 void collect_panes(const WindowLayout::Cell &cell, std::vector<PaneGeometry> &panes) {
-    if (cell.kind == CellKind::leaf) {
+    if (cell.kind == WindowLayoutCellKind::leaf) {
         panes.push_back({cell.pane, cell.top, cell.left, cell.size});
         return;
     }
@@ -319,7 +306,8 @@ void collect_panes(const WindowLayout::Cell &cell, std::vector<PaneGeometry> &pa
 }
 } // namespace
 
-WindowLayout::WindowLayout(PaneId pane, terminal::CellSize size) : root_(leaf(pane, size)) {
+WindowLayout::WindowLayout(PaneId pane, terminal::CellSize size)
+    : root_(make_layout_leaf(pane, size)) {
     if (pane.value == 0 || size.rows == 0 || size.columns == 0 || size.rows > 512 ||
         size.columns > 512 || static_cast<std::uint64_t>(size.rows) * size.columns > 16384) {
         throw std::invalid_argument("invalid initial window layout");
@@ -348,7 +336,7 @@ Result<void> WindowLayout::split(PaneId target, PaneId new_pane, PaneSplitOrient
             TmuxError{too_small ? TmuxErrorCode::invalid_argument : TmuxErrorCode::not_found,
                       too_small ? "pane has no space for a new pane" : "pane no longer exists"});
     }
-    derive_offsets(*root_, 0, 0);
+    derive_layout_offsets(*root_, 0, 0);
     return {};
 }
 
@@ -374,7 +362,7 @@ Result<terminal::CellSize> WindowLayout::resize(terminal::CellSize requested) {
         return std::unexpected(
             TmuxError{TmuxErrorCode::protocol, "layout resize could not preserve subtree minima"});
     }
-    derive_offsets(*candidate, 0, 0);
+    derive_layout_offsets(*candidate, 0, 0);
     root_ = std::move(candidate);
     return resized;
 }
@@ -427,7 +415,7 @@ Result<bool> WindowLayout::resize_pane(PaneId pane, PaneResizeDirection directio
     if (cells == requested) {
         return false;
     }
-    derive_offsets(*candidate, 0, 0);
+    derive_layout_offsets(*candidate, 0, 0);
     root_ = std::move(candidate);
     return true;
 }

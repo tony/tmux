@@ -21,6 +21,11 @@ KINDS = {
         '"left_right" | "top_bottom"',
     ),
     "pane_resize_direction": ("PaneResizeDirection", '"left" | "right" | "up" | "down"'),
+    "window_layout_preset": (
+        "WindowLayoutPreset",
+        '"even-horizontal" | "even-vertical" | "main-horizontal" | '
+        '"main-horizontal-mirrored" | "main-vertical" | "main-vertical-mirrored" | "tiled"',
+    ),
     "client_id": ("ClientId", "bigint"),
     "optional_session_id": ("std::optional<SessionId>", "bigint | null"),
     "revision": ("std::uint64_t", "bigint"),
@@ -348,7 +353,7 @@ def binding_documentation(exposure: Exposure) -> str:
 
 
 def compiled_contract(exposure: Exposure) -> str:
-    """Compile-check operation identities, request fields, and connection signatures."""
+    """Compile-check operation identities, fields, preset names, and connection signatures."""
     lines = ["// Generated from api/exposure.toml; change the contract, not this file."]
     lines += [f"#include <tmux_cxx/{op.header}>" for op in exposure.operations]
     lines += [f"#include <tmux_cxx/{variant.header}>" for variant in exposure.variants]
@@ -376,6 +381,17 @@ def compiled_contract(exposure: Exposure) -> str:
                 f"static_assert(std::is_same_v<decltype({op.type}::Request::{parameter.name}), "
                 f"{KINDS[parameter.kind][0]}>);"
             )
+    if any(
+        parameter.kind == "window_layout_preset"
+        for operation in exposure.operations
+        for parameter in operation.parameters
+    ):
+        preset_names = re.findall(r'"([^"]+)"', KINDS["window_layout_preset"][1])
+        lines.append(f"static_assert(window_layout_presets.size() == {len(preset_names)});")
+        lines += [
+            f"static_assert(window_layout_presets[{index}].name == {json.dumps(name)});"
+            for index, name in enumerate(preset_names)
+        ]
     for snapshot in exposure.snapshots:
         for value in snapshot.fields:
             lines.append(

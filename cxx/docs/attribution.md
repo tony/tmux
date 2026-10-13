@@ -43,6 +43,16 @@ C++ algorithm preserves upstream's copyright and permission notice in that
 file. Owned tmux 3.4 and 3.7 fixtures verify the supported resizing subset;
 neither fixture is a production dependency.
 
+Named layouts in `src/window/layout_presets.cpp` follow `layout-set.c` at
+the recorded parent revision. That file retains its copyright and permission
+notice. Even, main, mirrored, and tiled arrangements preserve the source's
+border and modern residual-cell allocation rules. Owned tmux 3.4 and 3.7
+clients select all seven presets, compared with a 3.7 reference server.
+The 3.4 source at `9ae69c3795ab5ef6b4d760f6398cd9281151f632` assigns residual
+space to the final child in `layout_spread_cell`; independent reference
+tests characterize that older allocation and its missing mirrored names.
+The C++ window retains logical pane order independently of its geometry tree.
+
 `terminal/` adapts the external C99 [libvterm 0.3.3 library](https://www.leonerd.org.uk/code/libvterm/). Its canonical source archive has SHA-256 `09156f43dd2128bd347cbeebe50d9a571d32c64e0cf18d211197946aff7226e0`. The archive is retained under `third_party/libvterm/`; CMake verifies its digest, extracts it into the selected build tree, and compiles its named C sources with that build's compiler and sanitizer configuration. The C++ terminal component owns parser lifetimes, callback failure containment, retained history, and copied values. Installed native products include libvterm's original MIT license. libvterm does not introduce a dependency on upstream tmux.
 
 The build backports [Vim's UTF-8 continuation correction](https://github.com/vim/vim/commit/b24a1d9291b2d7fe202237a5d531076a095887d6) into a generated `state.c`. One decoder owns UTF-8 continuation, then designated GL character sets map decoded ASCII. This project extension prevents callback batching around malformed UTF-8 from changing character-set selection. The build also adapts [Neovim's right-edge combining predicate](https://github.com/neovim/neovim/commit/814f2629cbcf02b18ff08d394d15835419e563e4) to libvterm's combining loop: a combining mark updates the previous glyph without consuming pending wrap. [Vim's control-width correction](https://github.com/vim/vim/commit/54ffef7eb83f2592833f422b89bf5f30de6b4bb0) prevents encoded C1 controls from moving the cursor before the screen. [Vim's REP correction](https://github.com/vim/vim/commit/785bb3e9b271eb377dbd4157ce281eac7f16a021) ignores repetition before any graphic character exists. Native regressions and retained fuzz inputs reproduce the original failures.

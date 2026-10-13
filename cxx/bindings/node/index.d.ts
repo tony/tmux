@@ -299,6 +299,18 @@ export class ServerConnection {
   renameWindow(window: bigint, name: string): Promise<WindowSnapshot>;
   /** Select the session's next window index, wrapping after its final membership. */
   nextWindow(session: bigint): Promise<SessionSnapshot>;
+  /** Arrange a shared window using a named tmux preset, preserving pane order and selection. */
+  selectLayout(
+    window: bigint,
+    preset:
+      | "even-horizontal"
+      | "even-vertical"
+      | "main-horizontal"
+      | "main-horizontal-mirrored"
+      | "main-vertical"
+      | "main-vertical-mirrored"
+      | "tiled",
+  ): Promise<WindowSnapshot>;
   /** Select the session's previous window index, wrapping before its first membership. */
   previousWindow(session: bigint): Promise<SessionSnapshot>;
   /** Copy pane text with terminal freshness and program-input state, separately from raw bytes. */
@@ -319,7 +331,7 @@ export class ServerConnection {
     orientation: "left_right" | "top_bottom",
     command?: string,
   ): Promise<PaneSnapshot>;
-  /** Materialize a shared window's panes in layout order. */
+  /** Materialize a shared window's panes in logical pane order. */
   panes(window: bigint): Promise<PaneSnapshot[]>;
   /** Move a pane border by cells, preserving window size and selection. */
   resizePane(
