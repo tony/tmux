@@ -2,17 +2,17 @@
 
 #include "window/layout.hpp"
 
-#include <tmux_cxx/terminal/terminal_snapshot.hpp>
+#include <tmux_cxx/pane/pane_screen_snapshot.hpp>
 #include <tmux_cxx/tmux_error.hpp>
 
 #include <vector>
 
 namespace tmux_cxx {
-/** @brief Pair one pane's layout geometry with copied terminal state for client composition. */
+/** @brief Pair one pane's layout geometry with its copied display for client composition. */
 struct ClientPaneViewSnapshot {
-    PaneGeometry geometry;               ///< Pane identity and interior window coordinates.
-    terminal::TerminalSnapshot terminal; ///< Copied authoritative terminal state.
-    bool active;                         ///< Whether this pane owns the ordinary-client cursor.
+    PaneGeometry geometry;     ///< Pane identity and interior window coordinates.
+    PaneScreenSnapshot screen; ///< Copied display selected by the pane.
+    bool active;               ///< Whether this pane owns the ordinary-client cursor.
 };
 
 /** @brief Collect one window's copied layout and pane state for client-specific composition. */
@@ -40,16 +40,16 @@ class ClientView {
     void invalidate();
 
   private:
-    /** @brief Retain only pane identity and terminal freshness after queue admission. */
+    /** @brief Retain only pane identity and display freshness after queue admission. */
     struct QueuedPaneRevision {
-        PaneId pane;                     ///< Pane represented by queued redraw bytes.
-        std::uint64_t terminal_revision; ///< Terminal revision represented for that pane.
+        PaneId pane;                   ///< Pane represented by queued redraw bytes.
+        std::uint64_t screen_revision; ///< Display revision represented for that pane.
     };
 
     WindowId queued_window_{};                 ///< Window represented by queued redraw bytes.
     std::uint64_t queued_window_revision_ = 0; ///< Layout and active-pane revision represented.
     std::vector<QueuedPaneRevision>
-        queued_pane_revisions_;            ///< Pane terminal baselines represented in layout order.
+        queued_pane_revisions_;            ///< Pane display baselines represented in layout order.
     terminal::CellSize queued_viewport_{}; ///< Outer dimensions represented by queued redraw bytes.
     bool screen_entry_queued_ =
         false; ///< The output route has accepted alternate-screen entry bytes.

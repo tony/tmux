@@ -116,14 +116,14 @@ validate_window_view(const ClientWindowViewSnapshot &window_view) {
     for (std::size_t pane_index = 0; pane_index < window_view.panes.size(); ++pane_index) {
         const auto &pane = window_view.panes[pane_index];
         const auto &geometry = pane.geometry;
-        if (!pane.terminal.complete || geometry.size.rows == 0 || geometry.size.columns == 0 ||
+        if (!pane.screen.complete || geometry.size.rows == 0 || geometry.size.columns == 0 ||
             geometry.size.rows > window_view.size.rows ||
             geometry.size.columns > window_view.size.columns ||
             geometry.top > static_cast<std::uint32_t>(window_view.size.rows - geometry.size.rows) ||
             geometry.left >
                 static_cast<std::uint32_t>(window_view.size.columns - geometry.size.columns) ||
-            pane.terminal.size != geometry.size ||
-            pane.terminal.cells.size() !=
+            pane.screen.size != geometry.size ||
+            pane.screen.cells.size() !=
                 static_cast<std::size_t>(geometry.size.rows) * geometry.size.columns) {
             return std::unexpected(
                 TmuxError{TmuxErrorCode::protocol, "client pane view is incomplete or misplaced"});
@@ -175,7 +175,7 @@ Result<void> append_pane_view(std::string &redraw, const ClientPaneViewSnapshot 
         append_cursor_position(redraw, pane.geometry.top + row, pane.geometry.left);
         const terminal::TerminalCell *rendered_style = nullptr;
         for (std::uint32_t column = 0; column < columns; ++column) {
-            const auto &cell = pane.terminal.cells[row * pane.terminal.size.columns + column];
+            const auto &cell = pane.screen.cells[row * pane.screen.size.columns + column];
             if (cell.width == 0) {
                 continue;
             }
@@ -261,13 +261,13 @@ Result<void> append_layout_borders(std::string &redraw, std::span<const std::uin
 void append_active_pane_cursor(std::string &redraw, const ClientWindowViewSnapshot &window_view,
                                terminal::CellSize viewport) {
     const auto active = std::ranges::find(window_view.panes, true, &ClientPaneViewSnapshot::active);
-    if (active == window_view.panes.end() || !active->terminal.cursor_visible ||
-        active->terminal.cursor.row >= active->geometry.size.rows ||
-        active->terminal.cursor.column >= active->geometry.size.columns) {
+    if (active == window_view.panes.end() || !active->screen.cursor_visible ||
+        active->screen.cursor.row >= active->geometry.size.rows ||
+        active->screen.cursor.column >= active->geometry.size.columns) {
         return;
     }
-    const auto row = active->geometry.top + active->terminal.cursor.row;
-    const auto column = active->geometry.left + active->terminal.cursor.column;
+    const auto row = active->geometry.top + active->screen.cursor.row;
+    const auto column = active->geometry.left + active->screen.cursor.column;
     if (row >= viewport.rows || column >= viewport.columns) {
         return;
     }
@@ -284,10 +284,10 @@ bool ClientView::needs_redraw(const ClientWindowViewSnapshot &window_view,
         return true;
     }
     for (std::size_t index = 0; index < window_view.panes.size(); ++index) {
-        if (!window_view.panes[index].terminal.complete ||
+        if (!window_view.panes[index].screen.complete ||
             queued_pane_revisions_[index].pane != window_view.panes[index].geometry.pane ||
-            queued_pane_revisions_[index].terminal_revision !=
-                window_view.panes[index].terminal.revision) {
+            queued_pane_revisions_[index].screen_revision !=
+                window_view.panes[index].screen.revision) {
             return true;
         }
     }
@@ -335,7 +335,7 @@ void ClientView::record_queued_redraw(const ClientWindowViewSnapshot &window_vie
     queued_pane_revisions_.clear();
     queued_pane_revisions_.reserve(window_view.panes.size());
     for (const auto &pane : window_view.panes) {
-        queued_pane_revisions_.push_back({pane.geometry.pane, pane.terminal.revision});
+        queued_pane_revisions_.push_back({pane.geometry.pane, pane.screen.revision});
     }
     queued_viewport_ = viewport;
     screen_entry_queued_ = true;

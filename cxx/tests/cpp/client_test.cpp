@@ -2,9 +2,9 @@
 #include "client/client_terminal_routing.hpp"
 #include "client/client_view.hpp"
 #include "client/stock_client_lifecycle.hpp"
+#include "pane/pane.hpp"
 #include "platform/posix/owned_fd.hpp"
 #include "server/api_catalogs.hpp"
-#include "terminal/terminal_state.hpp"
 
 #include <tmux_cxx/protocol/tmux/compatibility_policy.hpp>
 #include <tmux_cxx/protocol/tmux/protocol_quirk.hpp>
@@ -96,15 +96,15 @@ TEST(ClientTerminal, RestoreOwnershipAfterViewBackpressure) {
 }
 
 /** @brief Client rendering regenerates copied state and tracks source and viewport freshness. */
-TEST(ClientView, RedrawUsesCurrentTerminalState) {
-    terminal::TerminalState terminal({2, 4});
-    ASSERT_TRUE(terminal.ingest_program_output("\x1b[31mA"));
-    const auto terminal_snapshot = terminal.snapshot();
+TEST(ClientView, RedrawUsesCurrentPaneScreen) {
+    Pane pane(PaneId{1}, WindowId{1}, {2, 4});
+    ASSERT_TRUE(pane.terminal.ingest_program_output("\x1b[31mA"));
+    const auto screen = pane.screen_snapshot();
     const ClientWindowViewSnapshot window_view{
         WindowId{1},
         1,
         {2, 4},
-        {ClientPaneViewSnapshot{{PaneId{1}, 0, 0, {2, 4}}, terminal_snapshot, true}},
+        {ClientPaneViewSnapshot{{PaneId{1}, 0, 0, {2, 4}}, screen, true}},
     };
     ClientView view;
 
@@ -117,25 +117,25 @@ TEST(ClientView, RedrawUsesCurrentTerminalState) {
     EXPECT_FALSE(view.needs_redraw(window_view, {2, 4}));
     EXPECT_TRUE(view.needs_redraw(window_view, {1, 4}));
 
-    ASSERT_TRUE(terminal.ingest_program_output("B"));
+    ASSERT_TRUE(pane.terminal.ingest_program_output("B"));
     auto changed_view = window_view;
-    changed_view.panes.front().terminal = terminal.snapshot();
+    changed_view.panes.front().screen = pane.screen_snapshot();
     EXPECT_TRUE(view.needs_redraw(changed_view, {2, 4}));
 }
 
 /** @brief Window redraw composes every pane, layout border, and translated active cursor. */
 TEST(ClientView, RedrawComposesCompleteWindowLayout) {
-    terminal::TerminalState left_terminal({2, 2});
-    terminal::TerminalState right_terminal({2, 2});
-    ASSERT_TRUE(left_terminal.ingest_program_output("L"));
-    ASSERT_TRUE(right_terminal.ingest_program_output("R"));
+    Pane left_pane(PaneId{1}, WindowId{7}, {2, 2});
+    Pane right_pane(PaneId{2}, WindowId{7}, {2, 2});
+    ASSERT_TRUE(left_pane.terminal.ingest_program_output("L"));
+    ASSERT_TRUE(right_pane.terminal.ingest_program_output("R"));
     const ClientWindowViewSnapshot window_view{
         WindowId{7},
         11,
         {2, 5},
         {
-            ClientPaneViewSnapshot{{PaneId{1}, 0, 0, {2, 2}}, left_terminal.snapshot(), false},
-            ClientPaneViewSnapshot{{PaneId{2}, 0, 3, {2, 2}}, right_terminal.snapshot(), true},
+            ClientPaneViewSnapshot{{PaneId{1}, 0, 0, {2, 2}}, left_pane.screen_snapshot(), false},
+            ClientPaneViewSnapshot{{PaneId{2}, 0, 3, {2, 2}}, right_pane.screen_snapshot(), true},
         },
     };
     ClientView view;
@@ -152,8 +152,9 @@ TEST(ClientView, RedrawComposesCompleteWindowLayout) {
     auto changed_layout = window_view;
     ++changed_layout.window_revision;
     EXPECT_TRUE(view.needs_redraw(changed_layout, {2, 5}));
+    ASSERT_TRUE(left_pane.terminal.ingest_program_output("A"));
     auto changed_pane = window_view;
-    ++changed_pane.panes.front().terminal.revision;
+    changed_pane.panes.front().screen = left_pane.screen_snapshot();
     EXPECT_TRUE(view.needs_redraw(changed_pane, {2, 5}));
 }
 

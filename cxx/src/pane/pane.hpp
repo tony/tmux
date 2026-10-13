@@ -6,6 +6,7 @@
 #include "terminal/terminal_state.hpp"
 
 #include <tmux_cxx/identity.hpp>
+#include <tmux_cxx/pane/pane_screen_snapshot.hpp>
 
 #include <string>
 
@@ -27,6 +28,9 @@ struct Pane {
     std::size_t client_program_input_capacity() const;
     /** @brief Resize retained terminal state and notify the live PTY program. */
     Result<void> resize_terminal(terminal::CellSize size);
+    /** @brief Copy the pane's displayed cells and cursor without exposing parser or program facts.
+     */
+    PaneScreenSnapshot screen_snapshot() const;
     PaneId id;               ///< Stable server-local pane identity.
     WindowId window;         ///< Shared window that exclusively owns this pane.
     posix::OwnedFd pty;      ///< Owned PTY master retained through output draining.

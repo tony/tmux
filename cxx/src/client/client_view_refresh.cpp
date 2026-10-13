@@ -37,7 +37,7 @@ std::vector<ClientId> ClientViewRefresh::queue_invalidated(Server &server) {
                 complete_layout = false;
                 break;
             }
-            window_view.panes.push_back({geometry, pane_entry->second->terminal.snapshot(),
+            window_view.panes.push_back({geometry, pane_entry->second->screen_snapshot(),
                                          geometry.pane == window_entry->second.active});
         }
         if (!complete_layout) {
