@@ -414,6 +414,18 @@ NB_MODULE(_native, module) {
             },
             nb::arg("window_link"), docs::select_window, nb::call_guard<nb::gil_scoped_release>())
         .def(
+            "next_window", /** @copybrief tmux_cxx::ServerConnection::next_window */
+            [](ServerConnection &self, std::uint64_t session) {
+                return unwrap(self.next_window(SessionId{session}));
+            },
+            nb::arg("session"), docs::next_window, nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "previous_window", /** @copybrief tmux_cxx::ServerConnection::previous_window */
+            [](ServerConnection &self, std::uint64_t session) {
+                return unwrap(self.previous_window(SessionId{session}));
+            },
+            nb::arg("session"), docs::previous_window, nb::call_guard<nb::gil_scoped_release>())
+        .def(
             "split_pane", /** @copybrief tmux_cxx::ServerConnection::split_pane */
             [](ServerConnection &self, std::uint64_t pane, PaneSplitOrientation orientation,
                std::string command) {

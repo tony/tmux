@@ -297,6 +297,10 @@ export class ServerConnection {
   selectWindow(windowLink: bigint): Promise<SessionSnapshot>;
   /** Rename a shared window while preserving every session membership and selection. */
   renameWindow(window: bigint, name: string): Promise<WindowSnapshot>;
+  /** Select the session's next window index, wrapping after its final membership. */
+  nextWindow(session: bigint): Promise<SessionSnapshot>;
+  /** Select the session's previous window index, wrapping before its first membership. */
+  previousWindow(session: bigint): Promise<SessionSnapshot>;
   /** Copy pane text with terminal freshness and program-input state, separately from raw bytes. */
   readPaneText(pane: bigint): Promise<PaneTextSnapshot>;
   /** Materialize connection-lifetime clients in stable identity order. */

@@ -15,6 +15,11 @@ int main() {
     if (!renamed || renamed->name != "installed:window" || renamed->pane != session->pane) {
         return 5;
     }
+    const auto next = server.next_window(session->id);
+    const auto previous = server.previous_window(session->id);
+    if (!next || !previous || next->link != session->link || previous->link != session->link) {
+        return 6;
+    }
     const auto text = server.read_pane_text(session->pane);
     if (!text || text->server_instance != server.server_instance() || text->pane != session->pane ||
         text->rows != 24 || text->columns != 80 || !text->complete) {

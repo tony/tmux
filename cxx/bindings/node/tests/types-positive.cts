@@ -29,6 +29,10 @@ async function consumer(client: ServerConnection): Promise<SessionSnapshot> {
   await client.renameSession(session.id, row + output.toString("utf8"));
   const renamedWindow: WindowSnapshot = await client.renameWindow(session.window, "typed-window");
   void renamedWindow;
+  const nextWindow: SessionSnapshot = await client.nextWindow(session.id);
+  const previousWindow: SessionSnapshot = await client.previousWindow(session.id);
+  void nextWindow;
+  void previousWindow;
   void event;
   void compatibility;
   return sessions[0];

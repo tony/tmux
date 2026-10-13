@@ -6,6 +6,9 @@
 #include "server/api_catalogs.hpp"
 #include "window_link/operations/select_window_key_binding.hpp"
 #include "window_link/register_key_bindings.hpp"
+#include <tmux_cxx/window_link/operations/next_window.hpp>
+#include <tmux_cxx/window_link/operations/previous_window.hpp>
+#include <tmux_cxx/window_link/operations/select_window.hpp>
 
 #include <tmux_cxx/client/operations/detach_client.hpp>
 #include <tmux_cxx/server/server.hpp>
@@ -225,17 +228,26 @@ TEST(ClientKeyInput, LargeKeyBatchYieldsBeforeInputIsExhausted) {
     EXPECT_FALSE(server.pane_pty_write_pending(session->pane));
 }
 
-/** @brief Window navigation cannot publish a key catalog without its selection operation. */
-TEST(KeyBindingRegistry, WindowKeysRequireSelectionOperation) {
-    protocol::native::OperationRegistry operations;
-    ASSERT_TRUE(operations.add<DetachClient>());
-    const auto operation_catalog = std::move(operations).freeze();
-    ASSERT_TRUE(operation_catalog);
-    KeyBindingRegistry registry;
-    ASSERT_TRUE(register_window_link_key_bindings(registry));
-    const auto rejected = std::move(registry).freeze(*operation_catalog);
-    ASSERT_FALSE(rejected);
-    EXPECT_EQ(rejected.error().code, TmuxErrorCode::invalid_argument);
+/** @brief Each navigation binding requires its own registered operation before catalog publication.
+ */
+TEST(KeyBindingRegistry, WindowKeysRequireRegisteredOperations) {
+    for (const bool omit_next : {true, false}) {
+        protocol::native::OperationRegistry operations;
+        ASSERT_TRUE(operations.add<SelectWindow>());
+        if (omit_next) {
+            ASSERT_TRUE(operations.add<PreviousWindow>());
+        } else {
+            ASSERT_TRUE(operations.add<NextWindow>());
+        }
+        const auto operation_catalog = std::move(operations).freeze();
+        ASSERT_TRUE(operation_catalog);
+        KeyBindingRegistry registry;
+        ASSERT_TRUE(register_window_link_key_bindings(registry));
+        const auto rejected = std::move(registry).freeze(*operation_catalog);
+        ASSERT_FALSE(rejected);
+        EXPECT_EQ(rejected.error().code, TmuxErrorCode::invalid_argument);
+        EXPECT_EQ(rejected.error().operation, omit_next ? "next-window" : "previous-window");
+    }
 }
 
 /** @brief Sparse window keys wrap within their session and preserve independent shared-window

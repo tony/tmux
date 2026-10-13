@@ -2,6 +2,8 @@
 
 #include <tmux_cxx/window_link/operations/link_window.hpp>
 #include <tmux_cxx/window_link/operations/list_window_links.hpp>
+#include <tmux_cxx/window_link/operations/next_window.hpp>
+#include <tmux_cxx/window_link/operations/previous_window.hpp>
 #include <tmux_cxx/window_link/operations/select_window.hpp>
 #include <tmux_cxx/window_link/operations/unlink_window.hpp>
 
@@ -16,6 +18,12 @@ Result<void> register_window_link_operations(protocol::native::OperationRegistry
     if (auto registration = registry.add<ListWindowLinks>(); !registration) {
         return registration;
     }
-    return registry.add<SelectWindow>();
+    if (auto registration = registry.add<SelectWindow>(); !registration) {
+        return registration;
+    }
+    if (auto registration = registry.add<NextWindow>(); !registration) {
+        return registration;
+    }
+    return registry.add<PreviousWindow>();
 }
 } // namespace tmux_cxx

@@ -522,6 +522,16 @@ class ServerConnection:
     def select_window(self, window_link: int) -> SessionSnapshot:
         """Select a window membership and return its owning session."""
 
+    def next_window(self, session: int) -> SessionSnapshot:
+        """
+        Select the session's next window index, wrapping after its final membership.
+        """
+
+    def previous_window(self, session: int) -> SessionSnapshot:
+        """
+        Select the session's previous window index, wrapping before its first membership.
+        """
+
     def split_pane(
         self, pane: int, orientation: PaneSplitOrientation, command: str = "/bin/sh"
     ) -> PaneSnapshot:

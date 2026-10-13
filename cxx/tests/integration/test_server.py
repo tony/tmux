@@ -288,6 +288,13 @@ def test_linked_window_survives_its_original_session(server: str) -> None:
         renamed = connection.rename_window(first.window, "python:shared.1")
         assert (renamed.id, renamed.name) == (first.window, "python:shared.1")
         assert connection.window(link.window).name == "python:shared.1"
+        assert connection.next_window(second.id).link == link.id
+        assert connection.next_window(second.id).link == second.link
+        assert connection.previous_window(second.id).link == link.id
+        assert connection.previous_window(second.id).link == second.link
+        with pytest.raises(tmux_cxx.TmuxError) as missing:
+            connection.next_window(99999)
+        assert (missing.value.code, missing.value.operation) == ("not_found", "window.next")
         with pytest.raises(tmux_cxx.TmuxError) as invalid:
             connection.rename_window(first.window, "invalid\n")
         assert (invalid.value.code, invalid.value.operation) == (

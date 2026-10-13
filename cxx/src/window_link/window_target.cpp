@@ -33,8 +33,8 @@ Result<SessionWindowTarget> parse_session_window_target(std::string_view target)
 Result<WindowLinkSnapshot> resolve_window_link_target(const Server &server,
                                                       const SessionWindowTarget &target) {
     if (!target.index) {
-        return std::unexpected(TmuxError{TmuxErrorCode::invalid_argument,
-                                         "window selection requires an explicit index"});
+        return std::unexpected(
+            TmuxError{TmuxErrorCode::invalid_argument, "window target requires an explicit index"});
     }
     const auto session = commands::resolve_session_target(server, target.session);
     if (!session) {

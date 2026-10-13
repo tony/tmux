@@ -262,6 +262,14 @@ async function serverOperations(): Promise<void> {
   const renamedWindow = await client.renameWindow(link.window, "node:shared.1");
   expect(renamedWindow).toMatchObject({ id: session.window, name: "node:shared.1" });
   expect((await client.window(session.window)).name).toBe("node:shared.1");
+  expect((await client.nextWindow(shared.id)).link).toBe(link.id);
+  expect((await client.nextWindow(shared.id)).link).toBe(shared.link);
+  expect((await client.previousWindow(shared.id)).link).toBe(link.id);
+  expect((await client.previousWindow(shared.id)).link).toBe(shared.link);
+  await expect(client.previousWindow(99999n)).rejects.toMatchObject({
+    code: "not_found",
+    operation: "window.previous",
+  });
   await expect(client.renameWindow(link.window, "invalid\n")).rejects.toMatchObject({
     code: "invalid_argument",
     operation: "window.rename",

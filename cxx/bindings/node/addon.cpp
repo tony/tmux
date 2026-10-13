@@ -670,6 +670,8 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
                     InstanceMethod("renameWindow", &NodeServerConnection::rename_window),
                     InstanceMethod("createWindow", &NodeServerConnection::create_window),
                     InstanceMethod("selectWindow", &NodeServerConnection::select_window),
+                    InstanceMethod("nextWindow", &NodeServerConnection::next_window),
+                    InstanceMethod("previousWindow", &NodeServerConnection::previous_window),
                     InstanceMethod("splitPane", &NodeServerConnection::split_pane),
                     InstanceMethod("selectPane", &NodeServerConnection::select_pane),
                     InstanceMethod("panes", &NodeServerConnection::panes),
@@ -876,6 +878,22 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
         return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::select_window */
                                [link](tmux_cxx::ServerConnection &connection) {
                                    return to_node_result(connection.select_window(link));
+                               });
+    }
+    /** @brief Queue next-window selection for a validated session identity. */
+    Napi::Value next_window(const Napi::CallbackInfo &info) {
+        const auto session = tmux_cxx::SessionId{id_arg(info, 0)};
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::next_window */
+                               [session](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(connection.next_window(session));
+                               });
+    }
+    /** @brief Queue previous-window selection for a validated session identity. */
+    Napi::Value previous_window(const Napi::CallbackInfo &info) {
+        const auto session = tmux_cxx::SessionId{id_arg(info, 0)};
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::previous_window */
+                               [session](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(connection.previous_window(session));
                                });
     }
     /** @brief Validate split arguments before queuing pane creation and layout mutation. */

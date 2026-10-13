@@ -273,6 +273,15 @@ def test_stock_window_creation_and_selection(server: str, fixture: str) -> None:
         selected = observer.sessions()[0]
         assert selected.link == links[1].id
         assert selected.window == links[1].window
+        for command, expected_link in (("next", session.link), ("prev", links[1].id)):
+            subprocess.run(
+                [*base, command, "-t", "windows"],
+                env=environment,
+                check=True,
+                capture_output=True,
+                timeout=0.9,
+            )
+            assert observer.sessions()[0].link == expected_link
         observer.send_pane_input(selected.pane, b"stock-window-pty\n")
         assert b"stock-window-pty" in observer.wait_pane_output(selected.pane, b"stock-window-pty")
         subprocess.run(

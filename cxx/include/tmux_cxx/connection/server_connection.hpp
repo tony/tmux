@@ -81,6 +81,10 @@ class ServerConnection {
                                              std::string name, std::string command = "/bin/sh");
     /** @brief Select a window membership and return its owning session. */
     Result<SessionSnapshot> select_window(WindowLinkId window_link);
+    /** @brief Select the session's next window index, wrapping after its final membership. */
+    Result<SessionSnapshot> next_window(SessionId session);
+    /** @brief Select the session's previous window index, wrapping before its first membership. */
+    Result<SessionSnapshot> previous_window(SessionId session);
     /** @brief Split one pane, start its command, and materialize the selected new pane. */
     Result<PaneSnapshot> split_pane(PaneId pane, PaneSplitOrientation orientation,
                                     std::string command = "/bin/sh");

@@ -157,6 +157,21 @@ prompts remain separate unfinished behavior.
 Prove shared-window ownership, unchanged-name behavior, invalid and stale
 requests, real tmux 3.4/3.7 commands, and both generated language contracts.
 
+## Shared window navigation slice
+
+`NextWindow` and `PreviousWindow` resolve a live session's selected membership
+and traverse its ordered indices with wrapping. They reuse `SelectWindow`
+for mutation and sizing. Expose both through typed native requests and
+copied session results in C++, Python, and Node.
+
+Register `next-window`/`next` and `previous-window`/`prev` with explicit
+`-t session` targets. Key bindings invoke those same operations; their
+adapters only translate the resulting selection into input-routing effects.
+Alert filters, implicit targets, hooks, and notifications remain open.
+
+Prove sparse wrapping, single-window stability, stale sessions, independent
+shared-window selection, real 3.4/3.7 commands, and generated interfaces.
+
 ## Architecture progress
 
 Named server/session/window/pane components, entity-local operation descriptions, and validated immutable native lookup now replace the generic domain module and operation switch. The public facade is `ServerConnection`, snapshots are values, and recoverable failures are `TmuxError`. Session/window membership and pane-program cleanup have real ownership models.

@@ -69,6 +69,15 @@ TEST(CommandRegistry, WindowCommandsSelectSessionMemberships) {
     ASSERT_TRUE(renamed) << (renamed ? "" : renamed.error().message);
     EXPECT_EQ(server.window(links->back().window)->name, "tools:build.1");
     EXPECT_EQ(server.window(shared->window)->name, "tools:build.1");
+    const std::vector<std::string> next{"next", "-t", "first"};
+    ASSERT_TRUE(catalogs->stock_commands.invoke(invocation, next));
+    EXPECT_EQ(server.sessions().front().link, links->back().id);
+    ASSERT_TRUE(catalogs->stock_commands.invoke(invocation, next));
+    EXPECT_EQ(server.sessions().front().link, first->link);
+    const std::vector<std::string> previous{"prev", "-t", "first"};
+    ASSERT_TRUE(catalogs->stock_commands.invoke(invocation, previous));
+    EXPECT_EQ(server.sessions().front().link, links->back().id);
+    ASSERT_TRUE(catalogs->stock_commands.invoke(invocation, previous));
     EXPECT_EQ(server.sessions().front().window, first->window);
     EXPECT_EQ(server.sessions().back().window, shared->window);
 }

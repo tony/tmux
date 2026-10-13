@@ -170,6 +170,26 @@ identity = "window.rename"
 result = "window"
 parameters = [{ name = "window", kind = "window_id" }, { name = "name", kind = "text" }]
 
+[[operations]]
+type = "NextWindow"
+header = "window_link/operations/next_window.hpp"
+method = "next_window"
+node = "nextWindow"
+id = 32
+identity = "window.next"
+result = "session"
+parameters = [{ name = "session", kind = "session_id" }]
+
+[[operations]]
+type = "PreviousWindow"
+header = "window_link/operations/previous_window.hpp"
+method = "previous_window"
+node = "previousWindow"
+id = 33
+identity = "window.previous"
+result = "session"
+parameters = [{ name = "session", kind = "session_id" }]
+
 [[snapshots]]
 type = "SessionSnapshot"
 header = "session/session_snapshot.hpp"

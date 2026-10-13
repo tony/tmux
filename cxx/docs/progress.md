@@ -1188,3 +1188,42 @@ fail before mutation. The installed C++ consumer also performs a rename.
 
 The full objective remains incomplete. This slice is committed locally;
 the no-push instruction remains in effect.
+
+## 2026-10-13: Shared window navigation operations
+
+`NextWindow` and `PreviousWindow` own native identities 32 and 33. Each
+resolves the session's current membership at execution, traverses its
+ordered indices with wrapping, and reuses `SelectWindow` for mutation and
+sizing. Core lookup uses the indexed membership map; key adapters no longer
+materialize and traverse a copied window list.
+
+Stock `next-window`/`next` and `previous-window`/`prev` require an explicit
+`-t session`. Prefix keys and the Python/Node methods invoke those same
+operations. A shared selection-effect helper keeps the key adapters limited
+to input routing. Alert filters, last-window history, implicit targets,
+hooks, and window-selection notifications remain unsupported.
+
+Stock and binding tests failed before the operations were exposed. They now
+prove sparse wrapping, independent linked-session selection, stale-session
+errors, typed copied results, and real tmux 3.4/3.7 aliases. Native catalog
+cases independently omit each navigation operation and reject its binding
+before publication. Existing key tests retain single-window revision and
+same-read routing coverage. The installed native consumer exercises both
+operations without borrowing implementation sources.
+
+| Gate | Result | Whole-command wall time |
+|---|---|---:|
+| Configured mid loop | PASS; 90 native cases | 5.02 s |
+| GCC 15 native and both binding CTest suites | PASS; 95 tests | 3.65 s |
+| C++26 native and both binding CTest suites | PASS; 95 tests | 4.28 s |
+| ASan/UBSan/LeakSanitizer and controlled negatives | PASS | 65.78 s |
+| Bounded native, tmux, and terminal fuzz replay | PASS; 6,000 runs | 3.09 s |
+| Doxygen/compiler/language documentation and negatives | PASS | 205.52 s |
+| clang-tidy and fatal negative probe | PASS | 137.78 s |
+| Offline wheel/sdist/npm consumers | PASS | 92.97 s |
+| Standalone source, install, adapters, and native navigation consumer | PASS | 112.42 s |
+
+These operations complete this navigation slice. Broader commands, copy
+mode, configuration, notifications, protocol subsets, binding lifetimes,
+platform verification, and the full objective remain open. This checkpoint
+remains local under the no-push instruction.

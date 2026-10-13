@@ -95,6 +95,10 @@ class Server {
     /** @brief Select a live membership in its owning session without changing other sessions'
      * selections. */
     Result<SessionSnapshot> select_window(WindowLinkId window_link);
+    /** @copybrief tmux_cxx::ServerConnection::next_window */
+    Result<SessionSnapshot> next_window(SessionId session);
+    /** @copybrief tmux_cxx::ServerConnection::previous_window */
+    Result<SessionSnapshot> previous_window(SessionId session);
     /** @brief Split one pane, start its owned program, and select the materialized new pane. */
     Result<PaneSnapshot> split_pane(PaneId pane, PaneSplitOrientation orientation,
                                     std::string command = "/bin/sh");

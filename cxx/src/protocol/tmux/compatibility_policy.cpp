@@ -42,6 +42,9 @@ StockConnectionCompatibility TmuxCompatibilityPolicy::assess(const TmuxProtocolP
         "rename-window supports only -t session:index literal-name; formats, implicit targets, "
         "automatic naming, and window-rename notifications remain unsupported");
     report.limitations.push_back(
+        "next-window and previous-window require explicit -t session targets; alerts, "
+        "last-window, implicit targets, hooks, and selection notifications are unsupported");
+    report.limitations.push_back(
         "window names require nonempty UTF-8, at most 128 bytes, and no ASCII controls or DEL; "
         "hooks and window-selection notifications remain unsupported");
     report.limitations.push_back(

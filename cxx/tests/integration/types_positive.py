@@ -39,6 +39,9 @@ def consumer(client: ServerConnection) -> SessionSnapshot:
     client.rename_session(created.id, "next")
     renamed_window: WindowSnapshot = client.rename_window(created.window, "typed-window")
     assert renamed_window.name
+    next_window: SessionSnapshot = client.next_window(created.id)
+    previous_window: SessionSnapshot = client.previous_window(created.id)
+    assert next_window.id == previous_window.id
     assert compatibility.profile
     assert baseline.next_event.server_instance
     if isinstance(event, SessionEventRecord):
