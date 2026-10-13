@@ -12,6 +12,7 @@
 #include <tmux_cxx/server/server.hpp>
 
 #include <map>
+#include <span>
 #include <vector>
 
 namespace tmux_cxx {
@@ -52,6 +53,12 @@ struct Server::State {
     ClientSnapshot client_snapshot(const Client &client) const;
     /** @brief Materialize one layout leaf with its owning window revision and selection state. */
     PaneSnapshot pane_snapshot(const Window &window, const PaneGeometry &geometry) const;
+    /** @brief Validate every pane, apply terminal sizes, and attempt prior sizes on failure. */
+    Result<void> resize_pane_terminals(std::span<const PaneGeometry> geometries,
+                                       std::span<const PaneGeometry> previous);
+    /** @brief Attempt every prior pane size; already delivered program signals remain observable.
+     */
+    Result<void> restore_pane_terminal_sizes(std::span<const PaneGeometry> geometries);
     /** @brief Find one named paste buffer without changing its most-recent ordering. */
     std::vector<PasteBuffer>::iterator find_paste_buffer(std::string_view name);
     /** @brief Find one named paste buffer through a read-only server state. */

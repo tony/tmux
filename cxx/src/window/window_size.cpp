@@ -36,39 +36,9 @@ Result<void> LatestClientWindowSize::apply_to_window(Server &server, WindowId wi
     }
     const auto previous_geometry = window->second.layout.panes();
     const auto candidate_geometry = candidate_layout.panes();
-    for (const auto &geometry : candidate_geometry) {
-        const auto pane = server.state_->panes.find(geometry.pane);
-        if (pane == server.state_->panes.end()) {
-            return std::unexpected(
-                TmuxError{TmuxErrorCode::not_found, "layout pane no longer exists"});
-        }
-        if (!pane->second->terminal.snapshot().complete) {
-            return std::unexpected(
-                TmuxError{TmuxErrorCode::protocol, "pane terminal state is incomplete"});
-        }
-    }
-    /** Restore the former pane geometries if a later terminal refuses the candidate layout. */
-    const auto restore_previous_geometry = [&server, &previous_geometry]() -> Result<void> {
-        for (const auto &geometry : previous_geometry) {
-            const auto pane = server.state_->panes.find(geometry.pane);
-            if (pane != server.state_->panes.end()) {
-                if (auto restored = pane->second->resize_terminal(geometry.size); !restored) {
-                    return std::unexpected(TmuxError{
-                        restored.error().code,
-                        "window resize failed and prior pane geometry could not be restored"});
-                }
-            }
-        }
-        return {};
-    };
-    for (const auto &geometry : candidate_geometry) {
-        const auto pane = server.state_->panes.find(geometry.pane);
-        if (auto resized = pane->second->resize_terminal(geometry.size); !resized) {
-            if (auto restored = restore_previous_geometry(); !restored) {
-                return std::unexpected(restored.error());
-            }
-            return std::unexpected(resized.error());
-        }
+    if (auto resized = server.state_->resize_pane_terminals(candidate_geometry, previous_geometry);
+        !resized) {
+        return resized;
     }
     window->second.layout = std::move(candidate_layout);
     window->second.size = *candidate_size;

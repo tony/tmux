@@ -4,30 +4,11 @@
 #include "protocol/native/framing.hpp"
 #include "server/state.hpp"
 
-#include <map>
-#include <memory>
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
 namespace tmux_cxx {
-namespace {
-/** @brief Restore already resized panes after a split preparation failure. */
-Result<void> restore_pane_sizes(std::map<PaneId, std::unique_ptr<Pane>> &panes,
-                                std::span<const PaneGeometry> geometries) {
-    for (const auto &geometry : geometries) {
-        const auto pane = panes.find(geometry.pane);
-        if (pane != panes.end()) {
-            if (auto restored = pane->second->resize_terminal(geometry.size); !restored) {
-                return std::unexpected(TmuxError{
-                    restored.error().code,
-                    "pane split failed and prior terminal geometry could not be restored"});
-            }
-        }
-    }
-    return {};
-}
-} // namespace
-
 Result<PaneSnapshot> Server::split_pane(PaneId target, PaneSplitOrientation orientation,
                                         std::string command) {
     const auto target_pane = state_->panes.find(target);
@@ -52,37 +33,21 @@ Result<PaneSnapshot> Server::split_pane(PaneId target, PaneSplitOrientation orie
         return std::unexpected(split.error());
     }
     const auto previous_geometry = window.layout.panes();
-    const auto candidate_geometry = candidate_layout.panes();
-    for (const auto &geometry : candidate_geometry) {
-        if (geometry.pane == new_pane) {
-            continue;
-        }
-        const auto pane = state_->panes.find(geometry.pane);
-        if (pane == state_->panes.end()) {
-            (void)restore_pane_sizes(state_->panes, previous_geometry);
-            return std::unexpected(
-                TmuxError{TmuxErrorCode::not_found, "layout pane no longer exists"});
-        }
-        if (!pane->second->terminal.snapshot().complete) {
-            (void)restore_pane_sizes(state_->panes, previous_geometry);
-            return std::unexpected(
-                TmuxError{TmuxErrorCode::protocol, "pane terminal state is incomplete"});
-        }
-        if (auto resized = pane->second->resize_terminal(geometry.size); !resized) {
-            if (auto restored = restore_pane_sizes(state_->panes, previous_geometry); !restored) {
-                return std::unexpected(restored.error());
-            }
-            return std::unexpected(resized.error());
-        }
-    }
     const auto new_geometry = candidate_layout.pane(new_pane);
     if (!new_geometry) {
-        (void)restore_pane_sizes(state_->panes, previous_geometry);
         return std::unexpected(
             TmuxError{TmuxErrorCode::protocol, "split layout omitted the allocated pane"});
     }
+    auto existing_geometry = candidate_layout.panes();
+    std::erase_if(
+        existing_geometry, /** @brief Exclude the new leaf until its program has started. */
+        [new_pane](const PaneGeometry &geometry) { return geometry.pane == new_pane; });
+    if (auto resized = state_->resize_pane_terminals(existing_geometry, previous_geometry);
+        !resized) {
+        return std::unexpected(resized.error());
+    }
     if (auto spawned = spawn_pane(new_pane, window.id, new_geometry->size, command); !spawned) {
-        if (auto restored = restore_pane_sizes(state_->panes, previous_geometry); !restored) {
+        if (auto restored = state_->restore_pane_terminal_sizes(previous_geometry); !restored) {
             return std::unexpected(restored.error());
         }
         return std::unexpected(spawned.error());
