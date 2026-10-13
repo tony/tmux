@@ -468,9 +468,11 @@ if(BUILD_TESTING)
       --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-server"
       "${CMAKE_SOURCE_DIR}/tests/integration/test_server.py"
       "${CMAKE_SOURCE_DIR}/tests/integration/test_shared_server.py")
-    add_test(NAME python-protocol-compatibility COMMAND "${Python_EXECUTABLE}" -m pytest -q
-      --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-compatibility"
-      "${CMAKE_SOURCE_DIR}/tests/compat/test_native_replies.py"
+    add_test(NAME python-native-protocol COMMAND "${Python_EXECUTABLE}" -m pytest -q
+      --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-native"
+      "${CMAKE_SOURCE_DIR}/tests/compat/test_native_replies.py")
+    add_test(NAME python-stock-compatibility COMMAND "${Python_EXECUTABLE}" -m pytest -q
+      --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-stock"
       "${CMAKE_SOURCE_DIR}/tests/compat/test_stock_clients.py")
     add_test(NAME python-tooling COMMAND "${Python_EXECUTABLE}" -m pytest -q
       --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-tooling"
@@ -481,7 +483,7 @@ if(BUILD_TESTING)
     add_test(NAME node-server-lts COMMAND "${CMAKE_SOURCE_DIR}/_build/tools/node_lts/bin/node"
       "${CMAKE_SOURCE_DIR}/bindings/node/node_modules/vitest/vitest.mjs" run
       --root "${CMAKE_SOURCE_DIR}/bindings/node")
-    set_tests_properties(python-server python-protocol-compatibility python-tooling
+    set_tests_properties(python-server python-native-protocol python-stock-compatibility python-tooling
       node-server node-server-lts PROPERTIES
       ENVIRONMENT "${test_environment}" TIMEOUT 5 LABELS "mid"
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
