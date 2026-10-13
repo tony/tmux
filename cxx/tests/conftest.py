@@ -30,6 +30,18 @@ def fixture_environment(*, preload: bool = False) -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k in allowed or k.startswith("TMUX_CXX_")}
 
 
+def stock_fixture_environment(binary: str) -> dict[str, str]:
+    """Use legacy libraries only for the exact owned tmux 3.4 binary."""
+    environment = fixture_environment()
+    root = Path(__file__).resolve().parents[1]
+    if Path(binary).resolve() == root / "_build/fixtures/tmux-3.4/bin/tmux":
+        libraries = root / "_build/tools/tmux_fixture_runtime/usr/lib/x86_64-linux-gnu"
+        environment["LD_LIBRARY_PATH"] = (
+            str(libraries) + os.pathsep + environment.get("LD_LIBRARY_PATH", "")
+        )
+    return environment
+
+
 @dataclass
 class OwnedServer:
     """Retain exactly one fixture daemon and its expected exit status."""

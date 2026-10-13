@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 import tmux_cxx
 
-from tests.conftest import fixture_environment
+from tests.conftest import stock_fixture_environment
 
 
 def identify_command_peer(
@@ -132,7 +132,7 @@ def discard_terminal_output(descriptor: int) -> None:
 @pytest.mark.parametrize("fixture", ["TMUX_CXX_STOCK_CLIENT", "TMUX_CXX_MODERN_STOCK_CLIENT"])
 def test_registered_stock_command_subset(server: str, fixture: str) -> None:
     """Unmodified legacy and modern clients mutate one C++ session through registered commands."""
-    environment = fixture_environment()
+    environment = stock_fixture_environment(os.environ[fixture])
     client = os.environ[fixture]
     base = [client, "-N", "-f", "/dev/null", "-S", server]
     subprocess.run(
@@ -259,7 +259,7 @@ def test_stock_attach_routes_terminal_and_preserves_session(server: str, fixture
             stdin=slave,
             stdout=slave,
             stderr=subprocess.PIPE,
-            env=fixture_environment(),
+            env=stock_fixture_environment(os.environ[fixture]),
         )
         assert client.stderr is not None
         client_stderr = client.stderr
@@ -353,7 +353,7 @@ def test_stock_exit_detaches_client_only(server: str, fixture: str) -> None:
             stdin=slave,
             stdout=slave,
             stderr=subprocess.PIPE,
-            env=fixture_environment(),
+            env=stock_fixture_environment(os.environ[fixture]),
         )
         assert client.stderr is not None
         client_stderr = client.stderr
@@ -418,7 +418,7 @@ def test_stock_control_mode_executes_registered_commands(server: str, fixture: s
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=fixture_environment(),
+            env=stock_fixture_environment(os.environ[fixture]),
         )
         assert client.stdin is not None
         assert client.stdout is not None
@@ -507,7 +507,7 @@ def test_stock_control_attachment_streams_new_pane_output(server: str, fixture: 
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=fixture_environment(),
+            env=stock_fixture_environment(os.environ[fixture]),
         )
         assert client.stdin is not None
         assert client.stdout is not None
@@ -653,7 +653,7 @@ def test_echo_disabled_stock_control_closes_before_effects(server: str, fixture:
         stdin=slave,
         stdout=slave,
         stderr=subprocess.PIPE,
-        env=fixture_environment(),
+        env=stock_fixture_environment(os.environ[fixture]),
     )
     os.close(slave)
     try:
@@ -734,7 +734,7 @@ def test_cpp_client_runs_against_owned_stock_server(
     fixture: str, profile: str, release: str
 ) -> None:
     """The C++ reverse adapter verifies release evidence and captures a real command result."""
-    environment = fixture_environment()
+    environment = stock_fixture_environment(os.environ[fixture])
     stock_tmux = os.environ[fixture]
     socket_path = Path(os.environ["TMPDIR"]) / f"stock-{os.getpid()}-{profile}.sock"
     session = f"reverse {profile}"

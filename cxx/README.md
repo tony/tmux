@@ -10,7 +10,7 @@ Single `-C` clients from tmux 3.4 and 3.7 can run an initial registered command 
 
 ## Build and check
 
-Run these commands from this directory. Bootstrap installs locked tools and language dependencies locally. The stock test fixture requires the exact Ubuntu tmux 3.4 binary recorded in the lock; another binary fails verification.
+Run these commands from this directory. Bootstrap installs locked tools and language dependencies locally. The stock test fixture requires the exact Ubuntu tmux 3.4 binary recorded in the lock; another binary fails verification. Provisioning also extracts locked legacy libraries inside this project. Tests supply them only to that exact fixture; the C++ server, language hosts, and modern fixture retain their own runtimes.
 
 Explicit tool updates resolve current stable releases and pin their sources and checksums in `support/toolchain.lock.toml`. LLVM and its parser bindings move together. npm has its own current stable pin because Node's bundled npm can lag. Python and Node package dependencies retain their separate lockfiles.
 

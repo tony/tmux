@@ -325,11 +325,13 @@ def provision_clang_python(record: dict[str, str]) -> None:
 def provision_tmux_fixture(source: Path) -> None:
     """Copy an explicitly selected, hash-verified stock client into the isolated test fixture."""
     with LOCK.open("rb") as lockfile:
-        record = tomllib.load(lockfile)["tmux_fixture"]
+        lock = tomllib.load(lockfile)
+    record = lock["tmux_fixture"]
     with source.open("rb") as binary:
         digest = hashlib.file_digest(binary, "sha256").hexdigest()
     if digest != record["sha256"]:
         raise RuntimeError("stock fixture differs from the locked Ubuntu tmux package")
+    provision_deb_bundle("tmux_fixture_runtime", lock["tmux_fixture_runtime"])
     destination = BUILD / "fixtures/tmux-3.4/bin/tmux"
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)

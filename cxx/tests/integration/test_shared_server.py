@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import tmux_cxx
 
-from tests.conftest import fixture_environment
+from tests.conftest import fixture_environment, stock_fixture_environment
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -47,7 +47,7 @@ def test_all_clients_share_persistent_state(server: str) -> None:
             "#{session_name}:#{session_id}:#{pane_id}",
         ],
         text=True,
-        env=environment,
+        env=stock_fixture_environment(os.environ["TMUX_CXX_STOCK_CLIENT"]),
         timeout=0.9,
     )
     assert stock == f"node:${session_id}:%{pane_id}\n"
