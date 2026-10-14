@@ -73,7 +73,23 @@ StockConnectionCompatibility TmuxCompatibilityPolicy::assess(const TmuxProtocolP
     report.limitations.push_back(
         "set-window-option/setw supports mode-keys emacs/vi through global defaults or exact "
         "session:index targets; grouped flags are accepted when -t ends the group; stock "
-        "show-options, other window options, and copy mode remain unsupported");
+        "show-options and other window options remain unsupported");
+    report.limitations.push_back(
+        "copy-mode requires exact -t %pane; send-keys -X requires an explicit pane and a "
+        "registered action; -N is positive and affects only relative movement and scrolling");
+    report.limitations.push_back(
+        "basic copy mode freezes captured cells while program parsing and raw output continue; "
+        "reentry preserves the capture; cancel restores the live program display");
+    report.limitations.push_back(
+        "copy selections use live window mode-keys for endpoint inclusion and cached entry "
+        "keys for reverse highlighting; extraction preserves whole UTF-8 cells and is "
+        "bounded to 256 KiB");
+    report.limitations.push_back(
+        "copy reflow preserves written-space extent and soft wraps; historical erased-cell "
+        "high-water marks and original tab provenance are unavailable");
+    report.limitations.push_back(
+        "copy search, word and rectangular selection, mouse, clipboard, copy-pipe commands, "
+        "custom mode-style, and configurable key tables remain unsupported");
     report.limitations.push_back(
         "prefix and prefix2 accept None, one ASCII byte, or C-a through C-z; broader tmux key "
         "syntax is unsupported");
@@ -124,18 +140,24 @@ StockConnectionCompatibility TmuxCompatibilityPolicy::assess(const TmuxProtocolP
         report.limitations.push_back(
             "a metadata observation gap closes the control client instead of resynchronizing it");
     } else {
+        (void)activate_protocol_quirk(report, ProtocolQuirk::copy_keys_store_server_buffer);
         report.tier = SupportTier::general;
         report.support = CapabilitySupport::limited;
         report.limitations.push_back("ordinary-client borders use basic ASCII without "
                                      "capability-sensitive glyphs or styles");
         report.limitations.push_back(
             "the prefix table contains C-b send-prefix, quote and percent split, d detach, "
-            "o next-pane, ] default paste, n/p window navigation, and digit window indices; "
+            "o next-pane, [ copy mode, ] default paste, n/p window navigation, and digit window "
+            "indices; "
             "missing indices are "
             "ignored without status feedback; creation keys and configurable tables remain "
             "unsupported");
         report.limitations.push_back(
             "the latest attached client controls shared window dimensions");
+        report.limitations.push_back(
+            "terminal key decoding uses a fixed 10 ms first-fragment deadline; tmux 3.4's "
+            "500 ms default escape-time, terminfo-specific keys, and extended keys are "
+            "unsupported");
     }
     return report;
 }

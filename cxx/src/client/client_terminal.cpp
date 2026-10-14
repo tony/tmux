@@ -13,6 +13,22 @@
 #include <utility>
 
 namespace tmux_cxx {
+namespace {
+/** @brief Append bounded narrow error text without emitting terminal controls or partial UTF-8. */
+void append_error_text(std::string &message, std::string_view text, std::size_t limit) {
+    for (const auto character : text) {
+        if (message.size() == limit) {
+            break;
+        }
+        const auto byte = static_cast<unsigned char>(character);
+        if (byte >= 0x20 && byte < 0x7f) {
+            message.push_back(character);
+        } else if (byte >= 0x80 && (byte & 0xc0U) != 0x80U) {
+            message.push_back('?');
+        }
+    }
+}
+} // namespace
 ClientTerminal::ClientTerminal(posix::OwnedFd input, posix::OwnedFd output, termios saved_mode,
                                int input_flags, int output_flags, terminal::CellSize size,
                                ClientTerminalSizeOrigin size_origin)
@@ -100,6 +116,7 @@ Result<void> ClientTerminal::restore() {
         return {};
     }
     output_bytes_.clear();
+    error_bytes_.clear();
     output_sent_ = 0;
     std::optional<TmuxError> first_restoration_error;
     /** @brief Retain the first restoration failure while continuing owned cleanup. */
@@ -160,8 +177,35 @@ Result<void> ClientTerminal::queue_output(std::string view_bytes) {
     return {};
 }
 
+void ClientTerminal::queue_error(const TmuxError &error) {
+    constexpr std::size_t maximum_message_columns = 256;
+    const auto limit = std::min<std::size_t>(size_.columns, maximum_message_columns);
+    std::string message;
+    message.reserve(limit);
+    if (!error.operation.empty()) {
+        append_error_text(message, error.operation, limit);
+        append_error_text(message, ": ", limit);
+    }
+    append_error_text(message, error.message, limit);
+    error_bytes_ = "\x1b"
+                   "7\x1b[" +
+                   std::to_string(size_.rows) + ";1H\x1b[0m\x1b[2K" + message +
+                   "\x1b"
+                   "8";
+}
+
 Result<void> ClientTerminal::flush_output(std::size_t &remaining_output_bytes) {
-    while (output_sent_ < output_bytes_.size() && remaining_output_bytes > 0) {
+    while (remaining_output_bytes > 0) {
+        if (output_sent_ == output_bytes_.size()) {
+            output_bytes_.clear();
+            output_sent_ = 0;
+            if (error_bytes_.empty()) {
+                break;
+            }
+            output_bytes_ = std::move(error_bytes_);
+            error_bytes_.clear();
+            view_active_ = true;
+        }
         const auto written_bytes =
             ::write(output_.get(), output_bytes_.data() + output_sent_,
                     std::min(remaining_output_bytes, output_bytes_.size() - output_sent_));
@@ -208,7 +252,9 @@ Result<ClientTerminalInput> ClientTerminal::read_input(std::size_t limit) {
     }
 }
 
-bool ClientTerminal::output_pending() const { return output_sent_ < output_bytes_.size(); }
+bool ClientTerminal::output_pending() const {
+    return output_sent_ < output_bytes_.size() || !error_bytes_.empty();
+}
 bool ClientTerminal::active() const { return active_; }
 
 terminal::CellSize ClientTerminal::size() const { return size_; }

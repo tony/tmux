@@ -2,9 +2,9 @@
 
 A C++23 tmux implementation in development. One C++ daemon owns persistent sessions, shared windows, window memberships, panes, and PTY programs. The Python and Node extensions use the same native `ServerConnection`.
 
-The current implementation supports creating, listing, renaming, and deleting sessions; creating and renaming windows, selecting session-owned window memberships, and linking and unlinking windows; splitting, resizing, selecting, and listing panes; sending or observing pane bytes and interpreted text; and creating, listing, reading, deleting, and pasting named or automatic buffers. Each window owns its pane layout, each pane retains its PTY, terminal parser, screen, and bounded history, and the server owns paste buffers independently of panes and clients. Session deletion preserves windows linked into other sessions. Connection disposal preserves sessions. Pane deletion schedules child termination and reaping without blocking other requests.
+The current implementation supports creating, listing, renaming, and deleting sessions; creating and renaming windows, selecting session-owned window memberships, and linking and unlinking windows; splitting, resizing, selecting, and listing panes; sending or observing pane bytes and interpreted text; frozen copy-mode navigation and character selection; and creating, listing, reading, deleting, and pasting named or automatic buffers. Each window owns its pane layout, each pane retains its PTY, terminal parser, screen, and bounded history, and the server owns paste buffers independently of panes and clients. Session deletion preserves windows linked into other sessions. Connection disposal preserves sessions. Pane deletion schedules child termination and reaping without blocking other requests.
 
-Stock tmux 3.4 and 3.7 clients can use the declared command subset, including `new-window`, `rename-window`, `select-window`, `next-window`, `previous-window`, `split-window`, `resize-pane`, `select-pane`, `set-buffer`, `paste-buffer`, and `delete-buffer`, plus attach, detach, resize, and input. `set-buffer data` creates an automatic buffer; default paste skips named buffers and requires an exact pane target. Stock `list-buffers`, delete-after, custom separators, raw paste, bracketed paste, and copy mode remain open. Ordinary-client redraw composes every pane, basic ASCII borders, and the active-pane cursor from copied state. Capability-sensitive border glyphs and styles, modes, control-mode format subscriptions, and broader command compatibility remain unfinished. A profile-selected C++ adapter can query session names from owned tmux 3.4 and 3.7 servers. The retained terminal component establishes tested parser behavior, not complete terminal fidelity. [GOAL.md](GOAL.md) retains the complete objective; [the implementation plan](docs/implementation.md) tracks its milestones.
+Stock tmux 3.4 and 3.7 clients can use the declared command subset, including `new-window`, `rename-window`, `select-window`, `next-window`, `previous-window`, `split-window`, `resize-pane`, `select-pane`, `copy-mode`, `send-keys -X`, `set-buffer`, `paste-buffer`, and `delete-buffer`, plus attach, detach, resize, and input. `set-buffer data` creates an automatic buffer; default paste skips named buffers and requires an exact pane target. Stock `list-buffers`, delete-after, custom separators, raw paste, bracketed paste, and richer copy modes remain open. Ordinary-client redraw composes every pane, basic ASCII borders, and the active-pane cursor from copied state. Capability-sensitive border glyphs and styles, configurable mode styling, control-mode format subscriptions, and broader command compatibility remain unfinished. A profile-selected C++ adapter can query session names from owned tmux 3.4 and 3.7 servers. The retained terminal component establishes tested parser behavior, not complete terminal fidelity. [GOAL.md](GOAL.md) retains the complete objective; [the implementation plan](docs/implementation.md) tracks its milestones.
 
 Single `-C` clients from tmux 3.4 and 3.7 can run an initial registered command and later newline-delimited registered commands with matching `%begin`, `%end`, and `%error` guards. Attached control clients can switch sessions, receive selection changes, observe new raw bytes from linked panes, and receive committed session catalog and rename notifications. Attachment and switching establish fresh per-pane output baselines, so earlier raw bytes are not replayed. The adapter bounds command lines, argument count, commands per readiness turn, queued output, pane output, and a 4096-record metadata journal. Echo-disabled `-CC`, `no-output`, `pause-after`, and `wait-exit` are rejected during identification before command effects. Command groups, configuration grammar, asynchronous commands, other notifications, pause/continue, control-mode format subscriptions, and control-client gap resynchronization remain unsupported. The named `unattached_control_channel_stays_open` quirk exposes the deliberate user-facing difference from stock tmux: an unattached limited client stays open after its initial command.
 
@@ -170,6 +170,77 @@ not reproduced by the C++ window.
 Large key batches yield between daemon turns. Retained keys resume without
 another keystroke; program backpressure waits for queue capacity to return.
 
+## Copy mode
+
+Prefix-`[` freezes the selected pane's captured history and screen. Program
+parsing, query replies, and raw output continue behind it. Reentry and detach
+preserve the pane mode. Both attached clients share its cursor and selection.
+The live window `mode-keys` chooses emacs or vi input and endpoint inclusion;
+selection highlighting retains the entry convention.
+
+Arrow keys move; Page Up/Down scroll. Emacs Ctrl-Space begins selection,
+Escape cancels, and Ctrl-w/Meta-w copies and cancels. Vi Space begins
+selection, `h/j/k/l` moves, Escape clears selection, and Enter copies and
+cancels. `q` or Ctrl-c cancels either table. Prefix handling keeps precedence.
+The named `copy_keys_store_server_buffer` adaptation stores an automatic
+server buffer instead of invoking clipboard, copy-command, or a pipeline.
+Prefix-`]` pastes that buffer after cancellation.
+
+Python exposes typed cursor directions, destinations, scroll motions, and
+copy dispositions. This example copies the first two cells through an
+existing daemon; the session survives connection disposal.
+
+```python
+import os
+import tmux_cxx
+
+with tmux_cxx.ServerConnection(os.environ["TMUX_CXX_SOCKET"]) as server:
+    session = server.create_session("copy-example", "/bin/cat")
+    server.set_window_option(session.window, "mode-keys", "emacs")
+    server.send_pane_input(session.pane, b"abc\n")
+    server.wait_pane_output(session.pane, b"abc\r\n")
+    server.enter_copy_mode(session.pane)
+    server.move_copy_cursor_to(session.pane, tmux_cxx.CopyCursorDestination.HISTORY_START)
+    server.move_copy_cursor_to(session.pane, tmux_cxx.CopyCursorDestination.LINE_START)
+    server.begin_copy_selection(session.pane)
+    server.move_copy_cursor(session.pane, tmux_cxx.CopyCursorDirection.RIGHT, 2)
+    copied = server.copy_selection(session.pane, tmux_cxx.CopySelectionDisposition.CANCEL_MODE)
+    assert copied is not None and server.read_paste_buffer(copied.name) == b"ab"
+```
+
+Node offers the same operations as promises: `enterCopyMode`,
+`moveCopyCursor`, `moveCopyCursorTo`, `scrollCopyMode`, `beginCopySelection`,
+`clearCopySelection`, `copySelection`, `cancelCopyMode`, and `copyMode`.
+Choices use checked string unions, such as `"right"`, `"line_start"`, and
+`"cancel_mode"`; snapshot ownership and revisions use exact integers.
+
+Stock `copy-mode -t %pane` and `send-keys -X [-N count] -t %pane action`
+require explicit pane targets. Counts are positive; boundary and selection
+actions ignore them as stock tmux does. Unsupported syntax fails before
+changing the mode. Native movement and scrolling accept zero as a no-op.
+Copy defaults to clearing selection; explicit dispositions retain selection
+or cancel mode. Failed extraction or buffer admission preserves the mode.
+
+| Action | Supported spellings |
+|---|---|
+| Relative cursor | `cursor-left`, `cursor-right`, `cursor-up`, `cursor-down` |
+| Boundaries | `start-of-line`, `end-of-line`, `history-top`, `history-bottom` |
+| Scroll | `scroll-up`, `scroll-down`, `halfpage-up`, `halfpage-down`, `page-up`, `page-down` |
+| Selection | `begin-selection`, `clear-selection` |
+| Copy | `copy-selection`, `copy-selection-no-clear`, `copy-selection-and-cancel` |
+| Exit | `cancel` |
+
+Width changes reflow occupied cells and height changes preserve original
+history row widths. Successful size changes clear selection and retain
+captured source evidence. Shrinking copy mode retains backing rows and can
+move text into scrollback; history navigation keeps it accessible.
+A one-column display hides an unfit wide glyph
+while retaining it for later growth. Copy extraction is bounded to 256 KiB.
+Historical erased-cell high-water marks, original tabs, search, word and
+rectangular selection, mouse, custom mode style, and copy-pipe commands
+remain unsupported. Terminal key fragments use a fixed 10 ms deadline;
+legacy escape-time configuration and terminfo-specific keys remain open.
+
 ## Session event streams
 
 Set `TMUX_CXX_SOCKET` to a running C++ server. Python offers the same synchronous stream as C++ plus an asyncio adapter whose cancellation closes only that observer.
@@ -268,7 +339,7 @@ window scope; `set-window-option`/`setw` also requires window definitions.
 Assignments require `-g` or one explicit `-t` target. Window targets use
 `session:index`; grouped flags place `-t` last and supply its target next.
 Only session `prefix`/`prefix2` and window `mode-keys` are implemented.
-Unset, implicit targets, stock option listing, and copy mode remain open.
+Unset, implicit targets, and stock option listing remain open.
 
 ## Compatibility evidence
 
@@ -278,6 +349,6 @@ Separate real-client tests cover detached named creation, listing, renaming, glo
 
 Reverse-role tests select a declared profile before connecting, obtain release evidence from the connected server through `#{version}`, and query typed session names. Both mismatched profile pairs are rejected before the same owned server accepts the correct pair. This establishes a narrow command-mode subset, not general command execution.
 
-Complete key decoding, configurable tables and bindings, repeat handling, modes, broader control grammar and notifications, pause/continue, control-mode format subscriptions, older release subsets, and language-visible reverse compatibility reports remain open.
+Complete key decoding, configurable tables and bindings, repeat handling, additional modes, broader control grammar and notifications, pause/continue, control-mode format subscriptions, older release subsets, and language-visible reverse compatibility reports remain open.
 
 See [documentation policy](docs/documentation.md), [source provenance](docs/attribution.md), and [verification progress](docs/progress.md).

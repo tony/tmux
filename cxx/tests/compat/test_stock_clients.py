@@ -200,7 +200,7 @@ def test_stock_attach_routes_terminal_and_preserves_session(server: str, fixture
             assert "set-option" in compatibility.commands
             assert "split-window" in compatibility.commands
             assert "resize-pane" in compatibility.commands
-            assert compatibility.quirks == []
+            assert compatibility.quirks == ["copy_keys_store_server_buffer"]
             assert compatibility.evidence and compatibility.limitations
             assert any("3.4 residual allocation" in limit for limit in compatibility.limitations)
             window = observer.window(session.window)

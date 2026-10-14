@@ -38,6 +38,12 @@ class ClientTerminal {
     Result<void> restore();
     /** @brief Append one complete redraw or reject it before effects when output is full. */
     Result<void> queue_output(std::string view_bytes);
+    /** @brief Retain the latest bounded action error until earlier queued view bytes are delivered.
+     *
+     * A newer error replaces the message waiting behind queued output. Feedback uses safe narrow
+     * text.
+     */
+    void queue_error(const TmuxError &error);
     /** @brief Deliver queued view bytes through partial nonblocking writes within a byte budget. */
     Result<void> flush_output(std::size_t &remaining_output_bytes);
     /** @brief Read at most limit input bytes without waiting; zero limit performs no read. */
@@ -70,6 +76,7 @@ class ClientTerminal {
     ClientTerminalSizeOrigin size_origin_; ///< Source of the retained nonzero dimensions.
     bool active_ = false;         ///< Raw mode and nonblocking flags still require restoration.
     std::string output_bytes_;    ///< Composed views awaiting nonblocking terminal delivery.
+    std::string error_bytes_;     ///< One bounded latest action error waiting behind view output.
     std::size_t output_sent_ = 0; ///< Delivered prefix retained until queue compaction.
     bool view_active_ = false;    ///< The outer terminal may require alternate-screen teardown.
 };

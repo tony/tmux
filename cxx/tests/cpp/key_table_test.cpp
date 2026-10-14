@@ -1,6 +1,10 @@
 #include "client/client_key_input.hpp"
+#include "client/client_terminal.hpp"
+#include "client/client_terminal_routing.hpp"
 #include "client/operations/detach_client_key_binding.hpp"
+#include "client/stock_client_lifecycle.hpp"
 #include "key_table/key_binding_registry.hpp"
+#include "pane/operations/copy_mode_key_bindings.hpp"
 #include "pane/operations/select_next_pane_key_binding.hpp"
 #include "pane/pane.hpp"
 #include "protocol/native/operation_registry.hpp"
@@ -12,12 +16,15 @@
 #include <tmux_cxx/window_link/operations/select_window.hpp>
 
 #include <tmux_cxx/client/operations/detach_client.hpp>
+#include <tmux_cxx/protocol/tmux/compatibility_policy.hpp>
 #include <tmux_cxx/server/server.hpp>
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <fcntl.h>
 #include <gtest/gtest.h>
+#include <poll.h>
 #include <pty.h>
 #include <termios.h>
 #include <unistd.h>
@@ -51,6 +58,46 @@ struct RootFallbackBinding {
 };
 
 int retryable_binding_calls = 0; ///< Count synthetic binding attempts within the owning test.
+int failed_binding_calls = 0;    ///< Count permanent failures without hiding a repeated failed key.
+
+/** @brief Return a permanent operation error while leaving the pane's frozen mode unchanged. */
+struct FailingCopyBinding {
+    static constexpr KeyBindingDescription description{
+        "copy-mode", control_key('w'), "copy-selection", DetachClient::description.id};
+    ///< Isolate interactive error recovery behind validated operation-backed registration.
+    /** @brief Reject before effects so recovery must consume the failed key and retain mode. */
+    static Result<KeyBindingEffect> execute(KeyBindingInvocation &) {
+        ++failed_binding_calls;
+        return std::unexpected(
+            TmuxError{TmuxErrorCode::invalid_argument, "selection exceeds the buffer limit"});
+    }
+};
+
+/** @brief Advance only the owned pane through readiness until its retained output contains text. */
+bool await_pane_output(Server &server, PaneId pane, std::string_view text) {
+    using Clock = std::chrono::steady_clock;
+    const auto deadline = Clock::now() + std::chrono::milliseconds(500);
+    const auto descriptors = server.pane_pty_descriptors();
+    const auto descriptor = std::ranges::find(descriptors, pane, &std::pair<PaneId, int>::first);
+    if (descriptor == descriptors.end()) {
+        return false;
+    }
+    while (Clock::now() < deadline) {
+        server.advance_pane_pty_io(pane);
+        const auto output = server.read_pane_output(pane);
+        if (output && output->find(text) != std::string::npos) {
+            return true;
+        }
+        const auto remaining =
+            std::chrono::ceil<std::chrono::milliseconds>(deadline - Clock::now());
+        pollfd readiness{descriptor->second, POLLIN, 0};
+        if (::poll(&readiness, 1, static_cast<int>(std::max<std::int64_t>(0, remaining.count()))) <=
+            0) {
+            return false;
+        }
+    }
+    return false;
+}
 
 /** @brief Return backpressure once so input routing must preserve the selected prefix table. */
 struct RetryablePrefixBinding {
@@ -156,6 +203,272 @@ TEST(ClientKeyInput, BindingBackpressurePreservesPrefixTable) {
     ASSERT_TRUE(retried);
     EXPECT_EQ(*retried, KeyBindingEffect::client_selection_unchanged);
     EXPECT_EQ(retryable_binding_calls, 2);
+}
+
+/** @brief A permanent matched failure consumes only its key and preserves mode plus retained
+ * suffix. */
+TEST(ClientKeyInput, PermanentActionFailureConsumesOnlyFailedKey) {
+    Server server;
+    const auto session = server.create_session("failed-copy-key", "/bin/cat");
+    ASSERT_TRUE(session);
+    ASSERT_TRUE(server.enter_copy_mode(session->pane));
+    const auto before = server.copy_mode(session->pane);
+    ASSERT_TRUE(before);
+    ASSERT_TRUE(before->mode);
+    protocol::native::OperationRegistry operations;
+    ASSERT_TRUE(operations.add<DetachClient>());
+    auto operation_catalog = std::move(operations).freeze();
+    ASSERT_TRUE(operation_catalog);
+    KeyBindingRegistry registry;
+    ASSERT_TRUE(registry.add<FailingCopyBinding>());
+    auto key_tables = std::move(registry).freeze(*operation_catalog);
+    ASSERT_TRUE(key_tables);
+    ClientKeyInput input;
+    const auto empty_capacity = input.read_capacity();
+    ASSERT_TRUE(input.append("\x17\x1b[B"));
+    failed_binding_calls = 0;
+    const ClientSelection selection{session->id, session->link, session->window, session->pane};
+
+    const auto failed = input.route_pending(server, ClientId{1}, selection, default_prefixes, 0,
+                                            *key_tables, "copy-mode");
+
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, TmuxErrorCode::invalid_argument);
+    EXPECT_EQ(failed.error().operation, "copy-selection");
+    EXPECT_EQ(input.read_capacity(), empty_capacity - 3);
+    EXPECT_EQ(failed_binding_calls, 1);
+    const auto retained = server.copy_mode(session->pane);
+    ASSERT_TRUE(retained);
+    ASSERT_TRUE(retained->mode);
+    EXPECT_EQ(retained->display_revision, before->display_revision);
+    EXPECT_EQ(retained->mode->lines, before->mode->lines);
+    const auto suffix = input.route_pending(server, ClientId{1}, selection, default_prefixes, 0,
+                                            *key_tables, "copy-mode");
+    EXPECT_TRUE(suffix);
+    EXPECT_EQ(failed_binding_calls, 1);
+    EXPECT_EQ(input.read_capacity(), empty_capacity);
+}
+
+/** @brief A rejected matched action reports its error while preserving the attachment and frozen
+ * mode. */
+TEST(ClientTerminalRouting, PermanentActionFailureKeepsAttachmentAndReportsError) {
+    int master = -1;
+    int slave = -1;
+    ASSERT_EQ(::openpty(&master, &slave, nullptr, nullptr, nullptr), 0);
+    posix::OwnedFd master_owner(master);
+    posix::OwnedFd slave_owner(slave);
+    ASSERT_EQ(::fcntl(master_owner.get(), F_SETFL, O_NONBLOCK), 0);
+    Server server;
+    const auto session = server.create_session("reported-copy-error", "/bin/cat");
+    ASSERT_TRUE(session);
+    const auto client = StockClientLifecycle::accept(server);
+    ASSERT_TRUE(client);
+    auto compatibility = protocol::tmux::TmuxCompatibilityPolicy{}.assess(
+        protocol::tmux::legacy_profile,
+        protocol::tmux::ProtocolDirection::stock_client_to_cxx_server,
+        protocol::tmux::ConnectionMode::command);
+    ASSERT_TRUE(StockClientLifecycle::identify_terminal(
+        server, *client, posix::OwnedFd(::dup(slave_owner.get())),
+        posix::OwnedFd(::dup(slave_owner.get())), std::move(compatibility)));
+    ASSERT_TRUE(server.attach_client(*client, session->id));
+    ASSERT_TRUE(
+        server.set_window_option(WindowOptionTarget{session->window}, "mode-keys", "emacs"));
+    ASSERT_TRUE(server.enter_copy_mode(session->pane));
+    const auto before = server.copy_mode(session->pane);
+    ASSERT_TRUE(before);
+    const auto catalogs = build_server_api_catalogs();
+    ASSERT_TRUE(catalogs);
+    KeyBindingRegistry registry;
+    ASSERT_TRUE(registry.add<FailingCopyBinding>());
+    ASSERT_TRUE((registry.add<CancelCopyModeKeyBinding<WindowModeKeys::emacs, escape_key>>()));
+    auto key_tables = std::move(registry).freeze(catalogs->native_operations);
+    ASSERT_TRUE(key_tables);
+    failed_binding_calls = 0;
+    ASSERT_EQ(::write(master_owner.get(), "\x17\x1b[B", 4), 4);
+
+    const auto failure =
+        ClientTerminalRouting::route_ready_io(server, *client, *key_tables, POLLIN, 0);
+
+    EXPECT_EQ(failure, ClientTerminalRouteOutcome::action_failed);
+    EXPECT_EQ(failed_binding_calls, 1);
+    ASSERT_EQ(server.clients().size(), 1U);
+    EXPECT_EQ(server.clients().front().session, session->id);
+    const auto retained = server.copy_mode(session->pane);
+    ASSERT_TRUE(retained);
+    ASSERT_TRUE(retained->mode);
+    EXPECT_EQ(retained->display_revision, before->display_revision);
+    EXPECT_EQ(retained->mode->lines, before->mode->lines);
+    auto routes = ClientTerminalRouting::capture(server);
+    ASSERT_EQ(routes.size(), 1U);
+    EXPECT_TRUE(routes.front().output_pending);
+    EXPECT_FALSE(routes.front().key_deadline);
+    EXPECT_FALSE(routes.front().key_routing_deferred);
+    EXPECT_EQ(ClientTerminalRouting::route_ready_io(server, *client, *key_tables, 0, POLLOUT),
+              ClientTerminalRouteOutcome::routed);
+    EXPECT_EQ(failed_binding_calls, 1);
+    std::array<char, 512> message{};
+    const auto received = ::read(master_owner.get(), message.data(), message.size());
+    ASSERT_GT(received, 0);
+    EXPECT_NE(std::string_view(message.data(), static_cast<std::size_t>(received))
+                  .find("selection exceeds the buffer limit"),
+              std::string_view::npos);
+    EXPECT_EQ(server.clients().front().session, session->id);
+
+    using namespace std::chrono_literals;
+    const auto start = TerminalKeyDecoder::Clock::time_point{};
+    ASSERT_EQ(::write(master_owner.get(), "\x1b", 1), 1);
+    EXPECT_EQ(ClientTerminalRouting::route_ready_io(server, *client, *key_tables, POLLIN, 0, start),
+              ClientTerminalRouteOutcome::routed);
+    routes = ClientTerminalRouting::capture(server);
+    ASSERT_EQ(routes.size(), 1U);
+    EXPECT_EQ(routes.front().key_deadline, start + 10ms);
+    EXPECT_FALSE(routes.front().key_routing_deferred);
+    EXPECT_EQ(
+        ClientTerminalRouting::route_ready_io(server, *client, *key_tables, 0, 0, start + 10ms),
+        ClientTerminalRouteOutcome::routed);
+    EXPECT_FALSE(server.copy_mode(session->pane)->mode);
+    EXPECT_EQ(server.clients().front().session, session->id);
+    EXPECT_FALSE(ClientTerminalRouting::capture(server).front().key_deadline);
+}
+
+/** @brief Full view output retains a bounded latest error and delivers it without truncating the
+ * view. */
+TEST(ClientTerminal, LatestErrorSurvivesFullOutputQueue) {
+    int master = -1;
+    int slave = -1;
+    ASSERT_EQ(::openpty(&master, &slave, nullptr, nullptr, nullptr), 0);
+    posix::OwnedFd master_owner(master);
+    posix::OwnedFd slave_owner(slave);
+    ASSERT_EQ(::fcntl(master_owner.get(), F_SETFL, O_NONBLOCK), 0);
+    auto terminal = ClientTerminal::adopt(posix::OwnedFd(::dup(slave_owner.get())),
+                                          posix::OwnedFd(::dup(slave_owner.get())));
+    ASSERT_TRUE(terminal);
+    ASSERT_TRUE((*terminal)->activate());
+    const std::string view(1048576, 'v');
+    ASSERT_TRUE((*terminal)->queue_output(view));
+    (*terminal)->queue_error({TmuxErrorCode::invalid_argument, "superseded error"});
+    (*terminal)->queue_error(
+        {TmuxErrorCode::invalid_argument, "latest\x1b[2J error\x7f\n", "copy-selection"});
+    std::size_t zero_budget = 0;
+    ASSERT_TRUE((*terminal)->flush_output(zero_budget));
+    EXPECT_TRUE((*terminal)->output_pending());
+    EXPECT_TRUE((*terminal)->active());
+    std::string delivered;
+    delivered.reserve(view.size() + 512);
+    std::array<char, 8192> bytes{};
+    for (unsigned turn = 0; turn < 512 && (*terminal)->output_pending(); ++turn) {
+        std::size_t budget = 4096;
+        ASSERT_TRUE((*terminal)->flush_output(budget));
+        for (;;) {
+            const auto received = ::read(master_owner.get(), bytes.data(), bytes.size());
+            if (received > 0) {
+                delivered.append(bytes.data(), static_cast<std::size_t>(received));
+            } else if (received < 0 && errno == EINTR) {
+                continue;
+            } else {
+                ASSERT_EQ(received, -1);
+                ASSERT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK);
+                break;
+            }
+        }
+    }
+    EXPECT_FALSE((*terminal)->output_pending());
+    EXPECT_TRUE((*terminal)->active());
+    ASSERT_GE(delivered.size(), view.size());
+    EXPECT_EQ(std::string_view(delivered).substr(0, view.size()), view);
+    const auto error = std::string_view(delivered).substr(view.size());
+    EXPECT_NE(error.find("copy-selection: latest[2J error"), std::string_view::npos);
+    EXPECT_EQ(error.find("superseded error"), std::string_view::npos);
+    EXPECT_EQ(error.find("latest\x1b[2J"), std::string_view::npos);
+    EXPECT_EQ(error.find('\x7f'), std::string_view::npos);
+    EXPECT_EQ(error.find('\n'), std::string_view::npos);
+    EXPECT_LE(error.size(), 512U);
+}
+
+/** @brief Fragmented raw keys retain complete encoded spans under backpressure and reach the
+ * program unchanged. */
+TEST(ClientKeyInput, FragmentedPassthroughPreservesAtomicRawKeys) {
+    using namespace std::chrono_literals;
+    const auto start = TerminalKeyDecoder::Clock::time_point{};
+    Server server;
+    const auto session =
+        server.create_session("raw-key-spans", "stty raw -echo; printf ready; exec cat");
+    ASSERT_TRUE(session);
+    ASSERT_TRUE(await_pane_output(server, session->pane, "ready"));
+    const auto catalogs = build_server_api_catalogs();
+    ASSERT_TRUE(catalogs);
+    const ClientSelection selection{session->id, session->link, session->window, session->pane};
+    ClientKeyInput input;
+    const auto empty_capacity = input.read_capacity();
+    ASSERT_TRUE(input.append("\xe4"));
+    ASSERT_TRUE(input.route_pending(server, ClientId{1}, selection, default_prefixes, 2,
+                                    catalogs->key_tables, "root", start));
+    EXPECT_EQ(input.next_key_deadline(), start + 10ms);
+    ASSERT_TRUE(input.append("\xb8\xad\x1b["));
+    ASSERT_TRUE(input.route_pending(server, ClientId{1}, selection, default_prefixes, 2,
+                                    catalogs->key_tables, "root", start + 1ms));
+    EXPECT_EQ(input.read_capacity(), empty_capacity - 5);
+    EXPECT_FALSE(input.next_key_deadline());
+    EXPECT_FALSE(server.pane_pty_write_pending(session->pane));
+    ASSERT_TRUE(input.append("A\n"));
+    const auto unicode = input.route_pending(server, ClientId{1}, selection, default_prefixes, 3,
+                                             catalogs->key_tables, "root", start + 2ms);
+    ASSERT_TRUE(unicode);
+    EXPECT_EQ(*unicode, KeyBindingEffect::pane_program_input_changed);
+    EXPECT_EQ(input.read_capacity(), empty_capacity - 4);
+    ASSERT_TRUE(input.route_pending(server, ClientId{1}, selection, default_prefixes, 2,
+                                    catalogs->key_tables, "root", start + 3ms));
+    EXPECT_EQ(input.read_capacity(), empty_capacity - 4);
+    EXPECT_FALSE(input.next_key_deadline());
+    const auto arrow = input.route_pending(server, ClientId{1}, selection, default_prefixes, 3,
+                                           catalogs->key_tables, "root", start + 4ms);
+    ASSERT_TRUE(arrow);
+    EXPECT_EQ(*arrow, KeyBindingEffect::pane_program_input_changed);
+    EXPECT_EQ(input.read_capacity(), empty_capacity - 1);
+    ASSERT_TRUE(input.route_pending(server, ClientId{1}, selection, default_prefixes, 1,
+                                    catalogs->key_tables, "root", start + 5ms));
+    EXPECT_EQ(input.read_capacity(), empty_capacity);
+    constexpr std::string_view raw{"\xe4\xb8\xad\x1b[A\n"};
+    ASSERT_TRUE(await_pane_output(server, session->pane, raw));
+    EXPECT_EQ(*server.read_pane_output(session->pane), std::string("ready") + std::string(raw));
+}
+
+/** @brief Persistent copy tables consume fragmented arrows and literal Escape expires without
+ * another read. */
+TEST(ClientKeyInput, CopyTableKeepsArrowsAndEscapeDeadline) {
+    using namespace std::chrono_literals;
+    const auto start = TerminalKeyDecoder::Clock::time_point{};
+    Server server;
+    const auto session = server.create_session("copy-key-spans", "/bin/cat");
+    ASSERT_TRUE(session);
+    ASSERT_TRUE(server.enter_copy_mode(session->pane));
+    const auto catalogs = build_server_api_catalogs();
+    ASSERT_TRUE(catalogs);
+    const ClientSelection selection{session->id, session->link, session->window, session->pane};
+    ClientKeyInput input;
+    const auto empty_capacity = input.read_capacity();
+    ASSERT_TRUE(input.append("\x1b["));
+    ASSERT_TRUE(input.route_pending(server, ClientId{1}, selection, default_prefixes, 0,
+                                    catalogs->key_tables, "copy-mode", start));
+    EXPECT_EQ(input.next_key_deadline(), start + 10ms);
+    ASSERT_TRUE(input.append("Bx\x1b[B"));
+    ASSERT_TRUE(input.route_pending(server, ClientId{1}, selection, default_prefixes, 0,
+                                    catalogs->key_tables, "copy-mode", start + 1ms));
+    EXPECT_EQ(server.copy_mode(session->pane)->mode->cursor.row, 2U);
+    EXPECT_EQ(input.read_capacity(), empty_capacity);
+    EXPECT_FALSE(input.next_key_deadline());
+    EXPECT_FALSE(server.pane_pty_write_pending(session->pane));
+    ASSERT_TRUE(input.append("\x1b"));
+    ASSERT_TRUE(input.route_pending(server, ClientId{1}, selection, default_prefixes, 0,
+                                    catalogs->key_tables, "copy-mode", start + 2ms));
+    EXPECT_EQ(input.next_key_deadline(), start + 12ms);
+    const auto cancelled = input.route_pending(server, ClientId{1}, selection, default_prefixes, 0,
+                                               catalogs->key_tables, "copy-mode", start + 12ms);
+    ASSERT_TRUE(cancelled);
+    EXPECT_EQ(*cancelled, KeyBindingEffect::pane_mode_changed);
+    EXPECT_FALSE(server.copy_mode(session->pane)->mode);
+    EXPECT_FALSE(input.next_key_deadline());
+    EXPECT_EQ(input.read_capacity(), empty_capacity);
 }
 
 /** @brief Program EOF releases blocked passthrough while preserving later prefix controls and their

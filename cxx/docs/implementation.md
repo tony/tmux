@@ -243,10 +243,10 @@ must mutate and observe the same packaged window options.
 
 ## Basic copy-mode slice
 
-Keep this milestone open until a real attached client enters copy mode,
-navigates retained history, selects and copies bytes, leaves the mode, and
-pastes into its persistent program. Python, Node, and stock commands must
-reach the same typed operations.
+Real attached clients enter copy mode, navigate retained history, select
+and copy bytes, leave the mode, and paste into their persistent program.
+Python, Node, and stock commands reach the same typed operations. Advanced
+copy modes and broader terminal fidelity remain open.
 
 `Pane` owns the optional `CopyMode`; the mode owns copied backing rows,
 cursor, selection, viewport, and display freshness. tmux 3.4 and 3.7 copy
@@ -277,7 +277,7 @@ selection extraction. Capture the upstream selection-highlight keys on
 mode entry; changing the window option must preserve backing and selection.
 Entry accepts only the pane target, with no separate key-style override.
 The window option defaults already follow tmux's `VISUAL` or `EDITOR`
-startup rule. Copy-mode interpretation and highlight caching remain open.
+startup rule. Mode interpretation uses live keys; highlight caching preserves the entry convention.
 
 `TerminalHistorySnapshot` supplies chronological owned rows at their original
 widths, continuation-from-previous flags, cursor, parser revision,
@@ -287,7 +287,7 @@ display; client composition tracks display freshness independently of parser
 facts. Mode entry, navigation, resize, and exit must invalidate that baseline
 even when the parser has not advanced.
 
-Use entity-local `EnterCopyMode`, `MoveCopyCursor`, `ScrollCopyMode`,
+Use entity-local `EnterCopyMode`, `MoveCopyCursor`, `MoveCopyCursorTo`, `ScrollCopyMode`,
 `BeginCopySelection`, `ClearCopySelection`, `CopySelection`, `CancelCopyMode`,
 and `ReadCopyMode` descriptions. Register `send-keys -X` names in an immutable
 copy-mode command catalog. Persistent `copy-mode` and `copy-mode-vi` key tables
@@ -311,8 +311,9 @@ entry, split input encodings, cancellation with following input, prefix
 precedence, and unknown keys reaching no PTY. Automatic-buffer capacity or
 input backpressure must preserve selection or queued input before effects.
 
-The initial cursor rule follows tmux 3.7; declare 3.4's permitted one-past-end
-vi position separately. Vi Escape clears selection and stays in mode;
+Entry retains the program cursor in both pinned releases, including a
+one-past-content vi position. Subsequent movement and clearing clip it
+according to live keys. Vi Escape clears selection and stays in mode;
 emacs Escape cancels. The default vi copy key is Enter, without a `y`
 binding. Vi extraction includes the terminal cell, emacs excludes it, and
 only complete Unicode cells are copied. Preserve hard newlines and join
@@ -325,9 +326,10 @@ does not retain. Clipboard and copy-pipe effects remain explicit limits.
 Source contracts use [tmux 3.7 copy mode][copy-37],
 [tmux 3.4 copy mode][copy-34], [window option ownership][window-37],
 and [default key bindings][keys-37] at pinned revisions. The current parser
-history has reflow disabled; the mode-owned backing still requires its own
-reflow implementation. The incremental key decoder and every mode operation
-remain unfinished.
+history has reflow disabled; the mode-owned backing performs width reflow
+independently and preserves original history row widths on height changes.
+Integration, declared fidelity limits, and the complete milestone acceptance
+remain subject to the recorded verification gates.
 
 [copy-37]: https://github.com/tmux/tmux/blob/81f88f8517c9fc5371b56cf117530c6b477c96ac/window-copy.c
 [copy-34]: https://github.com/tmux/tmux/blob/9ae69c3795ab5ef6b4d760f6398cd9281151f632/window-copy.c
@@ -344,7 +346,7 @@ Documentation has compiler coverage, strict Doxygen HTML/XML, language AST check
 
 Native negotiation now declares the cataloged operations, effects, capabilities, and payload limit. Entity operations and native adapters have separate files. Stock profile detection distinguishes tmux 3.4 and 3.7 headers using descriptor evidence; real clients pass the declared one-shot and guarded control-command subsets. Accepted-client identification, one-shot admission/output acknowledgement, terminal attachment/detachment, active control mode, control-output draining, and transport closure use exclusive variant phases with phase-owned descriptors, policy, output, and deadlines.
 
-The terminal foundation retains chunked VT parsing, screens, cursor/rendition, bounded history, and ordered query replies. Real PTY tests exercise query responses and nonblocking input remainders. Owner-qualified pane text, pane splitting and selection, recursive window layouts, the `latest` window-size policy, and named or automatic paste buffers are available through the shared C++ server and all three native clients. Native buffer enumeration exposes copied metadata. Ordinary-client redraw composes every pane with basic ASCII borders and the selected cursor. Stock buffer listing, richer paste modes, copy mode, capability-sensitive borders, other size policies, and broader terminal fidelity keep milestone 4 open.
+The terminal foundation retains chunked VT parsing, screens, cursor/rendition, bounded history, and ordered query replies. Real PTY tests exercise query responses and nonblocking input remainders. Owner-qualified pane text, pane splitting and selection, recursive window layouts, the `latest` window-size policy, and named or automatic paste buffers are available through the shared C++ server and all three native clients. Native buffer enumeration exposes copied metadata. Ordinary-client redraw composes every pane with basic ASCII borders and the selected cursor. Stock buffer listing, richer paste modes, advanced copy modes, capability-sensitive borders, other size policies, and broader terminal fidelity keep milestone 4 open.
 
 Startup now validates entity registrations against the public exposure catalog before opening sockets. A controlled omission stops the actual daemon before readiness; restored registration passes the shared-server suites. The installed native archive exports the generated catalog without linking language runtimes.
 

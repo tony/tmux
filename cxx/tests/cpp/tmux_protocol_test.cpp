@@ -198,7 +198,7 @@ TEST(TmuxProtocol, CompatibilitySeparatesEvidenceFromReleaseClaims) {
     EXPECT_EQ(report.tier, SupportTier::general);
     EXPECT_EQ(report.support, CapabilitySupport::limited);
     EXPECT_EQ(report.verification, CompatibilityVerification::tested_subset);
-    EXPECT_TRUE(report.quirks.empty());
+    EXPECT_EQ(report.quirks, std::vector<std::string>{"copy_keys_store_server_buffer"});
     EXPECT_FALSE(report.evidence.empty());
     EXPECT_TRUE(std::ranges::contains(
         report.limitations,
@@ -215,11 +215,12 @@ TEST(TmuxProtocol, CompatibilitySeparatesEvidenceFromReleaseClaims) {
         report.limitations,
         "set-window-option/setw supports mode-keys emacs/vi through global defaults or exact "
         "session:index targets; grouped flags are accepted when -t ends the group; stock "
-        "show-options, other window options, and copy mode remain unsupported"));
+        "show-options and other window options remain unsupported"));
     EXPECT_TRUE(std::ranges::contains(
         report.limitations,
         "the prefix table contains C-b send-prefix, quote and percent split, d detach, "
-        "o next-pane, ] default paste, n/p window navigation, and digit window indices; missing "
+        "o next-pane, [ copy mode, ] default paste, n/p window navigation, and digit window "
+        "indices; missing "
         "indices are "
         "ignored without status feedback; creation keys and configurable tables remain "
         "unsupported"));

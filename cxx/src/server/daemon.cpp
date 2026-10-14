@@ -441,6 +441,14 @@ int run_server(const std::string &stock_socket_path, int readiness_descriptor) {
         }
         const auto client_routes = ClientTerminalRouting::capture(server);
         for (const auto &client_route : client_routes) {
+            if (client_route.key_deadline) {
+                const auto remaining = std::chrono::ceil<std::chrono::milliseconds>(
+                                           *client_route.key_deadline - Clock::now())
+                                           .count();
+                const auto milliseconds = static_cast<int>(std::max<std::int64_t>(0, remaining));
+                poll_timeout_ms =
+                    poll_timeout_ms < 0 ? milliseconds : std::min(poll_timeout_ms, milliseconds);
+            }
             if (client_route.key_routing_deferred) {
                 // Resume retained keys in another turn without requiring new terminal bytes.
                 poll_timeout_ms = 0;

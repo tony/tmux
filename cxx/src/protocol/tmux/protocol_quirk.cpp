@@ -20,7 +20,8 @@ bool activate_protocol_quirk(StockConnectionCompatibility &compatibility, Protoc
 void retain_protocol_quirks(const StockConnectionCompatibility &previous,
                             StockConnectionCompatibility &replacement) {
     for (const auto quirk : {ProtocolQuirk::zero_terminal_dimensions_use_defaults,
-                             ProtocolQuirk::unattached_control_channel_stays_open}) {
+                             ProtocolQuirk::unattached_control_channel_stays_open,
+                             ProtocolQuirk::copy_keys_store_server_buffer}) {
         const auto declaration = protocol_quirk(quirk);
         if (std::ranges::contains(previous.quirks, declaration.name)) {
             (void)activate_protocol_quirk(replacement, quirk);

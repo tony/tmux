@@ -36,6 +36,7 @@ enum class KeyBindingEffect {
     client_selection_unchanged, ///< Keep routing terminal bytes to the resolved pane.
     client_selection_changed,   ///< Resolve the client's selected membership and pane again.
     pane_program_input_changed, ///< Resolve pane input capacity before routing further bytes.
+    pane_mode_changed,          ///< Resolve the pane mode before interpreting retained keys.
     client_detached             ///< End input routing because the client attachment ended.
 };
 } // namespace key_table

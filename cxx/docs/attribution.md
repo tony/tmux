@@ -71,3 +71,11 @@ The build backports [Vim's UTF-8 continuation correction](https://github.com/vim
 The generated `parser.c` includes unchanged upstream bounds for [numeric CSI arguments](https://github.com/vim/vim/commit/77e7a40af2cab8c0f89a33553af42428b20af233) and [argument count](https://github.com/vim/vim/commit/fe05143f5d70c89e4a14cbf61fee091dc6ba791c). Numeric arguments saturate below the missing-argument sentinel, and argument storage remains capped at 16 entries. CMake checks original and corrected file hashes recorded in the toolchain lock; the extracted external sources remain unchanged. These corrections retain libvterm's MIT license and do not introduce first-party C engine code.
 
 Untrusted OSC numbers and cursor offsets use two C-linkage functions implemented in C++23. OSC commands saturate instead of wrapping into another command; screen coordinates remain representable until libvterm applies its geometry bounds. The generated external C copies contain only their declarations and call sites.
+
+Copy navigation, character selection, and backing reflow in
+`src/pane/copy_mode.cpp` follow `window-copy.c`, `grid.c`, and `grid-reader.c` at the recorded
+tmux 3.7 revision, with their copyright and permission notices retained in the
+derived implementation. The 3.4 source characterizes the older vi cursor and
+escape-time differences. Default copy key tables reference `key-bindings.c`
+at those pinned revisions; typed adapters invoke the shared pane operations.
+These are read-only source references, without upstream build inputs.

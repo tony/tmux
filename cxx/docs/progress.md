@@ -1468,3 +1468,54 @@ Basic copy mode, key decoding, reflow, broader commands and configuration,
 protocol coverage, lifetimes, discovery, platform evidence, benchmarks,
 and the complete objective remain open. This checkpoint is local; no
 changes were pushed.
+
+## Basic copy mode and decoded terminal keys
+
+`Pane` owns frozen copy backing, cursor, viewport, and character selection.
+Program parsing, output retention, terminal replies, and reaping continue
+behind it. Re-entry and detach preserve the mode; cancellation restores the
+current program display. Resize prepares every copy reflow before PTY
+changes and commits it after successful geometry mutation. Retained copy
+state remains usable after program EOF.
+
+Nine entity-local operations serve C++, synchronous Python calls with GIL
+release, and Node promises. Snapshots carry server ownership and display
+freshness. A typed immutable catalog declares 20 stock actions and derives
+its native dependencies. Startup registration remains separate from frozen
+lookup. Real tmux 3.4 and 3.7 clients share selection and navigation, retain
+frozen displays through hidden output, resize, copy, paste into a real
+program, and detach without destroying their session.
+
+The bounded terminal decoder retains original byte spans and one initial
+fragment deadline. Prefix handling precedes the live pane key table; mode
+changes resolve the retained input suffix again. Permanent matched-action
+errors consume their key, preserve attachment, and produce bounded client
+feedback. `copy_keys_store_server_buffer` names the interactive adaptation
+from default copy-pipe keys to automatic server buffers.
+
+Python, shared-server, and session-event checks have separate five-second
+gates. The real 4,097-RPC retention case is tagged for the outer loop.
+Original test ASTs remain unchanged except that marker. Controlled defects
+prove the new gates and recovery assertion fail. Node defaults now accept
+explicit `undefined`, while zero counts preserve state and invalid values
+remain rejected. The installed shell fixture emits LF and verifies exact
+PTY-translated CRLF bytes.
+
+| Gate | Result | Whole-command wall time |
+|---|---|---:|
+| Configured mid loop | PASS; 143 native cases and all fast binding gates | 7.47 s |
+| Clang, GCC 15, and C++26 configure/build/CTest matrix | PASS; 159 tests per preset | 123.03 s |
+| ASan/UBSan/LeakSanitizer and controlled negatives | PASS; 159 tests | 54.99 s |
+| Bounded native, tmux, and terminal fuzz replay | PASS | 3.84 s |
+| Documentation inventories and controlled negatives | PASS; 1,355 C++ callables | 97.06 s |
+| clang-tidy and fatal negative probe | PASS | 184.55 s |
+| Installed Python and Node Current/LTS consumers | PASS | 55.77 s |
+| Fresh standalone build/install and native consumer | PASS | 87.58 s |
+
+Selection and reflow preserve written-space extent and whole Unicode cells.
+Historical erased-cell high-water marks, original tab provenance, search,
+word/rectangle selection, mouse input, clipboard/pipelines, custom mode
+styles, and configurable key decoding remain unsupported. Broader commands,
+configuration, layouts, protocol coverage, async lifetimes, recovery,
+discovery, platform evidence, benchmarks, and the complete objective remain
+open. This checkpoint is local; no changes were pushed.

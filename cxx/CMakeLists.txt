@@ -260,6 +260,10 @@ add_library(tmux_cxx_server STATIC
   src/pane/operations/split_pane_key_bindings.cpp
   src/pane/operations/select_next_pane_key_binding.cpp
   src/pane/register_commands.cpp src/pane/operations/split_window_command.cpp
+  src/pane/operations/copy_mode_command_catalog.cpp
+  src/pane/operations/copy_mode_command.cpp
+  src/pane/operations/send_keys_command.cpp
+  src/pane/operations/copy_mode_key_bindings.cpp
   src/pane/operations/select_pane_command.cpp src/pane/pane_target.cpp
   src/pane/operations/resize_pane_command.cpp
   src/pane/program.cpp src/pane/pane_output_buffer.cpp src/pane/pane_output_reader.cpp
@@ -472,6 +476,7 @@ if(BUILD_TESTING)
     tests/cpp/copy_mode_test.cpp
     tests/cpp/pane_copy_mode_test.cpp
     tests/cpp/pane_copy_resize_test.cpp
+    tests/cpp/copy_mode_commands_test.cpp
     tests/cpp/option_test.cpp
     tests/cpp/stock_server_operation_catalog_test.cpp
     tests/cpp/cli_action_registry_test.cpp
@@ -535,6 +540,12 @@ if(BUILD_TESTING)
     add_test(NAME python-stock-commands COMMAND "${Python_EXECUTABLE}" -m pytest -q
       --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-command"
       "${CMAKE_SOURCE_DIR}/tests/compat/test_stock_commands.py")
+    add_test(NAME python-stock-copy-mode COMMAND "${Python_EXECUTABLE}" -m pytest -q
+      --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-copy"
+      "${CMAKE_SOURCE_DIR}/tests/compat/test_stock_copy_mode.py")
+    add_test(NAME python-copy-mode-clients COMMAND "${Python_EXECUTABLE}" -m pytest -q
+      --basetemp "${CMAKE_BINARY_DIR}/test_tmp/pc-attach"
+      "${CMAKE_SOURCE_DIR}/tests/compat/test_copy_mode_clients.py")
     # Layout reference matrices retain five-second bounds outside the mid loop.
     function(tmux_cxx_add_layout_reference_test name case)
       add_test(NAME "python-layout-${name}" COMMAND "${Python_EXECUTABLE}" -m pytest -q
@@ -562,7 +573,7 @@ if(BUILD_TESTING)
       --root "${CMAKE_SOURCE_DIR}/bindings/node")
     set_tests_properties(python-server python-shared-server python-session-events
       python-native-protocol python-stock-compatibility
-      python-stock-commands python-tooling
+      python-stock-commands python-stock-copy-mode python-copy-mode-clients python-tooling
       node-server node-server-lts PROPERTIES
       ENVIRONMENT "${test_environment}" TIMEOUT 5 LABELS "mid"
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")

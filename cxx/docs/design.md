@@ -38,7 +38,7 @@ A `PasteBuffer` owns its name, arbitrary bytes, automatic classification, and st
 
 `TerminalState` retains the libvterm parser, primary/alternate screens, cursor, rendition, and bounded history across output chunks. One UTF-8 decoder owns continuation; designated GL character sets map decoded ASCII, including after malformed bytes, independently of chunk boundaries. It owns copied snapshots and 64-KiB-bounded terminal replies. All access is serialized; C callbacks contain exceptions. A callback failure marks observations incomplete and stops later parser mutation. The default program terminal has 24 rows and 80 columns. Storage permits at most 16384 cells, 512 rows/columns, and 1000 history lines; reflow is disabled. `ClientView` composes every pane interior, basic ASCII layout borders, and the active-pane cursor from copied window state and outer-terminal dimensions. `ClientViewRefresh` decides when to compose and accepts redraw bytes into `ClientTerminal`; `ClientTerminalRouting` separately applies descriptor readiness and routes input to the selected pane. Overlays, modes, additional size policies, and capability-sensitive borders and output remain open.
 
-`ClientKeyInput` owns one attached client's active key table and at most 64 KiB of terminal bytes awaiting a routing decision. A prefix can therefore cross descriptor-read boundaries without leaking to the pane. The immutable `KeyTableCatalog` resolves normalized keys to operation-backed bindings; the mutable `KeyBindingRegistry` exists only during startup validation. `OptionCatalog` separately owns immutable option definitions; runtime `OptionTable` values remain with their server, session, or shared-window owner. The initial key parser accepts `None`, one ASCII byte, and `C-a` through `C-z` for `prefix` and `prefix2`. Either effective prefix takes precedence in `root`. An unmatched prefix-table key retries `root`, then is consumed when lookup began outside `root`, matching tmux's table transition. In the prefix table, `C-b` admits the configured primary prefix through `SendPaneInput`; `"` and `%` split the selected pane; `d` detaches the client; `o` resolves the next pane in logical pane order; and `]` pastes the newest automatic buffer. Binding backpressure must occur before effects: input then preserves the command key and active table for a later event-loop turn. `KeyBindingEffect::client_selection_changed` makes `ClientTerminalRouting` resolve the current session, window membership, window, and pane again before later bytes from the same read. `pane_program_input_changed` resolves input capacity again after send-prefix or paste before admitting the retained suffix; a one-pane `o` reports `client_selection_unchanged`. Complete tmux key decoding, configurable key tables and bindings, repeat timers, `Any` bindings, modes, and user-defined command lists remain open.
+`ClientKeyInput` owns one attached client's pending prefix state and at most 64 KiB of terminal bytes awaiting a routing decision. A prefix can therefore cross descriptor-read boundaries without leaking to the pane. The immutable `KeyTableCatalog` resolves normalized keys to operation-backed bindings; the mutable `KeyBindingRegistry` exists only during startup validation. `OptionCatalog` separately owns immutable option definitions; runtime `OptionTable` values remain with their server, session, or shared-window owner. The initial key parser accepts `None`, one ASCII byte, and `C-a` through `C-z` for `prefix` and `prefix2`. Either effective prefix takes precedence in the currently selected pane table. An unmatched prefix-table key retries `root`, then is consumed when lookup began outside `root`, matching tmux's table transition. In the prefix table, `C-b` admits the configured primary prefix through `SendPaneInput`; `"` and `%` split the selected pane; `d` detaches the client; `o` resolves the next pane in logical pane order; and `]` pastes the newest automatic buffer. Binding backpressure must occur before effects: input then preserves the command key and prefix state for a later event-loop turn. `KeyBindingEffect::client_selection_changed` makes `ClientTerminalRouting` resolve the current session, window membership, window, and pane again before later bytes from the same read. `pane_program_input_changed` resolves input capacity again after send-prefix or paste before admitting the retained suffix; a one-pane `o` reports `client_selection_unchanged`. Complete tmux key decoding, configurable key tables and bindings, repeat timers, `Any` bindings, additional modes, and user-defined command lists remain open.
 
 Each `ClientKeyInput` retains a 64-decision allowance for one daemon turn, shared across selection and input-capacity changes. Prefix transitions, matched bindings, and passthrough segments consume it. Exhaustion preserves bytes and table state; `ClientTerminalRoute::key_routing_deferred` schedules another turn without descriptor readiness. A rejected admission consumes no decision and does not request that continuation. Program backpressure instead waits for queue capacity from PTY progress.
 
@@ -52,7 +52,7 @@ operations still return `closed`; observed PTY EOF retains terminal state.
 
 `TerminalHistorySnapshot` copies retained primary rows followed by the active visible screen, preserving each row's original width and whether it continues its predecessor. A discarded predecessor remains visible through `history_gap`; alternate-screen capture excludes primary history. Capture does not advance parsing or drain terminal replies. Generated external hooks preserve row metadata before libvterm moves it; the terminal's private C++ callback context owns the retained copies.
 
-`PaneScreenSnapshot` carries the pane's displayed cells, cursor, dimensions, completeness, and display revision. Client composition consumes this value rather than the program parser snapshot. The current display is the program screen; copy mode will supply a frozen display with its own invalidation. Parser freshness and mode-view freshness must remain distinct.
+`PaneScreenSnapshot` carries the pane's displayed cells, cursor, dimensions, completeness, and display revision. Client composition consumes this value rather than the program parser snapshot. A pane displays either the live program screen or its owned frozen `CopyMode`. Display revisions combine the selected source revision with committed mode changes; program output behind a mode leaves display freshness unchanged. Cancellation restores the current program and advances display freshness.
 
 `PaneTextSnapshot` carries server/pane ownership, a terminal parser/resize revision, screen dimensions, cursor, UTF-8 rows, history gaps, and input status. Its revision differs from server metadata revisions. Wide-cell continuations add no text spaces. The snapshot omits rendition and client composition. Its `complete` flag describes callback processing, not full VT compatibility. Terminal history and screen text cannot recover discarded raw bytes.
 
@@ -104,14 +104,14 @@ A one-shot stock command awaiting its output-stream acknowledgement rejects a se
 
 Stock tmux 3.4 and 3.7 close an unattached control client after the initial command. The limited C++ subset deliberately keeps that channel open so a later registered command can attach or perform another supported action. Compatibility reports expose this fidelity-changing behavior as `unattached_control_channel_stays_open`; callers can distinguish it from stock behavior.
 
-The stock paste-buffer subset accepts `set-buffer [-b name] [--] data` and `paste-buffer [-b name] -t %pane`. Omitting `-b` selects automatic creation or default paste. `delete-buffer` still requires an explicit name. Native buffer enumeration exposes copied metadata; stock `list-buffers`, delete-after, custom separators, raw paste, bracketed paste, and copy mode remain unsupported and are named in compatibility reports.
+The stock paste-buffer subset accepts `set-buffer [-b name] [--] data` and `paste-buffer [-b name] -t %pane`. Omitting `-b` selects automatic creation or default paste. `delete-buffer` still requires an explicit name. Native buffer enumeration exposes copied metadata; stock `list-buffers`, delete-after, custom separators, raw paste, and bracketed paste remain unsupported and are named in compatibility reports.
 
 Paste preserves bytes except for LF-to-CR separators. The tmux 3.7 default
 paste command additionally escapes unsafe bytes through `utf8_stravisx`;
 that transformation is unsupported. Current stock-client paste evidence
 covers plain text and shell commands, not arbitrary-byte equivalence.
 
-Ordinary interactive clients use the effective global and session `prefix` and `prefix2` values to enter the prefix table. `set-option -g` assigns inherited defaults; `set-option -t target` assigns one session override after live target resolution. Those session options accept the declared single-byte key subset. The cross-scope command selects definitions from the immutable session or window catalog; `-w` forces window scope. Unset and implicit current-session forms remain unsupported. The prefix table contains `C-b` send-prefix, quote and percent split, `d` detach, `o` next-pane, `]` default paste, `n`/`p` window navigation, and digit window indices. Missing indices preserve selection and attachment without status feedback. Creation keys and configurable key tables remain unsupported. A matched prefix is retained across reads, an unmatched prefix-table key is consumed after root lookup, effect-free backpressure preserves the table and key for retry, pane targets resolve from current layout state, and detach restores the terminal while preserving the session.
+Ordinary interactive clients use the effective global and session `prefix` and `prefix2` values to enter the prefix table. `set-option -g` assigns inherited defaults; `set-option -t target` assigns one session override after live target resolution. Those session options accept the declared single-byte key subset. The cross-scope command selects definitions from the immutable session or window catalog; `-w` forces window scope. Unset and implicit current-session forms remain unsupported. The prefix table contains `C-b` send-prefix, quote and percent split, `d` detach, `o` next-pane, `[` copy mode, `]` default paste, `n`/`p` window navigation, and digit window indices. Missing indices preserve selection and attachment and report a bounded client error. Creation keys and configurable key tables remain unsupported. A matched prefix is retained across reads, an unmatched prefix-table key is consumed after root lookup, effect-free backpressure preserves the table and key for retry, pane targets resolve from current layout state, and detach restores the terminal while preserving the session.
 
 `Window` owns local `mode-keys` overrides and inherits live server-owned
 global window defaults. A local assignment pins its value even when equal
@@ -131,7 +131,37 @@ Native adapters reject mismatched ownership, targets, unknown enum values,
 malformed presence flags, and trailing bytes. Stock `set-window-option` and
 `set-option -w` share parsing and the same mutation operation. Only
 `mode-keys` is a supported window option; stock listing, unset, implicit
-targets, and actual copy-mode behavior remain open.
+targets remain open.
+
+`CopyMode` owns frozen backing, a cursor, character selection, and a viewport.
+The nine pane operations expose typed movement, boundary destinations,
+scrolling, selection, copying, cancellation, and owned observation values.
+`CopyModeCommandDescription` associates exact stock action names with typed
+request factories; counted and uncounted factories have distinct signatures.
+The immutable action catalog derives native dependencies for startup
+validation. Native transports and the daemon contain no action-name dispatch.
+
+The decoder recognizes bounded UTF-8, CSI, SS3, and Meta keys while retaining
+their original byte spans. One 10 ms first-fragment deadline joins existing
+poll readiness; fragments do not extend it. Completed backpressured keys
+advertise no deadline. Copy tables consume unmatched keys, prefix handling
+retains precedence, and mode changes re-resolve the pane before a retained
+suffix reaches the program. Permanent action failures consume their key and
+retain the attachment; the terminal stages one bounded latest error after
+queued redraw bytes. A later undelivered error replaces the earlier message.
+
+Copy resize prepares all backing candidates before PTY effects, then commits
+after the complete layout mutation succeeds, including split-program creation.
+Width changes reflow occupied cells; height changes preserve original history
+row widths. Both clear selection and clip the cursor using live window keys.
+Restoring terminal dimensions cannot undo a program's observed resize signal.
+
+`copy_keys_store_server_buffer` declares the default copy-pipe key adaptation:
+emacs Ctrl-w/Meta-w and vi Enter/Ctrl-j create an automatic server buffer and
+cancel mode. They invoke no clipboard, external command, or pipeline.
+Explicit stock copy-pipe commands remain unsupported. Search, word/rectangle
+selection, mouse, configurable mode styling, historical erased-cell high-water
+marks, and original tabs remain fidelity limits.
 
 Real unmodified tmux 3.4 and 3.7 clients exercise the declared command subset, including global and targeted prefix assignment, plus guarded control commands, control attachment and switching, no-replay raw pane output, session rename/catalog notifications, and the current interactive multi-pane redraw, selection, attach, resize, input, output, detach, and terminal-restoration path against the C++ daemon. The reverse adapter selects the profile explicitly, obtains release evidence from the connected server, and lists session names through one typed operation. Real mismatched-profile cases fail without stopping the owned server. Full interactive behavior, broader control grammar and notifications, pause/continue, control-mode format subscriptions, older named subsets, broader reverse operations, and language-visible reverse reports remain open. tmux 3.4 remains the first complete-baseline target.
 

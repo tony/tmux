@@ -10,6 +10,7 @@ namespace tmux_cxx::protocol::tmux {
 enum class ProtocolQuirk : std::uint8_t {
     zero_terminal_dimensions_use_defaults,
     unattached_control_channel_stays_open,
+    copy_keys_store_server_buffer,
 };
 
 /** @brief Declare where one adjustment applies and the fidelity change users can observe. */
@@ -43,6 +44,15 @@ constexpr ProtocolQuirkDescription protocol_quirk(ProtocolQuirk quirk) {
                 static_cast<std::uint8_t>(1U << static_cast<unsigned>(ConnectionMode::control)),
                 "the limited control subset does not yet attach a client to a session",
                 "an unattached control client may submit commands after its initial command",
+                true};
+    case ProtocolQuirk::copy_keys_store_server_buffer:
+        return {quirk,
+                "copy_keys_store_server_buffer",
+                ProtocolDirection::stock_client_to_cxx_server,
+                static_cast<std::uint8_t>(1U << static_cast<unsigned>(ConnectionMode::interactive)),
+                "basic copy keys use the shared C++ paste-buffer operation",
+                "default copy-pipe keys store an automatic server buffer and cancel copy mode; "
+                "clipboard, copy-command, and external pipelines are not invoked",
                 true};
     }
     return {quirk,     "unknown", ProtocolDirection::stock_client_to_cxx_server, 0, "unknown",
