@@ -18,9 +18,9 @@ const KeyTable::Binding *KeyTableCatalog::find_binding(std::string_view table_na
         return nullptr;
     }
     const auto binding = std::ranges::lower_bound(
-        table->bindings_, key.value, {},
-        /** @brief Compare one binding through its normalized key value. */
-        [](const KeyTable::Binding &candidate) { return candidate.description.key.value; });
+        table->bindings_, key, {},
+        /** @brief Compare one binding through its complete normalized key identity. */
+        [](const KeyTable::Binding &candidate) { return candidate.description.key; });
     if (binding == table->bindings_.end() || binding->description.key != key) {
         return nullptr;
     }

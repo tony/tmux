@@ -108,7 +108,8 @@ function(tmux_cxx_target target)
 endfunction()
 
 include(cmake/VTerm.cmake)
-add_library(tmux_cxx_terminal STATIC src/terminal/terminal_state.cpp)
+add_library(tmux_cxx_terminal STATIC src/terminal/terminal_state.cpp
+  src/terminal/terminal_key_decoder.cpp)
 add_library(tmux_cxx::terminal ALIAS tmux_cxx_terminal)
 target_include_directories(tmux_cxx_terminal PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -435,6 +436,7 @@ if(BUILD_TESTING)
     tests/cpp/command_registry_test.cpp tests/cpp/control_command_line_test.cpp
     tests/cpp/control_channel_test.cpp
     tests/cpp/key_table_test.cpp
+    tests/cpp/terminal_key_decoder_test.cpp
     tests/cpp/option_test.cpp
     tests/cpp/stock_server_operation_catalog_test.cpp
     tests/cpp/cli_action_registry_test.cpp
