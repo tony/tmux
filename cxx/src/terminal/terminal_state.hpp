@@ -31,6 +31,8 @@ class TerminalState {
     /** @brief Copy visible cells and cursor state; retained terminal history cannot recover
      * discarded raw output. */
     TerminalSnapshot snapshot() const;
+    /** @brief Read parser freshness without allocating a copied screen. */
+    std::uint64_t revision() const noexcept;
     /** @brief Copy chronological history and active visible rows without changing parser state.
      *
      * Alternate captures exclude primary history and its gap evidence. */

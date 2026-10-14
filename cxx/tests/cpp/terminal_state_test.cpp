@@ -14,6 +14,30 @@ std::u32string history_line_text(const TerminalLine &line) {
 }
 } // namespace
 
+/** @brief Retain written spaces and wide-cell extents separately from unoccupied row padding. */
+TEST(TerminalHistory, OccupiedColumnsSurviveCaptureAndHistoryResize) {
+    TerminalState terminal({2, 8}, 4);
+    ASSERT_TRUE(terminal.ingest_program_output("ab  \r\n\u754c "));
+    const auto first = terminal.history_snapshot();
+    ASSERT_EQ(first.lines.size(), 2U);
+    EXPECT_EQ(first.lines[0].used_columns, 4U);
+    EXPECT_EQ(first.lines[1].used_columns, 3U);
+    EXPECT_EQ(first.lines[1].cells[0].width, 2U);
+    EXPECT_EQ(first.lines[1].cells[1].width, 0U);
+    ASSERT_TRUE(terminal.ingest_program_output("\r\nZ"));
+    ASSERT_TRUE(terminal.resize({2, 4}));
+    const auto retained = terminal.history_snapshot();
+    ASSERT_EQ(retained.history_lines, 1U);
+    EXPECT_EQ(retained.lines[0].cells.size(), 8U);
+    EXPECT_EQ(retained.lines[0].used_columns, 4U);
+    EXPECT_EQ(retained.lines.back().used_columns, 1U);
+
+    TerminalState blank({2, 8});
+    const auto empty = blank.history_snapshot();
+    EXPECT_EQ(empty.lines[0].used_columns, 0U);
+    EXPECT_EQ(empty.lines[1].used_columns, 0U);
+}
+
 /** @brief Preserve chronological soft and hard row boundaries across every delivery fragment. */
 TEST(TerminalHistory, ChunkedRowsRetainBoundaryMetadata) {
     constexpr std::string_view output = "abcdEF\r\nGH\r\nIJ";

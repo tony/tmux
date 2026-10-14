@@ -326,6 +326,8 @@ TerminalSnapshot TerminalState::snapshot() const {
     return terminal_snapshot;
 }
 
+std::uint64_t TerminalState::revision() const noexcept { return parser_state_->revision; }
+
 TerminalHistorySnapshot TerminalState::history_snapshot() const {
     const auto visible = snapshot();
     const auto history_rows = visible.alternate_screen ? 0 : parser_state_->history.size();
@@ -343,7 +345,11 @@ TerminalHistorySnapshot TerminalState::history_snapshot() const {
         for (const auto &stored : parser_state_->history) {
             TerminalLine line{{}, stored.continuation};
             line.cells.reserve(stored.cells.size());
-            for (const auto &cell : stored.cells) {
+            for (std::size_t column = 0; column < stored.cells.size(); ++column) {
+                const auto &cell = stored.cells[column];
+                if (cell.chars[0] != 0) {
+                    line.used_columns = static_cast<std::uint32_t>(column + 1);
+                }
                 line.cells.push_back(copy_terminal_cell(cell));
             }
             captured.lines.push_back(std::move(line));
@@ -357,6 +363,15 @@ TerminalHistorySnapshot TerminalState::history_snapshot() const {
                 vterm_state_get_lineinfo(state, static_cast<int>(row))->continuation)};
         line.cells.assign(visible.cells.begin() + row * visible.size.columns,
                           visible.cells.begin() + (row + 1) * visible.size.columns);
+        for (std::uint32_t column = visible.size.columns; column > 0; --column) {
+            VTermScreenCell cell{};
+            vterm_screen_get_cell(parser_state_->screen,
+                                  {static_cast<int>(row), static_cast<int>(column - 1)}, &cell);
+            if (cell.chars[0] != 0) {
+                line.used_columns = column;
+                break;
+            }
+        }
         captured.lines.push_back(std::move(line));
     }
     return captured;

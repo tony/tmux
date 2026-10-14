@@ -7,6 +7,8 @@ namespace tmux_cxx::terminal {
 struct TerminalLine {
     std::vector<TerminalCell> cells; ///< Copied cells at the row's original width.
     bool continuation;               ///< This row continues the preceding logical line.
+    std::uint32_t used_columns =
+        0; ///< Raw occupied extent, including written spaces and wide padding.
 };
 
 /** @brief Capture chronological retained history followed by the active visible screen. */

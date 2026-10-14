@@ -41,7 +41,10 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t *data, std::size_t size
     }
     for (std::size_t row = 0; row < first_history.lines.size(); ++row) {
         if (first_history.lines[row].continuation != second_history.lines[row].continuation ||
-            first_history.lines[row].cells != second_history.lines[row].cells) {
+            first_history.lines[row].cells != second_history.lines[row].cells ||
+            first_history.lines[row].used_columns != second_history.lines[row].used_columns ||
+            first_history.lines[row].used_columns > first_history.lines[row].cells.size() ||
+            second_history.lines[row].used_columns > second_history.lines[row].cells.size()) {
             std::abort();
         }
     }
