@@ -37,7 +37,7 @@ sdist.exclude = ["_build/**", "bindings/node/node_modules/**", ".venv/**"]
 [tool.pytest.ini_options]
 testpaths = ["tests/integration", "tests/compat", "tests/tooling"]
 addopts = "-ra --strict-markers"
-markers = ["slow: independent stock layout oracles spawn many processes and belong in the outer loop"]
+markers = ["slow: stock layout oracles and retained-event overflow belong in the outer loop"]
 
 [tool.ruff]
 target-version = "py313"

@@ -476,8 +476,19 @@ if(BUILD_TESTING)
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/test_tmp")
     add_test(NAME python-server COMMAND "${Python_EXECUTABLE}" -m pytest -q
       --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-server"
-      "${CMAKE_SOURCE_DIR}/tests/integration/test_server.py"
+      "${CMAKE_SOURCE_DIR}/tests/integration/test_server.py")
+    add_test(NAME python-shared-server COMMAND "${Python_EXECUTABLE}" -m pytest -q
+      --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-shared"
       "${CMAKE_SOURCE_DIR}/tests/integration/test_shared_server.py")
+    add_test(NAME python-session-events COMMAND "${Python_EXECUTABLE}" -m pytest -q
+      --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-sevent" -m "not slow"
+      "${CMAKE_SOURCE_DIR}/tests/integration/test_session_events.py")
+    add_test(NAME python-session-retention-gap COMMAND "${Python_EXECUTABLE}" -m pytest -q
+      --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-sgap"
+      "${CMAKE_SOURCE_DIR}/tests/integration/test_session_events.py::test_session_event_stream_recovers_after_retention_gap")
+    set_tests_properties(python-session-retention-gap PROPERTIES
+      ENVIRONMENT "${test_environment}" TIMEOUT 5 LABELS "outer"
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_test(NAME python-native-protocol COMMAND "${Python_EXECUTABLE}" -m pytest -q
       --basetemp "${CMAKE_BINARY_DIR}/test_tmp/py-native"
       "${CMAKE_SOURCE_DIR}/tests/compat/test_native_replies.py")
@@ -512,7 +523,8 @@ if(BUILD_TESTING)
     add_test(NAME node-server-lts COMMAND "${CMAKE_SOURCE_DIR}/_build/tools/node_lts/bin/node"
       "${CMAKE_SOURCE_DIR}/bindings/node/node_modules/vitest/vitest.mjs" run
       --root "${CMAKE_SOURCE_DIR}/bindings/node")
-    set_tests_properties(python-server python-native-protocol python-stock-compatibility
+    set_tests_properties(python-server python-shared-server python-session-events
+      python-native-protocol python-stock-compatibility
       python-stock-commands python-tooling
       node-server node-server-lts PROPERTIES
       ENVIRONMENT "${test_environment}" TIMEOUT 5 LABELS "mid"
