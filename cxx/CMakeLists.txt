@@ -186,6 +186,16 @@ add_library(tmux_cxx_connection STATIC
   src/paste_buffer/operations/add_paste_buffer_native_adapter.cpp
   src/paste_buffer/operations/list_paste_buffers_native_adapter.cpp
   src/paste_buffer/operations/paste_top_buffer_native_adapter.cpp
+  src/pane/operations/enter_copy_mode_native_adapter.cpp
+  src/pane/operations/move_copy_cursor_native_adapter.cpp
+  src/pane/operations/move_copy_cursor_to_native_adapter.cpp
+  src/pane/operations/scroll_copy_mode_native_adapter.cpp
+  src/pane/operations/begin_copy_selection_native_adapter.cpp
+  src/pane/operations/clear_copy_selection_native_adapter.cpp
+  src/pane/operations/copy_selection_native_adapter.cpp
+  src/pane/operations/cancel_copy_mode_native_adapter.cpp
+  src/pane/operations/read_copy_mode_native_adapter.cpp
+  src/pane/copy_mode_native_codec.cpp
   src/paste_buffer/paste_buffer_native_codec.cpp)
 add_library(tmux_cxx::connection ALIAS tmux_cxx_connection)
 target_include_directories(tmux_cxx_connection PUBLIC
@@ -257,6 +267,16 @@ add_library(tmux_cxx_server STATIC
   src/pane/spawn_pane.cpp
   src/pane/terminal_geometry.cpp
   src/pane/pane_screen.cpp
+  src/pane/copy_mode.cpp
+  src/pane/operations/enter_copy_mode.cpp
+  src/pane/operations/move_copy_cursor.cpp
+  src/pane/operations/move_copy_cursor_to.cpp
+  src/pane/operations/scroll_copy_mode.cpp
+  src/pane/operations/begin_copy_selection.cpp
+  src/pane/operations/clear_copy_selection.cpp
+  src/pane/operations/copy_selection.cpp
+  src/pane/operations/cancel_copy_mode.cpp
+  src/pane/operations/read_copy_mode.cpp
   src/pane/operations/split_pane.cpp src/pane/operations/select_pane.cpp
   src/pane/operations/resize_pane.cpp
   src/pane/operations/list_panes.cpp
@@ -336,6 +356,12 @@ if(TMUX_CXX_BUILD_PYTHON_BINDING)
       include/tmux_cxx/window_link/window_link_snapshot.hpp
       include/tmux_cxx/pane/pane_snapshot.hpp
       include/tmux_cxx/pane/pane_text_snapshot.hpp
+      include/tmux_cxx/pane/copy_mode_snapshot.hpp
+      include/tmux_cxx/pane/copy_position.hpp
+      include/tmux_cxx/pane/copy_cursor_direction.hpp
+      include/tmux_cxx/pane/copy_cursor_destination.hpp
+      include/tmux_cxx/pane/copy_scroll_motion.hpp
+      include/tmux_cxx/pane/copy_selection_disposition.hpp
       include/tmux_cxx/paste_buffer/paste_buffer_snapshot.hpp
       include/tmux_cxx/window/window_options_snapshot.hpp
       include/tmux_cxx/window/mode_keys.hpp
@@ -356,6 +382,12 @@ if(TMUX_CXX_BUILD_NODE_BINDING)
       include/tmux_cxx/window_link/window_link_snapshot.hpp
       include/tmux_cxx/pane/pane_snapshot.hpp
       include/tmux_cxx/pane/pane_text_snapshot.hpp
+      include/tmux_cxx/pane/copy_mode_snapshot.hpp
+      include/tmux_cxx/pane/copy_position.hpp
+      include/tmux_cxx/pane/copy_cursor_direction.hpp
+      include/tmux_cxx/pane/copy_cursor_destination.hpp
+      include/tmux_cxx/pane/copy_scroll_motion.hpp
+      include/tmux_cxx/pane/copy_selection_disposition.hpp
       include/tmux_cxx/paste_buffer/paste_buffer_snapshot.hpp
       include/tmux_cxx/window/window_options_snapshot.hpp
       include/tmux_cxx/window/mode_keys.hpp
@@ -437,6 +469,9 @@ if(BUILD_TESTING)
     tests/cpp/control_channel_test.cpp
     tests/cpp/key_table_test.cpp
     tests/cpp/terminal_key_decoder_test.cpp
+    tests/cpp/copy_mode_test.cpp
+    tests/cpp/pane_copy_mode_test.cpp
+    tests/cpp/pane_copy_resize_test.cpp
     tests/cpp/option_test.cpp
     tests/cpp/stock_server_operation_catalog_test.cpp
     tests/cpp/cli_action_registry_test.cpp

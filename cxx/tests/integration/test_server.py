@@ -134,6 +134,87 @@ def test_window_mode_keys_are_inherited_and_shared(server: str) -> None:
     assert closed.value.operation == "window.set_option"
 
 
+def test_copy_mode_freezes_shared_display_and_copies_cells(server: str) -> None:
+    """Frozen backing and shared selections survive program output and connection disposal."""
+    with (
+        tmux_cxx.ServerConnection(server) as creator,
+        tmux_cxx.ServerConnection(server) as observer,
+    ):
+        session = creator.create_session("copy-mode", "/bin/cat")
+        assert creator.copy_mode(session.pane).mode is None
+        with pytest.raises(tmux_cxx.TmuxError) as zero:
+            creator.copy_mode(0)
+        assert zero.value.code == "invalid_argument"
+        creator.send_pane_input(session.pane, b"abc\n")
+        creator.wait_pane_output(session.pane, b"abc\r\n")
+        creator.enter_copy_mode(session.pane)
+        frozen = observer.copy_mode(session.pane)
+        assert frozen.pane == session.pane and re.fullmatch(r"[0-9a-f]{32}", frozen.server_instance)
+        assert frozen.mode is not None and frozen.mode.lines[0].startswith("abc")
+        assert frozen.mode.mode_keys == frozen.mode.highlight_keys == tmux_cxx.WindowModeKeys.EMACS
+        creator.move_copy_cursor_to(session.pane, tmux_cxx.CopyCursorDestination.HISTORY_START)
+        creator.move_copy_cursor_to(session.pane, tmux_cxx.CopyCursorDestination.LINE_START)
+        creator.begin_copy_selection(session.pane)
+        creator.move_copy_cursor(session.pane, tmux_cxx.CopyCursorDirection.RIGHT, 2)
+        selected = observer.copy_mode(session.pane)
+        assert selected.mode is not None and selected.mode.selection is not None
+        assert selected.mode.selection.anchor.column == 0
+        assert selected.mode.selection.end.column == 2
+        creator.move_copy_cursor(session.pane, tmux_cxx.CopyCursorDirection.RIGHT, 0)
+        assert observer.copy_mode(session.pane).display_revision == selected.display_revision
+        creator.enter_copy_mode(session.pane)
+        assert observer.copy_mode(session.pane).display_revision == selected.display_revision
+        creator.send_pane_input(session.pane, b"behind-copy-mode\n")
+        creator.wait_pane_output(session.pane, b"behind-copy-mode\r\n")
+        retained = observer.copy_mode(session.pane)
+        assert retained.mode is not None
+        assert retained.mode.source_revision == selected.mode.source_revision
+        assert retained.mode.lines == selected.mode.lines
+        assert retained.display_revision == selected.display_revision
+        assert observer.read_pane_text(session.pane).revision > retained.mode.source_revision
+        creator.set_window_option(session.window, "mode-keys", "vi")
+        changed_keys = observer.copy_mode(session.pane)
+        assert changed_keys.mode is not None
+        assert changed_keys.mode.mode_keys == tmux_cxx.WindowModeKeys.VI
+        assert changed_keys.mode.highlight_keys == tmux_cxx.WindowModeKeys.EMACS
+        copied = creator.copy_selection(
+            session.pane, tmux_cxx.CopySelectionDisposition.KEEP_SELECTION
+        )
+        assert copied is not None and copied.automatic and copied.byte_count == 3
+        assert observer.read_paste_buffer(copied.name) == b"abc"
+        creator.clear_copy_selection(session.pane)
+        cleared = observer.copy_mode(session.pane)
+        assert cleared.mode is not None and cleared.mode.selection is None
+        creator.begin_copy_selection(session.pane)
+        default_copy = creator.copy_selection(session.pane)
+        assert default_copy is not None and observer.read_paste_buffer(default_copy.name) == b"c"
+        cleared = observer.copy_mode(session.pane)
+        assert cleared.mode is not None and cleared.mode.selection is None
+        creator.scroll_copy_mode(session.pane, tmux_cxx.CopyScrollMotion.LINE_UP)
+        creator.begin_copy_selection(session.pane)
+        copied_cell = creator.copy_selection(
+            session.pane, tmux_cxx.CopySelectionDisposition.CANCEL_MODE
+        )
+        assert copied_cell is not None and observer.read_paste_buffer(copied_cell.name) == b"c"
+        assert observer.copy_mode(session.pane).mode is None
+        creator.cancel_copy_mode(session.pane)
+        creator.enter_copy_mode(session.pane)
+        creator.close()
+        assert observer.copy_mode(session.pane).mode is not None
+        assert (
+            observer.copy_selection(session.pane, tmux_cxx.CopySelectionDisposition.CANCEL_MODE)
+            is None
+        )
+        assert observer.copy_mode(session.pane).mode is None
+        observer.kill_session(session.id)
+        with pytest.raises(tmux_cxx.TmuxError) as stale:
+            observer.copy_mode(session.pane)
+        assert stale.value.code == "not_found" and stale.value.operation == "pane.copy_mode"
+    with pytest.raises(tmux_cxx.TmuxError) as closed:
+        creator.enter_copy_mode(session.pane)
+    assert closed.value.code == "closed" and closed.value.operation == "pane.enter_copy_mode"
+
+
 def test_error_preserves_code_and_operation(server: str) -> None:
     """A missing session reports its stable classification and requested operation."""
     with tmux_cxx.ServerConnection(server) as connection:

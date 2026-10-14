@@ -1,6 +1,11 @@
 #pragma once
 
 #include <tmux_cxx/client/client_snapshot.hpp>
+#include <tmux_cxx/pane/copy_cursor_destination.hpp>
+#include <tmux_cxx/pane/copy_cursor_direction.hpp>
+#include <tmux_cxx/pane/copy_mode_snapshot.hpp>
+#include <tmux_cxx/pane/copy_scroll_motion.hpp>
+#include <tmux_cxx/pane/copy_selection_disposition.hpp>
 #include <tmux_cxx/pane/pane_snapshot.hpp>
 #include <tmux_cxx/pane/pane_text_snapshot.hpp>
 #include <tmux_cxx/pane/resize_direction.hpp>
@@ -151,6 +156,27 @@ class Server {
     Result<std::string> read_pane_output(PaneId pane) const;
     /** @copybrief tmux_cxx::ServerConnection::read_pane_text */
     Result<PaneTextSnapshot> read_pane_text(PaneId pane) const;
+    /** @copybrief tmux_cxx::ServerConnection::enter_copy_mode */
+    Result<void> enter_copy_mode(PaneId pane);
+    /** @copybrief tmux_cxx::ServerConnection::move_copy_cursor */
+    Result<void> move_copy_cursor(PaneId pane, CopyCursorDirection direction,
+                                  std::uint32_t count = 1);
+    /** @copybrief tmux_cxx::ServerConnection::move_copy_cursor_to */
+    Result<void> move_copy_cursor_to(PaneId pane, CopyCursorDestination destination);
+    /** @copybrief tmux_cxx::ServerConnection::scroll_copy_mode */
+    Result<void> scroll_copy_mode(PaneId pane, CopyScrollMotion motion, std::uint32_t count = 1);
+    /** @copybrief tmux_cxx::ServerConnection::begin_copy_selection */
+    Result<void> begin_copy_selection(PaneId pane);
+    /** @copybrief tmux_cxx::ServerConnection::clear_copy_selection */
+    Result<void> clear_copy_selection(PaneId pane);
+    /** @copybrief tmux_cxx::ServerConnection::copy_selection */
+    Result<std::optional<PasteBufferSnapshot>> copy_selection(
+        PaneId pane,
+        CopySelectionDisposition disposition = CopySelectionDisposition::clear_selection);
+    /** @copybrief tmux_cxx::ServerConnection::cancel_copy_mode */
+    Result<void> cancel_copy_mode(PaneId pane);
+    /** @copybrief tmux_cxx::ServerConnection::copy_mode */
+    Result<CopyModeSnapshot> copy_mode(PaneId pane) const;
     /** @brief Borrow readable PTY descriptors until the next pane mutation or I/O event. */
     std::vector<std::pair<PaneId, int>> pane_pty_descriptors() const;
     /** @brief Advance one pane's input and output within separate 64-KiB byte budgets. */

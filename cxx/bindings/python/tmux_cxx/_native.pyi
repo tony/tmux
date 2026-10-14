@@ -34,6 +34,44 @@ class WindowModeKeys(enum.Enum):
 
     VI = 1
 
+class CopyCursorDirection(enum.Enum):
+    LEFT = 0
+
+    RIGHT = 1
+
+    UP = 2
+
+    DOWN = 3
+
+class CopyCursorDestination(enum.Enum):
+    LINE_START = 0
+
+    LINE_END = 1
+
+    HISTORY_START = 2
+
+    HISTORY_END = 3
+
+class CopyScrollMotion(enum.Enum):
+    LINE_UP = 0
+
+    LINE_DOWN = 1
+
+    HALF_PAGE_UP = 2
+
+    HALF_PAGE_DOWN = 3
+
+    PAGE_UP = 4
+
+    PAGE_DOWN = 5
+
+class CopySelectionDisposition(enum.Enum):
+    KEEP_SELECTION = 0
+
+    CLEAR_SELECTION = 1
+
+    CANCEL_MODE = 2
+
 class TmuxError(RuntimeError):
     code: str
     operation: str
@@ -407,6 +445,124 @@ class PaneTextSnapshot:
     def input_pending(self) -> bool:
         """Accepted input or terminal replies still await PTY delivery."""
 
+class CopyPosition:
+    """
+    Locate a cell in chronological frozen copy-mode backing, including retained history.
+    """
+
+    @property
+    def row(self) -> int:
+        """Absolute zero-based backing row."""
+
+    @property
+    def column(self) -> int:
+        """Zero-based cell column, including a permitted end-of-line position."""
+
+class CopySelectionSnapshot:
+    """Copy an explicit character selection in frozen backing coordinates."""
+
+    @property
+    def anchor(self) -> CopyPosition:
+        """Absolute backing cell where character selection began."""
+
+    @property
+    def end(self) -> CopyPosition:
+        """
+        Current cursor endpoint; extraction inclusion follows the live window key convention.
+        """
+
+class CopyModeStateSnapshot:
+    """Own the visible copy viewport, selection, and frozen-source evidence."""
+
+    @property
+    def rows(self) -> int:
+        """Current copy viewport height in character cells."""
+
+    @property
+    def columns(self) -> int:
+        """Current copy viewport width in character cells."""
+
+    @property
+    def backing_lines(self) -> int:
+        """Retained backing row count after any copy-owned reflow."""
+
+    @property
+    def viewport_top(self) -> int:
+        """Absolute backing row displayed at the viewport's top."""
+
+    @property
+    def cursor(self) -> CopyPosition:
+        """
+        Absolute frozen-backing cursor, including a permitted end-of-line position.
+        """
+
+    @property
+    def selection(self) -> CopySelectionSnapshot | None:
+        """Explicit character selection, absent until selection begins."""
+
+    @property
+    def source_revision(self) -> int:
+        """
+        Program parser revision captured on entry; later output does not change it.
+        """
+
+    @property
+    def source_history_lines(self) -> int:
+        """
+        Primary terminal-history rows captured on entry, before any copy-owned reflow.
+        """
+
+    @property
+    def alternate_screen(self) -> bool:
+        """Entry captured the alternate screen without hidden primary history."""
+
+    @property
+    def complete(self) -> bool:
+        """
+        The captured terminal state completed without a contained parser failure.
+        """
+
+    @property
+    def history_gap(self) -> bool:
+        """A history prefix had already been discarded before entry."""
+
+    @property
+    def mode_keys(self) -> WindowModeKeys:
+        """Live inherited window convention for input, movement, and extraction."""
+
+    @property
+    def highlight_keys(self) -> WindowModeKeys:
+        """Selection-highlight convention captured when this mode was entered."""
+
+    @property
+    def lines(self) -> list[str]:
+        """
+        Owned UTF-8 visible rows; wide-cell continuations add no duplicate text.
+        """
+
+class CopyModeSnapshot:
+    """
+    Observe one pane's copy mode without borrowing server or backing storage.
+    """
+
+    @property
+    def server_instance(self) -> str:
+        """Server instance owning this pane and copy observation."""
+
+    @property
+    def pane(self) -> int:
+        """Pane identity within the observed server instance."""
+
+    @property
+    def display_revision(self) -> int:
+        """
+        Freshness of the pane's chosen display, independent of program-parser revisions.
+        """
+
+    @property
+    def mode(self) -> CopyModeStateSnapshot | None:
+        """Frozen mode state, absent while the pane displays its program screen."""
+
 class ClientSnapshot:
     """
     Copy one client's attachment and terminal size without exposing live resources.
@@ -678,6 +834,49 @@ class ServerConnection:
     def read_pane_text(self, id: int) -> PaneTextSnapshot:
         """
         Copy pane text with terminal freshness and program-input state, separately from raw bytes.
+        """
+
+    def enter_copy_mode(self, pane: int) -> None:
+        """
+        Freeze retained pane backing; re-entry preserves the existing mode and selection.
+        """
+
+    def move_copy_cursor(self, pane: int, direction: CopyCursorDirection, count: int = 1) -> None:
+        """
+        Move a frozen cursor by relative cells; zero count preserves mode state.
+        """
+
+    def move_copy_cursor_to(self, pane: int, destination: CopyCursorDestination) -> None:
+        """Move a frozen cursor to an uncounted logical-line or history boundary."""
+
+    def scroll_copy_mode(self, pane: int, motion: CopyScrollMotion, count: int = 1) -> None:
+        """
+        Scroll frozen backing by line or page steps; zero count preserves mode state.
+        """
+
+    def begin_copy_selection(self, pane: int) -> None:
+        """Begin character selection at the current frozen cursor."""
+
+    def clear_copy_selection(self, pane: int) -> None:
+        """Clear selection and clip its cursor using current window keys."""
+
+    def copy_selection(
+        self,
+        pane: int,
+        disposition: CopySelectionDisposition = CopySelectionDisposition.CLEAR_SELECTION,
+    ) -> PasteBufferSnapshot | None:
+        """
+        Store selected cells as an automatic buffer before clearing selection or leaving copy mode.
+        """
+
+    def cancel_copy_mode(self, pane: int) -> None:
+        """
+        Leave copy mode for the live program display; inactive panes stay unchanged.
+        """
+
+    def copy_mode(self, pane: int) -> CopyModeSnapshot:
+        """
+        Copy owner-qualified mode state and display freshness, including inactive observations.
         """
 
     def wait_pane_output(self, pane: int, needle: bytes, timeout_ms: int = 500) -> bytes:

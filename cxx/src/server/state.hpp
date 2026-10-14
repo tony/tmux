@@ -2,6 +2,7 @@
 
 #include "client/client.hpp"
 #include "pane/pane.hpp"
+#include "pane/pending_copy_resize.hpp"
 #include "pane/program.hpp"
 #include "paste_buffer/paste_buffer_store.hpp"
 #include "session/session.hpp"
@@ -57,9 +58,13 @@ struct Server::State {
     ClientSnapshot client_snapshot(const Client &client) const;
     /** @brief Materialize one layout leaf with its owning window revision and selection state. */
     PaneSnapshot pane_snapshot(const Window &window, const PaneGeometry &geometry) const;
-    /** @brief Validate every pane, apply terminal sizes, and attempt prior sizes on failure. */
-    Result<void> resize_pane_terminals(std::span<const PaneGeometry> geometries,
-                                       std::span<const PaneGeometry> previous);
+    /** @brief Prepare copy reflow before terminal sizing; return candidates without changing live
+     * modes. */
+    Result<std::vector<PendingPaneCopyResize>>
+    resize_pane_terminals(std::span<const PaneGeometry> geometries,
+                          std::span<const PaneGeometry> previous);
+    /** @brief Commit prepared mode values after the containing geometry mutation succeeds. */
+    void commit_pane_copy_resizes(std::span<PendingPaneCopyResize> candidates) noexcept;
     /** @brief Attempt every prior pane size; already delivered program signals remain observable.
      */
     Result<void> restore_pane_terminal_sizes(std::span<const PaneGeometry> geometries);

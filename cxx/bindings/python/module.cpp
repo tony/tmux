@@ -47,6 +47,14 @@ NB_MODULE(_native, module) {
     namespace docs = tmux_cxx::binding_documentation;
     using tmux_cxx::ClientId;
     using tmux_cxx::ClientSnapshot;
+    using tmux_cxx::CopyCursorDestination;
+    using tmux_cxx::CopyCursorDirection;
+    using tmux_cxx::CopyModeSnapshot;
+    using tmux_cxx::CopyModeStateSnapshot;
+    using tmux_cxx::CopyPosition;
+    using tmux_cxx::CopyScrollMotion;
+    using tmux_cxx::CopySelectionDisposition;
+    using tmux_cxx::CopySelectionSnapshot;
     using tmux_cxx::PaneId;
     using tmux_cxx::PaneResizeDirection;
     using tmux_cxx::PaneSnapshot;
@@ -90,6 +98,27 @@ NB_MODULE(_native, module) {
     nb::enum_<WindowModeKeys>(module, "WindowModeKeys")
         .value("EMACS", WindowModeKeys::emacs)
         .value("VI", WindowModeKeys::vi);
+    nb::enum_<CopyCursorDirection>(module, "CopyCursorDirection")
+        .value("LEFT", CopyCursorDirection::left)
+        .value("RIGHT", CopyCursorDirection::right)
+        .value("UP", CopyCursorDirection::up)
+        .value("DOWN", CopyCursorDirection::down);
+    nb::enum_<CopyCursorDestination>(module, "CopyCursorDestination")
+        .value("LINE_START", CopyCursorDestination::line_start)
+        .value("LINE_END", CopyCursorDestination::line_end)
+        .value("HISTORY_START", CopyCursorDestination::history_start)
+        .value("HISTORY_END", CopyCursorDestination::history_end);
+    nb::enum_<CopyScrollMotion>(module, "CopyScrollMotion")
+        .value("LINE_UP", CopyScrollMotion::line_up)
+        .value("LINE_DOWN", CopyScrollMotion::line_down)
+        .value("HALF_PAGE_UP", CopyScrollMotion::half_page_up)
+        .value("HALF_PAGE_DOWN", CopyScrollMotion::half_page_down)
+        .value("PAGE_UP", CopyScrollMotion::page_up)
+        .value("PAGE_DOWN", CopyScrollMotion::page_down);
+    nb::enum_<CopySelectionDisposition>(module, "CopySelectionDisposition")
+        .value("KEEP_SELECTION", CopySelectionDisposition::keep_selection)
+        .value("CLEAR_SELECTION", CopySelectionDisposition::clear_selection)
+        .value("CANCEL_MODE", CopySelectionDisposition::cancel_mode);
     auto tmux_error_type = nb::exception<PythonTmuxError>(module, "TmuxError", PyExc_RuntimeError);
     nb::register_exception_translator(
         /** @brief Attach the native error classification and operation while holding the GIL. */
@@ -260,6 +289,45 @@ NB_MODULE(_native, module) {
         .def_ro("history_gap", &PaneTextSnapshot::history_gap, docs::pane_text_history_gap)
         .def_ro("input_open", &PaneTextSnapshot::input_open, docs::pane_text_input_open)
         .def_ro("input_pending", &PaneTextSnapshot::input_pending, docs::pane_text_input_pending);
+    nb::class_<CopyPosition>(module, "CopyPosition", docs::copy_position_type)
+        .def_ro("row", &CopyPosition::row, docs::copy_position_row)
+        .def_ro("column", &CopyPosition::column, docs::copy_position_column);
+    nb::class_<CopySelectionSnapshot>(module, "CopySelectionSnapshot", docs::copy_selection_type)
+        .def_ro("anchor", &CopySelectionSnapshot::anchor, docs::copy_selection_anchor)
+        .def_ro("end", &CopySelectionSnapshot::end, docs::copy_selection_end);
+    nb::class_<CopyModeStateSnapshot>(module, "CopyModeStateSnapshot", docs::copy_mode_state_type)
+        .def_ro("rows", &CopyModeStateSnapshot::rows, docs::copy_mode_state_rows)
+        .def_ro("columns", &CopyModeStateSnapshot::columns, docs::copy_mode_state_columns)
+        .def_ro("backing_lines", &CopyModeStateSnapshot::backing_lines,
+                docs::copy_mode_state_backing_lines)
+        .def_ro("viewport_top", &CopyModeStateSnapshot::viewport_top,
+                docs::copy_mode_state_viewport_top)
+        .def_ro("cursor", &CopyModeStateSnapshot::cursor, docs::copy_mode_state_cursor)
+        .def_ro("selection", &CopyModeStateSnapshot::selection, docs::copy_mode_state_selection)
+        .def_ro("source_revision", &CopyModeStateSnapshot::source_revision,
+                docs::copy_mode_state_source_revision)
+        .def_ro("source_history_lines", &CopyModeStateSnapshot::source_history_lines,
+                docs::copy_mode_state_source_history_lines)
+        .def_ro("alternate_screen", &CopyModeStateSnapshot::alternate_screen,
+                docs::copy_mode_state_alternate_screen)
+        .def_ro("complete", &CopyModeStateSnapshot::complete, docs::copy_mode_state_complete)
+        .def_ro("history_gap", &CopyModeStateSnapshot::history_gap,
+                docs::copy_mode_state_history_gap)
+        .def_ro("mode_keys", &CopyModeStateSnapshot::mode_keys, docs::copy_mode_state_mode_keys)
+        .def_ro("highlight_keys", &CopyModeStateSnapshot::highlight_keys,
+                docs::copy_mode_state_highlight_keys)
+        .def_ro("lines", &CopyModeStateSnapshot::lines, docs::copy_mode_state_lines);
+    nb::class_<CopyModeSnapshot>(module, "CopyModeSnapshot", docs::copy_mode_type)
+        .def_ro("server_instance", &CopyModeSnapshot::server_instance,
+                docs::copy_mode_server_instance)
+        .def_prop_ro(
+            "pane", /** @brief Materialize the copied pane identity without exposing server storage.
+                     */
+            [](const CopyModeSnapshot &snapshot) { return snapshot.pane.value; },
+            docs::copy_mode_pane)
+        .def_ro("display_revision", &CopyModeSnapshot::display_revision,
+                docs::copy_mode_display_revision)
+        .def_ro("mode", &CopyModeSnapshot::mode, docs::copy_mode_mode);
     nb::class_<ClientSnapshot>(module, "ClientSnapshot", docs::client_type)
         .def_prop_ro(
             "id", /** @brief Expose this connection-lifetime client identity as an exact integer. */
@@ -601,6 +669,66 @@ NB_MODULE(_native, module) {
                 return unwrap(self.read_pane_text(PaneId{id}));
             },
             nb::arg("id"), docs::read_pane_text, nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "enter_copy_mode", /** @copybrief tmux_cxx::ServerConnection::enter_copy_mode */
+            [](ServerConnection &self, std::uint64_t pane) {
+                unwrap(self.enter_copy_mode(PaneId{pane}));
+            },
+            nb::arg("pane"), docs::enter_copy_mode, nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "move_copy_cursor", /** @copybrief tmux_cxx::ServerConnection::move_copy_cursor */
+            [](ServerConnection &self, std::uint64_t pane, CopyCursorDirection direction,
+               std::uint32_t count) {
+                unwrap(self.move_copy_cursor(PaneId{pane}, direction, count));
+            },
+            nb::arg("pane"), nb::arg("direction"), nb::arg("count") = 1, docs::move_copy_cursor,
+            nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "move_copy_cursor_to", /** @copybrief tmux_cxx::ServerConnection::move_copy_cursor_to */
+            [](ServerConnection &self, std::uint64_t pane, CopyCursorDestination destination) {
+                unwrap(self.move_copy_cursor_to(PaneId{pane}, destination));
+            },
+            nb::arg("pane"), nb::arg("destination"), docs::move_copy_cursor_to,
+            nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "scroll_copy_mode", /** @copybrief tmux_cxx::ServerConnection::scroll_copy_mode */
+            [](ServerConnection &self, std::uint64_t pane, CopyScrollMotion motion,
+               std::uint32_t count) { unwrap(self.scroll_copy_mode(PaneId{pane}, motion, count)); },
+            nb::arg("pane"), nb::arg("motion"), nb::arg("count") = 1, docs::scroll_copy_mode,
+            nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "begin_copy_selection", /** @copybrief tmux_cxx::ServerConnection::begin_copy_selection
+                                     */
+            [](ServerConnection &self, std::uint64_t pane) {
+                unwrap(self.begin_copy_selection(PaneId{pane}));
+            },
+            nb::arg("pane"), docs::begin_copy_selection, nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "clear_copy_selection", /** @copybrief tmux_cxx::ServerConnection::clear_copy_selection
+                                     */
+            [](ServerConnection &self, std::uint64_t pane) {
+                unwrap(self.clear_copy_selection(PaneId{pane}));
+            },
+            nb::arg("pane"), docs::clear_copy_selection, nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "copy_selection", /** @copybrief tmux_cxx::ServerConnection::copy_selection */
+            [](ServerConnection &self, std::uint64_t pane, CopySelectionDisposition disposition) {
+                return unwrap(self.copy_selection(PaneId{pane}, disposition));
+            },
+            nb::arg("pane"), nb::arg("disposition") = CopySelectionDisposition::clear_selection,
+            docs::copy_selection, nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "cancel_copy_mode", /** @copybrief tmux_cxx::ServerConnection::cancel_copy_mode */
+            [](ServerConnection &self, std::uint64_t pane) {
+                unwrap(self.cancel_copy_mode(PaneId{pane}));
+            },
+            nb::arg("pane"), docs::cancel_copy_mode, nb::call_guard<nb::gil_scoped_release>())
+        .def(
+            "copy_mode", /** @copybrief tmux_cxx::ServerConnection::copy_mode */
+            [](ServerConnection &self, std::uint64_t pane) {
+                return unwrap(self.copy_mode(PaneId{pane}));
+            },
+            nb::arg("pane"), docs::copy_mode, nb::call_guard<nb::gil_scoped_release>())
         .def(
             "wait_pane_output", /** @brief Copy the byte pattern, release the GIL while waiting, and
                                    materialize bytes after reacquisition. */

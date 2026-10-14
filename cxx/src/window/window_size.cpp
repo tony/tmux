@@ -36,13 +36,14 @@ Result<void> LatestClientWindowSize::apply_to_window(Server &server, WindowId wi
     }
     const auto previous_geometry = window->second.layout.panes();
     const auto candidate_geometry = candidate_layout.panes();
-    if (auto resized = server.state_->resize_pane_terminals(candidate_geometry, previous_geometry);
-        !resized) {
-        return resized;
+    auto resized = server.state_->resize_pane_terminals(candidate_geometry, previous_geometry);
+    if (!resized) {
+        return std::unexpected(resized.error());
     }
     window->second.layout = std::move(candidate_layout);
     window->second.size = *candidate_size;
     window->second.revision = ++server.state_->revision;
+    server.state_->commit_pane_copy_resizes(*resized);
     for (auto &[client_id, client] : server.state_->clients) {
         (void)client_id;
         if (!client->session) {

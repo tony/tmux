@@ -28,6 +28,27 @@ def window_options_metadata(
     return native_bytes(owner) + target + struct.pack("<IQ", mode_keys, revision)
 
 
+def copy_mode_metadata(
+    *,
+    owner: bytes = b"2" * 32,
+    pane: int = 1,
+    dimensions: tuple[int, int, int, int] = (1, 3, 1, 0),
+    cursor: tuple[int, int] = (0, 0),
+    flags: int = 2,
+    keys: tuple[int, int] = (0, 0),
+    selection: bytes = b"\0\0",
+    line: bytes = b"abc",
+) -> bytes:
+    """Encode bounded frozen state for controlled ownership, coordinate, and enum corruption."""
+    return (
+        native_bytes(owner)
+        + struct.pack("<QQH", pane, 1, 1)
+        + struct.pack("<6IQIH2I", *dimensions, *cursor, 0, 0, flags, *keys)
+        + selection
+        + native_bytes(line)
+    )
+
+
 def read_native_frame(peer: socket.socket) -> tuple[int, bytes]:
     """Receive one complete bounded frame under the socket's declared timeout."""
     request = bytearray()
@@ -235,6 +256,48 @@ def test_native_reply_rejects_untrusted_envelope(
         (40, "window.options", 0, 32768, window_options_metadata(b"2" * 32, mode_keys=2)),
         (40, "window.options", 0, 32768, window_options_metadata(b"2" * 32, revision=0)),
         (40, "window.options", 0, 32768, window_options_metadata(b"2" * 32) + b"extra"),
+        (41, "pane.enter_copy_mode", 1, 65536, b"extra"),
+        (42, "pane.move_copy_cursor", 1, 65536, b"extra"),
+        (43, "pane.move_copy_cursor_to", 1, 65536, b"extra"),
+        (44, "pane.scroll_copy_mode", 1, 65536, b"extra"),
+        (45, "pane.begin_copy_selection", 1, 65536, b"extra"),
+        (46, "pane.clear_copy_selection", 1, 65536, b"extra"),
+        (47, "pane.copy_selection", 1, 65536, struct.pack("<H", 2)),
+        (
+            47,
+            "pane.copy_selection",
+            1,
+            65536,
+            struct.pack("<H", 1) + paste_buffer_metadata(b"named", 0, 1),
+        ),
+        (48, "pane.cancel_copy_mode", 1, 65536, b"extra"),
+        (49, "pane.copy_mode", 0, 65536, native_bytes(b"2" * 32) + struct.pack("<QQH", 1, 1, 2)),
+        (49, "pane.copy_mode", 0, 65536, copy_mode_metadata(owner=b"3" * 32)),
+        (49, "pane.copy_mode", 0, 65536, copy_mode_metadata(pane=2)),
+        (49, "pane.copy_mode", 0, 65536, copy_mode_metadata(dimensions=(1, 513, 1, 0))),
+        (49, "pane.copy_mode", 0, 65536, copy_mode_metadata(dimensions=(1, 3, 528897, 0))),
+        (49, "pane.copy_mode", 0, 65536, copy_mode_metadata(dimensions=(1, 3, 1, 1))),
+        (49, "pane.copy_mode", 0, 65536, copy_mode_metadata(cursor=(0, 4))),
+        (
+            49,
+            "pane.copy_mode",
+            0,
+            65536,
+            copy_mode_metadata(dimensions=(1, 3, 2, 0), cursor=(1, 0)),
+        ),
+        (49, "pane.copy_mode", 0, 65536, copy_mode_metadata(flags=8)),
+        (49, "pane.copy_mode", 0, 65536, copy_mode_metadata(keys=(2, 0))),
+        (49, "pane.copy_mode", 0, 65536, copy_mode_metadata(keys=(0, 2))),
+        (49, "pane.copy_mode", 0, 65536, copy_mode_metadata(selection=struct.pack("<H", 2))),
+        (
+            49,
+            "pane.copy_mode",
+            0,
+            65536,
+            copy_mode_metadata(selection=struct.pack("<H4I", 1, 0, 0, 0, 1)),
+        ),
+        (49, "pane.copy_mode", 0, 65536, copy_mode_metadata(line=b"\xff")),
+        (49, "pane.copy_mode", 0, 65536, copy_mode_metadata() + b"extra"),
     ],
     ids=[
         "create-invalid-utf8",
@@ -269,6 +332,30 @@ def test_native_reply_rejects_untrusted_envelope(
         "window-options-unknown-mode",
         "window-options-zero-window-revision",
         "window-options-excess",
+        "copy-enter-excess",
+        "copy-move-excess",
+        "copy-destination-excess",
+        "copy-scroll-excess",
+        "copy-begin-excess",
+        "copy-clear-excess",
+        "copy-buffer-invalid-optional",
+        "copy-buffer-named-result",
+        "copy-cancel-excess",
+        "copy-mode-invalid-optional",
+        "copy-mode-wrong-owner",
+        "copy-mode-wrong-pane",
+        "copy-mode-excess-columns",
+        "copy-mode-excess-backing",
+        "copy-mode-invalid-viewport",
+        "copy-mode-invalid-cursor",
+        "copy-mode-cursor-outside-viewport",
+        "copy-mode-unknown-flags",
+        "copy-mode-unknown-live-keys",
+        "copy-mode-unknown-highlight-keys",
+        "copy-mode-invalid-selection-optional",
+        "copy-mode-selection-end-not-cursor",
+        "copy-mode-invalid-utf8",
+        "copy-mode-excess",
     ],
 )
 def test_native_success_payload_rejection_retains_context(
@@ -350,6 +437,26 @@ def test_native_success_payload_rejection_retains_context(
                             connection.set_window_option(window_target, "mode-keys", "vi")
                         case "window.options":
                             connection.window_options(window_target)
+                        case "pane.enter_copy_mode":
+                            connection.enter_copy_mode(1)
+                        case "pane.move_copy_cursor":
+                            connection.move_copy_cursor(1, tmux_cxx.CopyCursorDirection.RIGHT)
+                        case "pane.move_copy_cursor_to":
+                            connection.move_copy_cursor_to(
+                                1, tmux_cxx.CopyCursorDestination.LINE_START
+                            )
+                        case "pane.scroll_copy_mode":
+                            connection.scroll_copy_mode(1, tmux_cxx.CopyScrollMotion.LINE_UP)
+                        case "pane.begin_copy_selection":
+                            connection.begin_copy_selection(1)
+                        case "pane.clear_copy_selection":
+                            connection.clear_copy_selection(1)
+                        case "pane.copy_selection":
+                            connection.copy_selection(1)
+                        case "pane.cancel_copy_mode":
+                            connection.cancel_copy_mode(1)
+                        case "pane.copy_mode":
+                            connection.copy_mode(1)
                         case _:
                             raise AssertionError("unknown controlled operation fixture")
                 assert failure.value.code == "protocol"

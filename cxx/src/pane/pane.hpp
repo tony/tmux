@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pane/copy_mode.hpp"
 #include "pane/pane_output_buffer.hpp"
 #include "pane/pane_program_input.hpp"
 #include "platform/posix/owned_fd.hpp"
@@ -32,14 +33,24 @@ struct Pane {
     /** @brief Copy the pane's displayed cells and cursor without exposing parser or program facts.
      */
     PaneScreenSnapshot screen_snapshot() const;
+    /** @brief Advance pane display freshness after a committed copy-mode change. */
+    void touch_copy_display() noexcept;
+    /** @brief Combine the selected source revision with committed copy-display changes. */
+    std::uint64_t display_revision() const noexcept;
     PaneId id;               ///< Stable server-local pane identity.
     WindowId window;         ///< Shared window that exclusively owns this pane.
     posix::OwnedFd pty;      ///< Owned PTY master retained through output draining.
     PaneOutputBuffer output; ///< Bounded raw PTY stream with absolute observation cursors.
     terminal::TerminalState
         terminal; ///< Retained parser, screen, and history independent of raw retention.
+    std::optional<CopyMode>
+        copy_mode;                  ///< Pane-owned frozen display retained through client disposal.
     PaneProgramInput program_input; ///< Ordered input awaiting nonblocking PTY delivery.
     std::string terminal_replies;   ///< Earlier query replies awaiting input capacity before later
                                     ///< output is parsed.
+
+  private:
+    std::uint64_t copy_display_changes_ =
+        0; ///< Committed mode changes accumulated across entry and exit.
 };
 } // namespace tmux_cxx

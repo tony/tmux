@@ -48,6 +48,29 @@ KINDS = {
     "void": ("void", "void"),
     "error_code": ("TmuxErrorCode", "string"),
     "pane_text": ("PaneTextSnapshot", "PaneTextSnapshot"),
+    "copy_cursor_direction": ("CopyCursorDirection", '"left" | "right" | "up" | "down"'),
+    "copy_cursor_destination": (
+        "CopyCursorDestination",
+        '"line_start" | "line_end" | "history_start" | "history_end"',
+    ),
+    "copy_scroll_motion": (
+        "CopyScrollMotion",
+        '"line_up" | "line_down" | "half_page_up" | "half_page_down" | "page_up" | "page_down"',
+    ),
+    "copy_selection_disposition": (
+        "CopySelectionDisposition",
+        '"keep_selection" | "clear_selection" | "cancel_mode"',
+    ),
+    "copy_position": ("CopyPosition", "CopyPosition"),
+    "optional_copy_selection": (
+        "std::optional<CopySelectionSnapshot>",
+        "CopySelectionSnapshot | null",
+    ),
+    "optional_copy_mode_state": (
+        "std::optional<CopyModeStateSnapshot>",
+        "CopyModeStateSnapshot | null",
+    ),
+    "copy_mode": ("CopyModeSnapshot", "CopyModeSnapshot"),
     "pane": ("PaneSnapshot", "PaneSnapshot"),
     "panes": ("std::vector<PaneSnapshot>", "PaneSnapshot[]"),
     "paste_buffer": ("PasteBufferSnapshot", "PasteBufferSnapshot"),
@@ -405,6 +428,19 @@ def compiled_contract(exposure: Exposure) -> str:
                 f"static_assert(std::is_same_v<decltype({snapshot.type}::{value.name}), "
                 f"{KINDS[value.kind][0]}>);"
             )
+    for kind, catalog in (
+        ("copy_cursor_direction", "copy_cursor_directions"),
+        ("copy_cursor_destination", "copy_cursor_destinations"),
+        ("copy_scroll_motion", "copy_scroll_motions"),
+        ("copy_selection_disposition", "copy_selection_dispositions"),
+    ):
+        if any(parameter.kind == kind for op in exposure.operations for parameter in op.parameters):
+            names = re.findall(r'"([^"]+)"', KINDS[kind][1])
+            lines.append(f"static_assert({catalog}.size() == {len(names)});")
+            lines += [
+                f"static_assert({catalog}[{index}].name == {json.dumps(name)});"
+                for index, name in enumerate(names)
+            ]
     if any(
         value.kind == "window_mode_keys"
         for snapshot in exposure.snapshots

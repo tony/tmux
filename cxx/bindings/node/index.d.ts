@@ -239,6 +239,66 @@ export interface WindowLinkSnapshot {
   readonly revision: bigint;
 }
 
+/** Locate a cell in chronological frozen copy-mode backing, including retained history. */
+export interface CopyPosition {
+  /** Absolute zero-based backing row. */
+  readonly row: number;
+  /** Zero-based cell column, including a permitted end-of-line position. */
+  readonly column: number;
+}
+
+/** Copy an explicit character selection in frozen backing coordinates. */
+export interface CopySelectionSnapshot {
+  /** Absolute backing cell where character selection began. */
+  readonly anchor: CopyPosition;
+  /** Current cursor endpoint; extraction inclusion follows the live window key convention. */
+  readonly end: CopyPosition;
+}
+
+/** Own the visible copy viewport, selection, and frozen-source evidence. */
+export interface CopyModeStateSnapshot {
+  /** Current copy viewport height in character cells. */
+  readonly rows: number;
+  /** Current copy viewport width in character cells. */
+  readonly columns: number;
+  /** Retained backing row count after any copy-owned reflow. */
+  readonly backingLines: number;
+  /** Absolute backing row displayed at the viewport's top. */
+  readonly viewportTop: number;
+  /** Absolute frozen-backing cursor, including a permitted end-of-line position. */
+  readonly cursor: CopyPosition;
+  /** Explicit character selection, absent until selection begins. */
+  readonly selection: CopySelectionSnapshot | null;
+  /** Program parser revision captured on entry; later output does not change it. */
+  readonly sourceRevision: bigint;
+  /** Primary terminal-history rows captured on entry, before any copy-owned reflow. */
+  readonly sourceHistoryLines: number;
+  /** Entry captured the alternate screen without hidden primary history. */
+  readonly alternateScreen: boolean;
+  /** The captured terminal state completed without a contained parser failure. */
+  readonly complete: boolean;
+  /** A history prefix had already been discarded before entry. */
+  readonly historyGap: boolean;
+  /** Live inherited window convention for input, movement, and extraction. */
+  readonly modeKeys: "emacs" | "vi";
+  /** Selection-highlight convention captured when this mode was entered. */
+  readonly highlightKeys: "emacs" | "vi";
+  /** Owned UTF-8 visible rows; wide-cell continuations add no duplicate text. */
+  readonly lines: string[];
+}
+
+/** Observe one pane's copy mode without borrowing server or backing storage. */
+export interface CopyModeSnapshot {
+  /** Server instance owning this pane and copy observation. */
+  readonly serverInstance: string;
+  /** Pane identity within the observed server instance. */
+  readonly pane: bigint;
+  /** Freshness of the pane's chosen display, independent of program-parser revisions. */
+  readonly displayRevision: bigint;
+  /** Frozen mode state, absent while the pane displays its program screen. */
+  readonly mode: CopyModeStateSnapshot | null;
+}
+
 export type SessionEvent =
   | (SessionCreatedEvent & { readonly kind: "session_created" })
   | (SessionRenamedEvent & { readonly kind: "session_renamed" })
@@ -383,6 +443,38 @@ export class ServerConnection {
   setWindowOption(target: bigint | null, name: string, value: string): Promise<void>;
   /** Copy owner-qualified effective window options or their global defaults. */
   windowOptions(target: bigint | null): Promise<WindowOptionsSnapshot>;
+  /** Freeze retained pane backing; re-entry preserves the existing mode and selection. */
+  enterCopyMode(pane: bigint): Promise<void>;
+  /** Move a frozen cursor by relative cells; zero count preserves mode state. */
+  moveCopyCursor(
+    pane: bigint,
+    direction: "left" | "right" | "up" | "down",
+    count?: number,
+  ): Promise<void>;
+  /** Move a frozen cursor to an uncounted logical-line or history boundary. */
+  moveCopyCursorTo(
+    pane: bigint,
+    destination: "line_start" | "line_end" | "history_start" | "history_end",
+  ): Promise<void>;
+  /** Scroll frozen backing by line or page steps; zero count preserves mode state. */
+  scrollCopyMode(
+    pane: bigint,
+    motion: "line_up" | "line_down" | "half_page_up" | "half_page_down" | "page_up" | "page_down",
+    count?: number,
+  ): Promise<void>;
+  /** Begin character selection at the current frozen cursor. */
+  beginCopySelection(pane: bigint): Promise<void>;
+  /** Clear selection and clip its cursor using current window keys. */
+  clearCopySelection(pane: bigint): Promise<void>;
+  /** Store selected cells as an automatic buffer before clearing selection or leaving copy mode. */
+  copySelection(
+    pane: bigint,
+    disposition?: "keep_selection" | "clear_selection" | "cancel_mode",
+  ): Promise<PasteBufferSnapshot | null>;
+  /** Leave copy mode for the live program display; inactive panes stay unchanged. */
+  cancelCopyMode(pane: bigint): Promise<void>;
+  /** Copy owner-qualified mode state and display freshness, including inactive observations. */
+  copyMode(pane: bigint): Promise<CopyModeSnapshot>;
   /** Establish an atomic session baseline and an independently cancellable event stream. */
   subscribeSessions(): Promise<SessionEventStream>;
   /** Stop admission for this connection and streams sharing its native channel. */

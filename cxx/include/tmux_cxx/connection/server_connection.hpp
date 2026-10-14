@@ -1,6 +1,11 @@
 #pragma once
 
 #include <tmux_cxx/client/client_snapshot.hpp>
+#include <tmux_cxx/pane/copy_cursor_destination.hpp>
+#include <tmux_cxx/pane/copy_cursor_direction.hpp>
+#include <tmux_cxx/pane/copy_mode_snapshot.hpp>
+#include <tmux_cxx/pane/copy_scroll_motion.hpp>
+#include <tmux_cxx/pane/copy_selection_disposition.hpp>
 #include <tmux_cxx/pane/pane_snapshot.hpp>
 #include <tmux_cxx/pane/pane_text_snapshot.hpp>
 #include <tmux_cxx/pane/resize_direction.hpp>
@@ -137,6 +142,29 @@ class ServerConnection {
     /** @brief Copy pane text with terminal freshness and program-input state, separately from raw
      * bytes. */
     Result<PaneTextSnapshot> read_pane_text(PaneId pane);
+    /** @brief Freeze retained pane backing; re-entry preserves the existing mode and selection. */
+    Result<void> enter_copy_mode(PaneId pane);
+    /** @brief Move a frozen cursor by relative cells; zero count preserves mode state. */
+    Result<void> move_copy_cursor(PaneId pane, CopyCursorDirection direction,
+                                  std::uint32_t count = 1);
+    /** @brief Move a frozen cursor to an uncounted logical-line or history boundary. */
+    Result<void> move_copy_cursor_to(PaneId pane, CopyCursorDestination destination);
+    /** @brief Scroll frozen backing by line or page steps; zero count preserves mode state. */
+    Result<void> scroll_copy_mode(PaneId pane, CopyScrollMotion motion, std::uint32_t count = 1);
+    /** @brief Begin character selection at the current frozen cursor. */
+    Result<void> begin_copy_selection(PaneId pane);
+    /** @brief Clear selection and clip its cursor using current window keys. */
+    Result<void> clear_copy_selection(PaneId pane);
+    /** @brief Store selected cells as an automatic buffer before clearing selection or leaving copy
+     * mode. */
+    Result<std::optional<PasteBufferSnapshot>> copy_selection(
+        PaneId pane,
+        CopySelectionDisposition disposition = CopySelectionDisposition::clear_selection);
+    /** @brief Leave copy mode for the live program display; inactive panes stay unchanged. */
+    Result<void> cancel_copy_mode(PaneId pane);
+    /** @brief Copy owner-qualified mode state and display freshness, including inactive
+     * observations. */
+    Result<CopyModeSnapshot> copy_mode(PaneId pane);
     /** @brief Await a nonempty byte pattern with a deadline of 1..750 milliseconds. */
     Result<std::string> wait_pane_output(PaneId pane, std::string needle,
                                          std::uint32_t timeout_ms = 500);

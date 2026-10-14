@@ -24,12 +24,13 @@ Result<PaneSnapshot> Server::resize_pane(PaneId pane_id, PaneResizeDirection dir
         return std::unexpected(changed.error());
     }
     if (*changed) {
-        if (auto resized = state_->resize_pane_terminals(candidate.panes(), window.layout.panes());
-            !resized) {
+        auto resized = state_->resize_pane_terminals(candidate.panes(), window.layout.panes());
+        if (!resized) {
             return std::unexpected(resized.error());
         }
         window.layout = std::move(candidate);
         window.revision = ++state_->revision;
+        state_->commit_pane_copy_resizes(*resized);
     }
     return state_->pane_snapshot(window, *window.layout.pane(pane_id));
 }

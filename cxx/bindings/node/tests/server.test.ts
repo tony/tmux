@@ -105,6 +105,8 @@ async function serverOperations(): Promise<void> {
   expect(initialOptions.serverInstance).toMatch(/^[0-9a-f]{32}$/);
   const session = await client.createSession("node", "/bin/sh");
   expect(typeof session.id).toBe("bigint");
+  expect((await client.copyMode(session.pane)).mode).toBeNull();
+  await expect(client.copyMode(0n)).rejects.toMatchObject({ code: "invalid_argument" });
   const observation = await client.observeSessions();
   expect(
     observation.sessions.map(
@@ -419,7 +421,78 @@ async function serverOperations(): Promise<void> {
     code: "not_found",
     operation: "window.select",
   });
+  const copySession = await client.createSession("node-copy-mode", "/bin/cat");
+  await client.setWindowOption(copySession.window, "mode-keys", "emacs");
+  await client.sendPaneInput(copySession.pane, Buffer.from("abc\n"));
+  await client.waitPaneOutput(copySession.pane, Buffer.from("abc\r\n"));
+  await client.enterCopyMode(copySession.pane);
+  const frozenCopy = await client.copyMode(copySession.pane);
+  expect(frozenCopy.serverInstance).toBe(initialOptions.serverInstance);
+  if (frozenCopy.mode === null) throw new Error("copy mode entry returned inactive state");
+  expect(frozenCopy.mode.lines[0]).toMatch(/^abc/);
+  await client.moveCopyCursorTo(copySession.pane, "history_start");
+  await client.moveCopyCursorTo(copySession.pane, "line_start");
+  await client.beginCopySelection(copySession.pane);
+  await client.moveCopyCursor(copySession.pane, "right", 2);
+  const selectedCopy = await client.copyMode(copySession.pane);
+  if (selectedCopy.mode === null) throw new Error("copy selection lost its mode");
+  expect(selectedCopy.mode.selection).toMatchObject({
+    anchor: { row: 0, column: 0 },
+    end: { row: 0, column: 2 },
+  });
+  await client.moveCopyCursor(copySession.pane, "right", 0);
+  expect((await client.copyMode(copySession.pane)).displayRevision).toBe(
+    selectedCopy.displayRevision,
+  );
+  expect(
+    /** Reject a nonintegral navigation count before queuing native cursor movement. */
+    () => client.moveCopyCursor(copySession.pane, "right", Number.NaN),
+  ).toThrow(RangeError);
+  await client.enterCopyMode(copySession.pane);
+  expect((await client.copyMode(copySession.pane)).displayRevision).toBe(
+    selectedCopy.displayRevision,
+  );
+  await client.sendPaneInput(copySession.pane, Buffer.from("node-hidden-output\n"));
+  await client.waitPaneOutput(copySession.pane, Buffer.from("node-hidden-output\r\n"));
+  const retainedCopy = await client.copyMode(copySession.pane);
+  expect(retainedCopy).toEqual(selectedCopy);
+  expect((await client.readPaneText(copySession.pane)).revision).toBeGreaterThan(
+    retainedCopy.mode?.sourceRevision ?? 0n,
+  );
+  await client.setWindowOption(copySession.window, "mode-keys", "vi");
+  const liveKeysCopy = await client.copyMode(copySession.pane);
+  expect(liveKeysCopy.mode).toMatchObject({ modeKeys: "vi", highlightKeys: "emacs" });
+  const copied = await client.copySelection(copySession.pane, "keep_selection");
+  if (copied === null) throw new Error("nonempty copy returned no automatic buffer");
+  expect(copied).toMatchObject({ automatic: true, byteCount: 3 });
+  expect(await client.readPasteBuffer(copied.name)).toEqual(Buffer.from("abc"));
+  await client.clearCopySelection(copySession.pane);
+  expect((await client.copyMode(copySession.pane)).mode?.selection).toBeNull();
+  await client.beginCopySelection(copySession.pane);
+  const defaultCopy = await client.copySelection(copySession.pane);
+  if (defaultCopy === null) throw new Error("vi default copy returned no buffer");
+  expect(await client.readPasteBuffer(defaultCopy.name)).toEqual(Buffer.from("c"));
+  expect((await client.copyMode(copySession.pane)).mode?.selection).toBeNull();
+  await client.scrollCopyMode(copySession.pane, "line_up");
+  await client.beginCopySelection(copySession.pane);
+  const copiedCell = await client.copySelection(copySession.pane, "cancel_mode");
+  if (copiedCell === null) throw new Error("vi stationary selection returned no buffer");
+  expect(await client.readPasteBuffer(copiedCell.name)).toEqual(Buffer.from("c"));
+  expect((await client.copyMode(copySession.pane)).mode).toBeNull();
+  await client.cancelCopyMode(copySession.pane);
+  await client.enterCopyMode(copySession.pane);
+  expect(await client.copySelection(copySession.pane, "cancel_mode")).toBeNull();
+  expect((await client.copyMode(copySession.pane)).mode).toBeNull();
+  await client.killSession(copySession.id);
+  await expect(client.copyMode(copySession.pane)).rejects.toMatchObject({
+    code: "not_found",
+    operation: "pane.copy_mode",
+  });
   client.close();
+  await expect(client.enterCopyMode(session.pane)).rejects.toMatchObject({
+    code: "closed",
+    operation: "pane.enter_copy_mode",
+  });
   await expect(client.selectLayout(session.window, "tiled")).rejects.toMatchObject({
     code: "closed",
   });
@@ -449,3 +522,62 @@ async function serverOperations(): Promise<void> {
   await expect(observer.windowOptions(null)).rejects.toMatchObject({ code: "closed" });
 }
 test("Node controls real PTY state and disposing preserves the session", serverOperations);
+
+/** Explicit undefined uses copy defaults while zero and invalid values retain their contracts. */
+async function copyDefaults(): Promise<void> {
+  directory = mkdtempSync(join(tmpdir(), "tmux-cxx-copy-defaults-"));
+  const socket = join(directory, "server");
+  const daemon = globalThis.process.env.TMUX_CXX_DAEMON;
+  if (!daemon) throw new Error("TMUX_CXX_DAEMON is required");
+  process = spawn(daemon, ["serve", "--socket", socket, "--ready-fd", "3"], {
+    stdio: ["ignore", "pipe", "pipe", "pipe"],
+    env: serverEnvironment(),
+  });
+  await awaitServerReady(process);
+  const client = new ServerConnection(socket);
+  try {
+    const session = await client.createSession("copy-defaults", "/bin/cat");
+    await client.setWindowOption(session.window, "mode-keys", "emacs");
+    await client.sendPaneInput(session.pane, Buffer.from("row\n".repeat(30) + "done\n"));
+    await client.waitPaneOutput(session.pane, Buffer.from("done\r\n"));
+    await client.enterCopyMode(session.pane);
+    await client.moveCopyCursorTo(session.pane, "history_start");
+    await client.moveCopyCursorTo(session.pane, "line_start");
+    await client.moveCopyCursor(session.pane, "right", undefined);
+    const moved = await client.copyMode(session.pane);
+    expect(moved.mode?.cursor).toEqual({ row: 0, column: 1 });
+    await client.scrollCopyMode(session.pane, "line_down", undefined);
+    const scrolled = await client.copyMode(session.pane);
+    expect(scrolled.mode?.viewportTop).toBe(1);
+    expect(scrolled.mode?.cursor).toEqual({ row: 1, column: 1 });
+    await client.moveCopyCursor(session.pane, "right", 0);
+    await client.scrollCopyMode(session.pane, "line_down", 0);
+    expect(await client.copyMode(session.pane)).toEqual(scrolled);
+    expect(
+      /** Reject an invalid cursor count before admitting an operation. */
+      () => client.moveCopyCursor(session.pane, "right", Number.NaN),
+    ).toThrow(RangeError);
+    expect(
+      /** Reject an invalid scrolling count before admitting an operation. */
+      () => client.scrollCopyMode(session.pane, "line_down", -1),
+    ).toThrow(RangeError);
+    expect(
+      /** Supply an invalid runtime spelling without weakening the public declaration. */
+      () => {
+        Reflect.apply(client.copySelection.bind(client), undefined, [session.pane, "invalid"]);
+      },
+    ).toThrow(RangeError);
+    expect(await client.copyMode(session.pane)).toEqual(scrolled);
+    await client.moveCopyCursorTo(session.pane, "history_start");
+    await client.moveCopyCursorTo(session.pane, "line_start");
+    await client.beginCopySelection(session.pane);
+    await client.moveCopyCursor(session.pane, "right");
+    const copied = await client.copySelection(session.pane, undefined);
+    if (copied === null) throw new Error("nonempty default copy returned no buffer");
+    expect(await client.readPasteBuffer(copied.name)).toEqual(Buffer.from("r"));
+    expect((await client.copyMode(session.pane)).mode?.selection).toBeNull();
+  } finally {
+    client.close();
+  }
+}
+test("Node copy methods treat explicit undefined as omitted", copyDefaults);

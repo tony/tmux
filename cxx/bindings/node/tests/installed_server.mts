@@ -35,6 +35,11 @@ async function exerciseInstalledServer(): Promise<void> {
     assert.equal(observation.sessions[0].name, expectedName);
     const window = observation.sessions[0].window;
     const firstRuntime = outputToken === "node-current-pty";
+    const previousCopy = await connection.copyMode(pane);
+    assert.equal(previousCopy.serverInstance, owner);
+    assert.equal(previousCopy.pane, pane);
+    assert(previousCopy.mode && previousCopy.mode.selection, "installed copy state was lost");
+    assert.equal(previousCopy.mode.selection.end.column, 2);
     const defaults = await connection.windowOptions(null);
     assert.equal(defaults.window, null);
     assert.equal(defaults.serverInstance, owner);
@@ -88,6 +93,27 @@ async function exerciseInstalledServer(): Promise<void> {
             [0, 40, 11, 40],
             [12, 0, 12, 80],
           ],
+    );
+    const arrangedCopy = await connection.copyMode(pane);
+    assert(arrangedCopy.mode, "layout resize removed the shared copy mode");
+    assert.equal(arrangedCopy.mode.sourceRevision, previousCopy.mode.sourceRevision);
+    assert.equal(arrangedCopy.mode.selection, null);
+    assert.equal(arrangedCopy.mode.modeKeys, firstRuntime ? "vi" : "emacs");
+    assert.equal(arrangedCopy.mode.highlightKeys, "emacs");
+    assert.equal(arrangedCopy.mode.rows, arrangedPanes[0].rows);
+    assert.equal(arrangedCopy.mode.columns, arrangedPanes[0].columns);
+    assert(arrangedCopy.mode.lines[0].startsWith("installed-copy-seed"));
+    await connection.enterCopyMode(pane);
+    assert.equal((await connection.copyMode(pane)).displayRevision, arrangedCopy.displayRevision);
+    await connection.moveCopyCursorTo(pane, "history_start");
+    await connection.moveCopyCursorTo(pane, "line_start");
+    await connection.beginCopySelection(pane);
+    await connection.moveCopyCursor(pane, "right", 2);
+    const copied = await connection.copySelection(pane, "keep_selection");
+    assert(copied && copied.automatic, "installed copy returned no automatic buffer");
+    assert.deepEqual(
+      await connection.readPasteBuffer(copied.name),
+      Buffer.from(firstRuntime ? "ins" : "in"),
     );
     await connection.renameSession(session, "installed-node");
     const buffers = await connection.pasteBuffers();

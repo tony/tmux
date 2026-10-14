@@ -1,5 +1,9 @@
 import {
   ServerConnection,
+  type CopyModeSnapshot,
+  type CopyModeStateSnapshot,
+  type CopyPosition,
+  type CopySelectionSnapshot,
   type PaneSnapshot,
   type PaneTextSnapshot,
   type PasteBufferSnapshot,
@@ -47,6 +51,26 @@ async function consumer(client: ServerConnection): Promise<SessionSnapshot> {
   void optionWindow;
   void optionRevision;
   await client.windowOptions(null);
+  await client.enterCopyMode(pane);
+  await client.moveCopyCursor(pane, "right", 2);
+  await client.moveCopyCursorTo(pane, "line_start");
+  await client.scrollCopyMode(pane, "page_up");
+  await client.beginCopySelection(pane);
+  const copySnapshot: CopyModeSnapshot = await client.copyMode(pane);
+  const copyMode: CopyModeStateSnapshot | null = copySnapshot.mode;
+  if (copyMode !== null) {
+    const cursor: CopyPosition = copyMode.cursor;
+    const selection: CopySelectionSnapshot | null = copyMode.selection;
+    const displayRevision: bigint = copySnapshot.displayRevision;
+    void cursor;
+    void selection;
+    void displayRevision;
+  }
+  const copied: PasteBufferSnapshot | null = await client.copySelection(pane, "keep_selection");
+  await client.clearCopySelection(pane);
+  await client.copySelection(pane);
+  await client.cancelCopyMode(pane);
+  void copied;
   const nextWindow: SessionSnapshot = await client.nextWindow(session.id);
   const previousWindow: SessionSnapshot = await client.previousWindow(session.id);
   const resized: PaneSnapshot = await client.resizePane(pane, "right");

@@ -66,7 +66,8 @@ using NodeOperationValue = std::variant<
     std::vector<tmux_cxx::WindowLinkSnapshot>, tmux_cxx::PaneSnapshot,
     std::vector<tmux_cxx::PaneSnapshot>, tmux_cxx::PaneTextSnapshot, tmux_cxx::SessionEventBatch,
     std::optional<tmux_cxx::PasteBufferSnapshot>, std::vector<tmux_cxx::PasteBufferSnapshot>,
-    tmux_cxx::WindowOptionsSnapshot, std::shared_ptr<tmux_cxx::SessionEventStream>, std::string>;
+    tmux_cxx::WindowOptionsSnapshot, tmux_cxx::CopyModeSnapshot,
+    std::shared_ptr<tmux_cxx::SessionEventStream>, std::string>;
 /** @brief Move-owned native work that never captures JavaScript handles. */
 using NodeOperation =
     std::move_only_function<tmux_cxx::Result<NodeOperationValue>(tmux_cxx::ServerConnection &)>;
@@ -307,9 +308,66 @@ Napi::Object pane_text_object(Napi::Env env, const tmux_cxx::PaneTextSnapshot &t
     object.Set("lines", lines);
     return object;
 }
+/** @brief Materialize absolute frozen-backing coordinates on the JavaScript thread. */
+Napi::Object copy_position_object(Napi::Env env, tmux_cxx::CopyPosition position) {
+    auto object = Napi::Object::New(env);
+    object.Set("row", position.row);
+    object.Set("column", position.column);
+    return object;
+}
+/** @brief Materialize copied frozen state with exact owner and display revisions. */
+Napi::Object copy_mode_object(Napi::Env env, const tmux_cxx::CopyModeSnapshot &snapshot) {
+    auto object = Napi::Object::New(env);
+    object.Set("serverInstance", snapshot.server_instance);
+    object.Set("pane", Napi::BigInt::New(env, snapshot.pane.value));
+    object.Set("displayRevision", Napi::BigInt::New(env, snapshot.display_revision));
+    if (!snapshot.mode) {
+        object.Set("mode", env.Null());
+        return object;
+    }
+    const auto &mode = *snapshot.mode;
+    const auto keys = std::ranges::find(tmux_cxx::window_mode_keys, mode.mode_keys,
+                                        &tmux_cxx::WindowModeKeysDescription::mode_keys);
+    const auto highlight = std::ranges::find(tmux_cxx::window_mode_keys, mode.highlight_keys,
+                                             &tmux_cxx::WindowModeKeysDescription::mode_keys);
+    if (keys == tmux_cxx::window_mode_keys.end() || highlight == tmux_cxx::window_mode_keys.end()) {
+        throw Napi::Error::New(env, "native copy mode contains an unknown mode-key value");
+    }
+    auto state = Napi::Object::New(env);
+    state.Set("rows", mode.rows);
+    state.Set("columns", mode.columns);
+    state.Set("backingLines", mode.backing_lines);
+    state.Set("viewportTop", mode.viewport_top);
+    state.Set("cursor", copy_position_object(env, mode.cursor));
+    if (mode.selection) {
+        auto selection = Napi::Object::New(env);
+        selection.Set("anchor", copy_position_object(env, mode.selection->anchor));
+        selection.Set("end", copy_position_object(env, mode.selection->end));
+        state.Set("selection", selection);
+    } else {
+        state.Set("selection", env.Null());
+    }
+    state.Set("sourceRevision", Napi::BigInt::New(env, mode.source_revision));
+    state.Set("sourceHistoryLines", mode.source_history_lines);
+    state.Set("alternateScreen", mode.alternate_screen);
+    state.Set("complete", mode.complete);
+    state.Set("historyGap", mode.history_gap);
+    state.Set("modeKeys", std::string(keys->name));
+    state.Set("highlightKeys", std::string(highlight->name));
+    auto lines = Napi::Array::New(env, mode.lines.size());
+    for (std::size_t row = 0; row < mode.lines.size(); ++row) {
+        lines.Set(static_cast<std::uint32_t>(row), Napi::String::New(env, mode.lines[row]));
+    }
+    state.Set("lines", lines);
+    object.Set("mode", state);
+    return object;
+}
 /** @brief Convert completed native values on the JavaScript thread, preserving raw bytes as
  * Buffers. */
 Napi::Value to_javascript(Napi::Env env, const NodeOperationValue &operation_value) {
+    if (auto mode = std::get_if<tmux_cxx::CopyModeSnapshot>(&operation_value)) {
+        return copy_mode_object(env, *mode);
+    }
     if (auto stream =
             std::get_if<std::shared_ptr<tmux_cxx::SessionEventStream>>(&operation_value)) {
         return session_event_stream_object(env, *stream);
@@ -572,6 +630,51 @@ tmux_cxx::WindowLayoutPreset window_layout_preset_arg(const Napi::CallbackInfo &
     }
     throw Napi::RangeError::New(info.Env(), "unknown window layout preset");
 }
+/** @brief Resolve a closed relative copy direction through the immutable C++ catalog. */
+tmux_cxx::CopyCursorDirection copy_cursor_direction_arg(const Napi::CallbackInfo &info,
+                                                        std::size_t index) {
+    const auto name = string_arg(info, index);
+    for (const auto &direction : tmux_cxx::copy_cursor_directions) {
+        if (direction.name == name) {
+            return direction.direction;
+        }
+    }
+    throw Napi::RangeError::New(info.Env(), "unknown copy cursor direction");
+}
+/** @brief Resolve an uncounted copy destination through the immutable C++ catalog. */
+tmux_cxx::CopyCursorDestination copy_cursor_destination_arg(const Napi::CallbackInfo &info,
+                                                            std::size_t index) {
+    const auto name = string_arg(info, index);
+    for (const auto &destination : tmux_cxx::copy_cursor_destinations) {
+        if (destination.name == name) {
+            return destination.destination;
+        }
+    }
+    throw Napi::RangeError::New(info.Env(), "unknown copy cursor destination");
+}
+/** @brief Resolve a closed copy scroll motion through the immutable C++ catalog. */
+tmux_cxx::CopyScrollMotion copy_scroll_motion_arg(const Napi::CallbackInfo &info,
+                                                  std::size_t index) {
+    const auto name = string_arg(info, index);
+    for (const auto &motion : tmux_cxx::copy_scroll_motions) {
+        if (motion.name == name) {
+            return motion.motion;
+        }
+    }
+    throw Napi::RangeError::New(info.Env(), "unknown copy scroll motion");
+}
+/** @brief Resolve the requested post-copy selection disposition through the immutable C++ catalog.
+ */
+tmux_cxx::CopySelectionDisposition copy_selection_disposition_arg(const Napi::CallbackInfo &info,
+                                                                  std::size_t index) {
+    const auto name = string_arg(info, index);
+    for (const auto &disposition : tmux_cxx::copy_selection_dispositions) {
+        if (disposition.name == name) {
+            return disposition.disposition;
+        }
+    }
+    throw Napi::RangeError::New(info.Env(), "unknown copy selection disposition");
+}
 
 /** @brief Copy a byte array on the JavaScript thread before admitting asynchronous work. */
 std::string bytes_arg(const Napi::CallbackInfo &info, std::size_t index) {
@@ -776,6 +879,17 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
                     InstanceMethod("sendPaneInput", &NodeServerConnection::send_pane_input),
                     InstanceMethod("readPaneOutput", &NodeServerConnection::read_pane_output),
                     InstanceMethod("readPaneText", &NodeServerConnection::read_pane_text),
+                    InstanceMethod("enterCopyMode", &NodeServerConnection::enter_copy_mode),
+                    InstanceMethod("moveCopyCursor", &NodeServerConnection::move_copy_cursor),
+                    InstanceMethod("moveCopyCursorTo", &NodeServerConnection::move_copy_cursor_to),
+                    InstanceMethod("scrollCopyMode", &NodeServerConnection::scroll_copy_mode),
+                    InstanceMethod("beginCopySelection",
+                                   &NodeServerConnection::begin_copy_selection),
+                    InstanceMethod("clearCopySelection",
+                                   &NodeServerConnection::clear_copy_selection),
+                    InstanceMethod("copySelection", &NodeServerConnection::copy_selection),
+                    InstanceMethod("cancelCopyMode", &NodeServerConnection::cancel_copy_mode),
+                    InstanceMethod("copyMode", &NodeServerConnection::copy_mode),
                     InstanceMethod("waitPaneOutput", &NodeServerConnection::wait_pane_output),
                     InstanceMethod("close", &NodeServerConnection::close),
                 }));
@@ -1138,6 +1252,93 @@ class NodeServerConnection : public Napi::ObjectWrap<NodeServerConnection> {
         return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::read_pane_text */
                                [id](tmux_cxx::ServerConnection &connection) {
                                    return to_node_result(connection.read_pane_text(id));
+                               });
+    }
+    /** @brief Freeze retained terminal backing for a pane without replacing an existing mode. */
+    Napi::Value enter_copy_mode(const Napi::CallbackInfo &info) {
+        const auto pane = tmux_cxx::PaneId{id_arg(info, 0)};
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::enter_copy_mode */
+                               [pane](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(connection.enter_copy_mode(pane));
+                               });
+    }
+    /** @brief Move a copy cursor by counted relative cell steps. */
+    Napi::Value move_copy_cursor(const Napi::CallbackInfo &info) {
+        const auto pane = tmux_cxx::PaneId{id_arg(info, 0)};
+        const auto direction = copy_cursor_direction_arg(info, 1);
+        const auto count = info.Length() > 2 && !info[2].IsUndefined() ? uint32_arg(info, 2) : 1;
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::move_copy_cursor */
+                               [pane, direction, count](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(
+                                       connection.move_copy_cursor(pane, direction, count));
+                               });
+    }
+    /** @brief Move a copy cursor directly to a logical-line or history boundary. */
+    Napi::Value move_copy_cursor_to(const Napi::CallbackInfo &info) {
+        const auto pane = tmux_cxx::PaneId{id_arg(info, 0)};
+        const auto destination = copy_cursor_destination_arg(info, 1);
+        return queue_operation(
+            info, /** @copybrief tmux_cxx::ServerConnection::move_copy_cursor_to */
+            [pane, destination](tmux_cxx::ServerConnection &connection) {
+                return to_node_result(connection.move_copy_cursor_to(pane, destination));
+            });
+    }
+    /** @brief Scroll a frozen copy viewport by counted line or page steps. */
+    Napi::Value scroll_copy_mode(const Napi::CallbackInfo &info) {
+        const auto pane = tmux_cxx::PaneId{id_arg(info, 0)};
+        const auto motion = copy_scroll_motion_arg(info, 1);
+        const auto count = info.Length() > 2 && !info[2].IsUndefined() ? uint32_arg(info, 2) : 1;
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::scroll_copy_mode */
+                               [pane, motion, count](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(
+                                       connection.scroll_copy_mode(pane, motion, count));
+                               });
+    }
+    /** @brief Begin character selection at the frozen copy cursor. */
+    Napi::Value begin_copy_selection(const Napi::CallbackInfo &info) {
+        const auto pane = tmux_cxx::PaneId{id_arg(info, 0)};
+        return queue_operation(
+            info, /** @copybrief tmux_cxx::ServerConnection::begin_copy_selection */
+            [pane](tmux_cxx::ServerConnection &connection) {
+                return to_node_result(connection.begin_copy_selection(pane));
+            });
+    }
+    /** @brief Clear character selection while retaining copy mode and its backing. */
+    Napi::Value clear_copy_selection(const Napi::CallbackInfo &info) {
+        const auto pane = tmux_cxx::PaneId{id_arg(info, 0)};
+        return queue_operation(
+            info, /** @copybrief tmux_cxx::ServerConnection::clear_copy_selection */
+            [pane](tmux_cxx::ServerConnection &connection) {
+                return to_node_result(connection.clear_copy_selection(pane));
+            });
+    }
+    /** @brief Store selected cells in an automatic buffer before applying the requested mode
+     * disposition. */
+    Napi::Value copy_selection(const Napi::CallbackInfo &info) {
+        const auto pane = tmux_cxx::PaneId{id_arg(info, 0)};
+        const auto disposition = info.Length() > 1 && !info[1].IsUndefined()
+                                     ? copy_selection_disposition_arg(info, 1)
+                                     : tmux_cxx::CopySelectionDisposition::clear_selection;
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::copy_selection */
+                               [pane, disposition](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(
+                                       connection.copy_selection(pane, disposition));
+                               });
+    }
+    /** @brief Leave copy mode and display the current program screen. */
+    Napi::Value cancel_copy_mode(const Napi::CallbackInfo &info) {
+        const auto pane = tmux_cxx::PaneId{id_arg(info, 0)};
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::cancel_copy_mode */
+                               [pane](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(connection.cancel_copy_mode(pane));
+                               });
+    }
+    /** @brief Observe frozen copy state separately from live program terminal facts. */
+    Napi::Value copy_mode(const Napi::CallbackInfo &info) {
+        const auto pane = tmux_cxx::PaneId{id_arg(info, 0)};
+        return queue_operation(info, /** @copybrief tmux_cxx::ServerConnection::copy_mode */
+                               [pane](tmux_cxx::ServerConnection &connection) {
+                                   return to_node_result(connection.copy_mode(pane));
                                });
     }
     /** @brief Copy wait arguments on the JavaScript thread; shared C++ validates the deadline and

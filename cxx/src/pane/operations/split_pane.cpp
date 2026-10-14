@@ -49,8 +49,8 @@ Result<PaneSnapshot> Server::split_pane(PaneId target, PaneSplitOrientation orie
     std::erase_if(
         existing_geometry, /** @brief Exclude the new leaf until its program has started. */
         [new_pane](const PaneGeometry &geometry) { return geometry.pane == new_pane; });
-    if (auto resized = state_->resize_pane_terminals(existing_geometry, previous_geometry);
-        !resized) {
+    auto resized = state_->resize_pane_terminals(existing_geometry, previous_geometry);
+    if (!resized) {
         return std::unexpected(resized.error());
     }
     if (auto spawned = spawn_pane(new_pane, window.id, new_geometry->size, command); !spawned) {
@@ -63,6 +63,7 @@ Result<PaneSnapshot> Server::split_pane(PaneId target, PaneSplitOrientation orie
     window.pane_order = std::move(candidate_order);
     window.active = new_pane;
     window.revision = ++state_->revision;
+    state_->commit_pane_copy_resizes(*resized);
     return state_->pane_snapshot(window, *new_geometry);
 }
 

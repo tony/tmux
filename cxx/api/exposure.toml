@@ -575,6 +575,120 @@ header = "window_link/window_link_snapshot.hpp"
 prefix = "window_link"
 fields = [{ name = "id", kind = "window_link_id" }, { name = "session", kind = "session_id" }, { name = "window", kind = "window_id" }, { name = "index", kind = "index" }, { name = "revision", kind = "revision" }]
 
+[[operations]]
+type = "EnterCopyMode"
+header = "pane/operations/enter_copy_mode.hpp"
+method = "enter_copy_mode"
+node = "enterCopyMode"
+id = 41
+identity = "pane.enter_copy_mode"
+result = "void"
+parameters = [{ name = "pane", kind = "pane_id" }]
+
+[[operations]]
+type = "MoveCopyCursor"
+header = "pane/operations/move_copy_cursor.hpp"
+method = "move_copy_cursor"
+node = "moveCopyCursor"
+id = 42
+identity = "pane.move_copy_cursor"
+result = "void"
+parameters = [{ name = "pane", kind = "pane_id" }, { name = "direction", kind = "copy_cursor_direction" }, { name = "count", kind = "count", default = "1" }]
+
+[[operations]]
+type = "MoveCopyCursorTo"
+header = "pane/operations/move_copy_cursor_to.hpp"
+method = "move_copy_cursor_to"
+node = "moveCopyCursorTo"
+id = 43
+identity = "pane.move_copy_cursor_to"
+result = "void"
+parameters = [{ name = "pane", kind = "pane_id" }, { name = "destination", kind = "copy_cursor_destination" }]
+
+[[operations]]
+type = "ScrollCopyMode"
+header = "pane/operations/scroll_copy_mode.hpp"
+method = "scroll_copy_mode"
+node = "scrollCopyMode"
+id = 44
+identity = "pane.scroll_copy_mode"
+result = "void"
+parameters = [{ name = "pane", kind = "pane_id" }, { name = "motion", kind = "copy_scroll_motion" }, { name = "count", kind = "count", default = "1" }]
+
+[[operations]]
+type = "BeginCopySelection"
+header = "pane/operations/begin_copy_selection.hpp"
+method = "begin_copy_selection"
+node = "beginCopySelection"
+id = 45
+identity = "pane.begin_copy_selection"
+result = "void"
+parameters = [{ name = "pane", kind = "pane_id" }]
+
+[[operations]]
+type = "ClearCopySelection"
+header = "pane/operations/clear_copy_selection.hpp"
+method = "clear_copy_selection"
+node = "clearCopySelection"
+id = 46
+identity = "pane.clear_copy_selection"
+result = "void"
+parameters = [{ name = "pane", kind = "pane_id" }]
+
+[[operations]]
+type = "CopySelection"
+header = "pane/operations/copy_selection.hpp"
+method = "copy_selection"
+node = "copySelection"
+id = 47
+identity = "pane.copy_selection"
+result = "optional_paste_buffer"
+parameters = [{ name = "pane", kind = "pane_id" }, { name = "disposition", kind = "copy_selection_disposition", default = "clear_selection" }]
+
+[[operations]]
+type = "CancelCopyMode"
+header = "pane/operations/cancel_copy_mode.hpp"
+method = "cancel_copy_mode"
+node = "cancelCopyMode"
+id = 48
+identity = "pane.cancel_copy_mode"
+result = "void"
+parameters = [{ name = "pane", kind = "pane_id" }]
+
+[[operations]]
+type = "ReadCopyMode"
+header = "pane/operations/read_copy_mode.hpp"
+method = "copy_mode"
+node = "copyMode"
+id = 49
+identity = "pane.copy_mode"
+result = "copy_mode"
+parameters = [{ name = "pane", kind = "pane_id" }]
+
+[[snapshots]]
+type = "CopyPosition"
+header = "pane/copy_position.hpp"
+prefix = "copy_position"
+fields = [{ name = "row", kind = "count" }, { name = "column", kind = "count" }]
+
+[[snapshots]]
+type = "CopySelectionSnapshot"
+header = "pane/copy_mode_snapshot.hpp"
+prefix = "copy_selection"
+fields = [{ name = "anchor", kind = "copy_position" }, { name = "end", kind = "copy_position" }]
+
+[[snapshots]]
+type = "CopyModeStateSnapshot"
+header = "pane/copy_mode_snapshot.hpp"
+prefix = "copy_mode_state"
+fields = [{ name = "rows", kind = "count" }, { name = "columns", kind = "count" }, { name = "backing_lines", node = "backingLines", kind = "count" }, { name = "viewport_top", node = "viewportTop", kind = "count" }, { name = "cursor", kind = "copy_position" }, { name = "selection", kind = "optional_copy_selection" }, { name = "source_revision", node = "sourceRevision", kind = "revision" }, { name = "source_history_lines", node = "sourceHistoryLines", kind = "count" }, { name = "alternate_screen", node = "alternateScreen", kind = "boolean" }, { name = "complete", kind = "boolean" }, { name = "history_gap", node = "historyGap", kind = "boolean" }, { name = "mode_keys", node = "modeKeys", kind = "window_mode_keys" }, { name = "highlight_keys", node = "highlightKeys", kind = "window_mode_keys" }, { name = "lines", kind = "text_lines" }]
+
+[[snapshots]]
+type = "CopyModeSnapshot"
+header = "pane/copy_mode_snapshot.hpp"
+prefix = "copy_mode"
+fields = [{ name = "server_instance", node = "serverInstance", kind = "text" }, { name = "pane", kind = "pane_id" }, { name = "display_revision", node = "displayRevision", kind = "revision" }, { name = "mode", kind = "optional_copy_mode_state" }]
+
 [[error_fields]]
 name = "code"
 kind = "error_code"

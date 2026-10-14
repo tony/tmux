@@ -54,6 +54,19 @@ def create_session(socket: str, record: Path) -> None:
         assert automatic is not None and automatic.automatic
         connection.set_paste_buffer("installed-named", b"named buffers are skipped")
         assert [buffer.automatic for buffer in connection.paste_buffers()] == [False, True]
+        connection.send_pane_input(
+            session.pane, b"printf '\\033[2J\\033[Hinstalled-copy-seed\\n'\n"
+        )
+        connection.wait_pane_output(session.pane, b"\x1b[Hinstalled-copy-seed\r\n")
+        connection.enter_copy_mode(session.pane)
+        connection.move_copy_cursor_to(session.pane, tmux_cxx.CopyCursorDestination.HISTORY_START)
+        connection.move_copy_cursor_to(session.pane, tmux_cxx.CopyCursorDestination.LINE_START)
+        connection.begin_copy_selection(session.pane)
+        connection.move_copy_cursor(session.pane, tmux_cxx.CopyCursorDirection.RIGHT, 2)
+        copied = connection.copy_mode(session.pane)
+        assert copied.server_instance == owner and copied.mode is not None
+        assert copied.mode.lines[0].startswith("installed-copy-seed")
+        assert copied.mode.selection is not None and copied.mode.selection.end.column == 2
         record.write_text(f"{session.id} {session.pane} {owner}\n")
     try:
         connection.sessions()
@@ -94,13 +107,29 @@ def observe_session(socket: str, record: Path) -> None:
         assert b"installed-buffer-node-current-pty" in output
         assert b"installed-buffer-node-lts-pty" in output
         buffers = observer.paste_buffers()
-        assert len(buffers) == 4
+        assert len(buffers) == 6
         assert buffers[0].automatic and buffers[0].revision > 0
         assert observer.read_paste_buffer(buffers[0].name).startswith(b"printf 'installed-buffer-")
+        copied = observer.copy_mode(pane_id)
+        assert (
+            copied.server_instance == owner and copied.pane == pane_id and copied.mode is not None
+        )
+        assert copied.mode.mode_keys == copied.mode.highlight_keys == tmux_cxx.WindowModeKeys.EMACS
+        assert copied.mode.lines[0].startswith("installed-copy-seed")
+        assert copied.mode.selection is not None and copied.mode.selection.end.column == 2
+        assert copied.mode.cursor.column == 2 and copied.display_revision > 0
         observer.send_pane_input(pane_id, b"printf 'python-%s\\n' 'installed-pty'\n")
         assert b"python-installed-pty" in observer.wait_pane_output(
             pane_id, b"python-installed-pty", 500
         )
+        retained = observer.copy_mode(pane_id)
+        assert retained.mode is not None
+        assert retained.mode.source_revision == copied.mode.source_revision
+        assert retained.mode.lines == copied.mode.lines
+        assert retained.display_revision == copied.display_revision
+        assert observer.read_pane_text(pane_id).revision > copied.mode.source_revision
+        observer.cancel_copy_mode(pane_id)
+        assert observer.copy_mode(pane_id).mode is None
 
 
 def main() -> None:

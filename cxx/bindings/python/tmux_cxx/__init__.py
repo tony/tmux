@@ -1,6 +1,14 @@
 """Native control of the persistent C++ tmux server. Importing this module has no server effects."""
 
 from ._native import ClientSnapshot as ClientSnapshot
+from ._native import CopyCursorDestination as CopyCursorDestination
+from ._native import CopyCursorDirection as CopyCursorDirection
+from ._native import CopyModeSnapshot as CopyModeSnapshot
+from ._native import CopyModeStateSnapshot as CopyModeStateSnapshot
+from ._native import CopyPosition as CopyPosition
+from ._native import CopyScrollMotion as CopyScrollMotion
+from ._native import CopySelectionDisposition as CopySelectionDisposition
+from ._native import CopySelectionSnapshot as CopySelectionSnapshot
 from ._native import PaneResizeDirection as PaneResizeDirection
 from ._native import PaneSnapshot as PaneSnapshot
 from ._native import PaneSplitOrientation as PaneSplitOrientation
@@ -30,6 +38,14 @@ from .session_event_stream import SessionEventStreamItem as SessionEventStreamIt
 __all__ = [
     "AsyncSessionEventStream",
     "ClientSnapshot",
+    "CopyCursorDestination",
+    "CopyCursorDirection",
+    "CopyModeSnapshot",
+    "CopyModeStateSnapshot",
+    "CopyPosition",
+    "CopyScrollMotion",
+    "CopySelectionDisposition",
+    "CopySelectionSnapshot",
     "PaneResizeDirection",
     "PaneSnapshot",
     "PaneSplitOrientation",

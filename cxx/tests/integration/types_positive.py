@@ -1,5 +1,13 @@
 from tmux_cxx import (
     AsyncSessionEventStream,
+    CopyCursorDestination,
+    CopyCursorDirection,
+    CopyModeSnapshot,
+    CopyModeStateSnapshot,
+    CopyPosition,
+    CopyScrollMotion,
+    CopySelectionDisposition,
+    CopySelectionSnapshot,
     PaneResizeDirection,
     PaneSnapshot,
     PasteBufferSnapshot,
@@ -54,6 +62,28 @@ def consumer(client: ServerConnection) -> SessionSnapshot:
     window_id: int | None = window_options.window
     assert mode_keys == WindowModeKeys.EMACS and window_id == created.window
     assert client.window_options(None).server_instance
+    client.enter_copy_mode(pane)
+    client.move_copy_cursor(pane, CopyCursorDirection.RIGHT, 2)
+    client.move_copy_cursor_to(pane, CopyCursorDestination.LINE_START)
+    client.scroll_copy_mode(pane, CopyScrollMotion.PAGE_UP)
+    client.begin_copy_selection(pane)
+    copy_snapshot: CopyModeSnapshot = client.copy_mode(pane)
+    copy_mode: CopyModeStateSnapshot | None = copy_snapshot.mode
+    if copy_mode is not None:
+        cursor: CopyPosition = copy_mode.cursor
+        selection: CopySelectionSnapshot | None = copy_mode.selection
+        display_revision: int = copy_snapshot.display_revision
+        assert cursor.column >= 0 and display_revision > 0
+        if selection is not None:
+            anchor: CopyPosition = selection.anchor
+            assert anchor.row >= 0
+    copied: PasteBufferSnapshot | None = client.copy_selection(
+        pane, CopySelectionDisposition.KEEP_SELECTION
+    )
+    client.clear_copy_selection(pane)
+    client.copy_selection(pane)
+    client.cancel_copy_mode(pane)
+    assert copied is None or copied.automatic
     next_window: SessionSnapshot = client.next_window(created.id)
     previous_window: SessionSnapshot = client.previous_window(created.id)
     assert next_window.id == previous_window.id

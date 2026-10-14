@@ -20,14 +20,15 @@ Result<WindowSnapshot> Server::select_layout(WindowId window_id, WindowLayoutPre
         return std::unexpected(changed.error());
     }
     if (*changed) {
-        if (auto resized =
-                state_->resize_pane_terminals(candidate.panes(), window_state.layout.panes());
-            !resized) {
+        auto resized =
+            state_->resize_pane_terminals(candidate.panes(), window_state.layout.panes());
+        if (!resized) {
             return std::unexpected(resized.error());
         }
         window_state.size = candidate.size();
         window_state.layout = std::move(candidate);
         window_state.revision = ++state_->revision;
+        state_->commit_pane_copy_resizes(*resized);
     }
     return window(window_id);
 }
